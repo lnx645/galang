@@ -1,0 +1,138 @@
+// Bahasa — tur dari sintaks Garurda yang sudah berjalan hari ini.
+// Jalankan: gar run examples/bahasa.ga
+
+use "strings"
+use "math"
+
+print "== Variabel dan tipe =="
+$nama = "Garurda"          // tipe disimpulkan
+$versi = 0.1
+$aktif = true
+$kosong = null
+$angka = 1_000_000
+$heksa = 0xFF
+
+int $stok = 72              // deklarasi bertipe
+float $harga = 99.5
+?string $keterangan = null  // boleh null
+array $tagar = []
+object $meta = {}
+
+print "$nama v${versi} — aktif: $aktif, stok: $stok, harga: $harga"
+print "tagar panjang: ${len($tagar)}, meta keys: ${len($meta)}"
+
+print ""
+print "== Fungsi =="
+fn greet($nama, $sapaan = "Halo") {
+    return "${sapaan}, ${nama}!"
+}
+
+fn tambah(int $a, int $b) int {
+    return $a + $b
+}
+
+fn kali($x) => $x * 2      // arrow function
+
+print greet("Garurda")
+print greet("Garurda", "Selamat pagi")
+print tambah(2, 3)
+print kali(21)
+
+// Closure: fungsi yang mengingat lingkungannya.
+fn penghitung() {
+    $total = 0
+    return fn($n) {
+        $total = $total + $n
+        return $total
+    }
+}
+$hitung = penghitung()
+$hitung(5)
+print "penghitung: ${hitung(3)}"
+
+print ""
+print "== Kontrol alur =="
+$umur = 21
+if $umur >= 18 {
+    print "dewasa"
+} else if $umur >= 10 {
+    print "remaja"
+} else {
+    print "anak-anak"
+}
+
+$i = 0
+$jumlah = 0
+while $i < 10 {
+    $i = $i + 1
+    if $i % 2 == 0 { continue }
+    if $i > 7 { break }
+    $jumlah = $jumlah + $i
+}
+print "jumlah angka ganjil 1..9: ${jumlah}"
+
+for $n in [10, 20, 30] { print "nilai: ${n}" }
+for $x in 1..3 { print "rentang: ${x}" }
+for $x in 0..10..5 { print "langkah: ${x}" }
+
+print ""
+print "== Array dan objek =="
+$buah = ["mangga", "apel", "jeruk"]
+print "buah: ${buah}"
+print "pertama: ${first($buah)}, terakhir: ${last($buah)}, jumlah: ${len($buah)}"
+print "slice: ${$buah[1:]}"
+print "negatif: ${$buah[-1]}"
+
+$user = {nama: "Siti", umur: 25, tag: ["web", "backend"]}
+print "user: ${$user}"
+print "nama: ${$user.nama}, tag[0]: ${$user.tag[0]}"
+
+for $k, $v in {satu: 1, dua: 2} {
+    print "${k} = ${v}"
+}
+
+print ""
+print "== Kompresi (list comprehension) =="
+$angka = [1, 2, 3, 4, 5, 6]
+print "dikali 2:   ${[$n * 2 for $n in $angka]}"
+print "hanya genap:${[$n for $n in $angka if $n % 2 == 0]}"
+
+print ""
+print "== Fungsi bawaan =="
+print "len:      ${len($buah)}"
+print "sort:     ${sort($angka)}"
+print "join:     ${join($angka, " | ")}"
+print "map:      ${map($angka, fn($x) => $x * 10)}"
+print "filter:   ${filter($angka, fn($x) => $x > 4)}"
+print "reduce:   ${reduce($angka, fn($a, $b) => $a + $b, 0)}"
+print "sum:      ${sum($angka)}"
+print "min/max:  ${min($angka)} / ${max($angka)}"
+print "in:       ${4 in $angka}"
+print "keys:     ${keys($user)}"
+print "merge:    ${merge({a: 1}, {b: 2})}"
+print "strings:  ${strings.upper("garurda")}"
+print "math:     floor=${math.floor(3.7)} round=${math.round(2.5)} pi=${math.pi}"
+print "json:     ${json_encode($user)}"
+print "html:     ${html_escape("<b>aman</b> & <i>kode</i>")}"
+
+print ""
+print "== Penanganan error =="
+fn bagi($a, $b) {
+    if $b == 0 {
+        throw bad_request("pembagian dengan nol tidak diperbolehkan")
+    }
+    return $a / $b
+}
+
+try {
+    print bagi(10, 2)
+    print bagi(10, 0)
+} catch e {
+    print "tertangkap [${e.status}]: ${e.message}"
+}
+
+$payload = json_decode(`{"ok":true,"data":[1,2,3]}`)
+print "json parse: ok=${$payload.ok}, data[1]=${$payload.data[1]}"
+
+print ""
+print "== Selesai =="

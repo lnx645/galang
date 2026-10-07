@@ -1,0 +1,5 @@
+// hello — the smallest Garurda program.
+print "Halo dari Garurda!"
+
+$nama = "Dunia"
+print "Halo, ${nama}!"
