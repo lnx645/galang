@@ -950,17 +950,33 @@ func (c *compiler) compileFnExpr(x *domain.FnExpr, s *cscope) (func(f *frame) do
 	fn.nvals = body.layout.nvals
 	fn.captures = caps
 
-	// Try the integer-only compilation. Failure is not an error: the function
-	// simply keeps the general path.
-	specialised := (&intCompiler{in: c.in}).compileIntFn(x)
-	if specialised != nil && specialised.nints > fn.nints {
-		fn.nints = specialised.nints
+	// Specialisation is attempted twice, best first: bytecode for a flat
+	// interpreter loop, then the closure form. Failing both is not an error —
+	// the function simply keeps the general path.
+	// Two unboxed backends, each better at something. Bytecode wins on
+	// call-heavy code because a call is a jump instead of a chain of
+	// closures; the closure backend wins on loops because a loop becomes a
+	// native Go loop. A function with a loop therefore keeps closures.
+	bcc := &bcCompiler{in: c.in}
+	bc := bcc.compileIntCode(x)
+	var specialised *intCompFn
+	var code *intCode
+	if bc != nil && !bcc.hasLoop {
+		code = bc
+		if bc.nlocals > fn.nints {
+			fn.nints = bc.nlocals
+		}
+	} else {
+		specialised = (&intCompiler{in: c.in}).compileIntFn(x)
+		if specialised != nil && specialised.nints > fn.nints {
+			fn.nints = specialised.nints
+		}
 	}
 
 	factory := func(f *frame) domain.Value {
 		// The defining frame must stay alive as long as the closure exists.
 		f.refs++
-		return &closure{fn: fn, def: f, int: specialised}
+		return &closure{fn: fn, def: f, int: specialised, code: code}
 	}
 	return factory, fn
 }

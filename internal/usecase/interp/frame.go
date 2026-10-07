@@ -100,6 +100,8 @@ type closure struct {
 	fn  *compFn
 	def *frame
 	int *intCompFn
+	// code is set when the function has bytecode; it takes precedence over int.
+	code *intCode
 }
 
 func (c *closure) Type() domain.TypeTag { return domain.TypeFunc }

@@ -78,6 +78,14 @@ type Interp struct {
 	tracePos   [64]domain.Position
 	traceFn    [64]*compFn
 	traceDepth int
+	// The bytecode VM's stacks. They are reused across calls, so a running
+	// program stops allocating once they are warm.
+	vstack  []int64
+	locals  []int64
+	vframes []vmFrame
+	// retVal receives the result of the outermost bytecode frame.
+	retVal int64
+
 	// argStack is the shared argument stack. Calls push and pop instead of
 	// allocating a slice per call, which is what makes recursion allocation
 	// free.
@@ -105,6 +113,9 @@ func New(out, errOut io.Writer) *Interp {
 	in.globals = &frame{}
 	in.globals.glob = in.globals
 	in.argStack = make([]domain.Value, 0, 64)
+	in.vstack = make([]int64, 0, 256)
+	in.locals = make([]int64, 0, 256)
+	in.vframes = make([]vmFrame, 0, 64)
 	in.installGlobals()
 	return in
 }

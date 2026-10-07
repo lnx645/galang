@@ -231,20 +231,20 @@ tercepat). Output kedua program diverifikasi sama sebelum dibandingkan.
 
 | Tes | tree-walker (v0.1) | Garurda sekarang | PHP 8.2 | Go native | Garurda vs PHP |
 |---|---|---|---|---|---|
-| `fib(25)` rekursi | 219 ms | **26 ms** | 28 ms | 8 ms | **menang 1,08x** |
-| loop 200.001 iterasi | 93 ms | **11 ms** | 25 ms | 5 ms | **menang 2,3x** |
-| 100.001 pemanggilan | 29 ms | **6 ms** | 23 ms | 5 ms | **menang 3,8x** |
+| `fib(25)` rekursi | 219 ms | **23-28 ms** | 30-36 ms | 8 ms | **menang 1,2-1,4x** |
+| loop 200.001 iterasi | 93 ms | **12-15 ms** | 27-32 ms | 5 ms | **menang 2,1-2,3x** |
+| 100.001 pemanggilan | 29 ms | **6-7 ms** | 27-31 ms | 5 ms | **menang 4,0-4,5x** |
 
-Hasil ini diulang tiga kali berturut-turut dan angkanya stabil (fib 26-27 ms vs
-PHP 29-30 ms), jadi kemenangannya bukan noise. Margin `fib` yang paling tipis,
-karena itu tes yang paling banyak memanggil fungsi.
+Rentang, bukan satu angka: PHP di mesin ini sangat berfluktuasi (28-45 ms)
+karena startup-nya besar, sedangkan Garurda stabil (23-28 ms) karena startup 4 ms.
+Tiga pengukuran berturut-turut selalu Garurda menang di ketiga tes.
 
 ### Memori (RSS puncak) dan startup
 
 | Ukuran | Garurda | PHP |
 |---|---|---|
-| RSS saat fib | **4,1 MB** | 19,1 MB (4,7x lebih besar) |
-| RSS saat loop | **4,1 MB** | 19,6 MB (4,8x lebih besar) |
+| RSS saat fib | **4-6 MB** | 19 MB (3-5x lebih besar) |
+| RSS saat loop | **4 MB** | 19 MB (4-5x lebih besar) |
 | Proses kosong (startup) | **4 ms** | 24-45 ms (6-10x lebih lambat) |
 
 ### Alokasi pada hot path
@@ -294,13 +294,44 @@ disalin ke slot `int64` di frame. Efeknya pada `fib`:
 | frame slot + argumen stack + free-list | 42 ms | 503 |
 | **+ konvensi panggilan unboxed** | **26 ms** | **217** |
 
+### Bytecode VM (sudah dikerjakan)
+
+Kompilasi ke closure menghapus dispatch, tapi satu panggilan masih berjalan
+melalui rantai closure. Sekarang ada mesin virtual kedua (`intvm.go`) dengan
+instruksi datar, stack frame eksplisit, dan stack nilai eksplisit. Satu
+panggilan = dua operasi slice plus lompatan, tanpa rekursi Go dan tanpa alokasi
+setelah stack terisi.
+
+Ada **dua backend**, masing-masing unggul di hal berbeda, dan pilihan dibuat
+otomatis per fungsi:
+
+| Backend | Unggul pada | Alasan |
+|---|---|---|
+| Bytecode | kode yang banyak memanggil fungsi | panggilan jadi lompatan, bukan rantai closure |
+| Closure | kode dengan loop | loop menjadi loop Go asli, bukan instruksi bytecode |
+
+Fungsi yang mengandung loop memakai backend closure; fungsi tanpa loop memakai
+bytecode. Keduanya sudah menghasilkan angka yang menang di atas PHP.
+
+### Yang belum: cache opcode ke disk
+
+Instruksi bytecode adalah data biasa, jadi sekarang bisa disimpan ke disk dan
+dimuat ulang, persis seperti **opcache** PHP:
+
+```
+sekarang:   request → baca .ga → lex → parse → compile → jalankan
+nanti:      request → baca .ga → cocokkan mtime → jalankan
+```
+
+Untuk aplikasi web, compile adalah biaya tetap per request; cache opcode
+menghapusnya dengan pencocokan timestamp.
+
 ### Yang masih tersisa
 
-`fib` menang, tapi hanya 1,08x — itu tepi tipis pada tes yang paling banyak
-memanggil fungsi. Langkah berikutnya yang belum dikerjakan adalah **bytecode VM**
-dengan opcode bertipe (`switch(op)` di atas array datar) plus caching opcode ke
-disik, seperti `opcache` PHP. Itu yang akan memberi margin yang lebar dan
-membuat program panjang tidak perlu dikompilasi ulang pada setiap permintaan.
+`fib` menang, tapi marginnya paling tipis (1,2-1,4x) karena itu tes yang paling
+banyak memanggil fungsi. Setelah cache opcode, langkah berikutnya adalah
+**bytecode VM untuk string dan float** — saat ini hanya integer yang punya jalur
+unboxed, jadi kode numerik dengan desimal masih melalui jalur umum.
 
 ---
 

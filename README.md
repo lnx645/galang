@@ -75,18 +75,22 @@ Diukur head-to-head dengan PHP 8.2 pada program identik (`./bench/compare.sh`,
 
 | Tes | Garurda | PHP 8.2 | Go native | Pemenang |
 |---|---|---|---|---|
-| rekursi `fib(25)` | **26 ms** | 28 ms | 8 ms | **Garurda (1,08x)** |
-| loop 200.001 iterasi | **11 ms** | 25 ms | 5 ms | **Garurda (2,3x)** |
-| 100.001 pemanggilan fungsi | **6 ms** | 23 ms | 5 ms | **Garurda (3,8x)** |
-| memori (RSS) | **4,1 MB** | 19 MB | — | **Garurda (4,8x)** |
+| rekursi `fib(25)` | **23-28 ms** | 30-36 ms | 8 ms | **Garurda (1,2-1,4x)** |
+| loop 200.001 iterasi | **12-15 ms** | 27-32 ms | 5 ms | **Garurda (2,1-2,3x)** |
+| 100.001 pemanggilan fungsi | **6-7 ms** | 27-31 ms | 5 ms | **Garurda (4,0-4,5x)** |
+| memori (RSS) | **4-6 MB** | 19 MB | — | **Garurda (3-5x)** |
 | startup proses kosong | **4 ms** | 24-45 ms | — | **Garurda (6-10x)** |
 
-Garurda menang di ketiga tes CPU, diulang tiga kali dengan angka stabil.
-Margin `fib` yang paling tipis (1,08x) karena itu tes yang paling banyak
-memanggil fungsi — analisisnya ada di `docs/SPEC.md` bab 10.
+Garurda menang di ketiga tes CPU pada setiap pengukuran. Angkanya berupa
+rentang karena PHP di mesin ini berfluktuasi besar (28-45 ms) sedangkan Garurda
+stabil (23-28 ms). Margin `fib` paling tipis karena itu tes yang paling banyak
+memanggil fungsi.
 
-Interpreter dikompilasi ke pohon closure Go dengan frame slot bertipe, bukan
-tree-walker, sehingga aritmetika integer pada loop tidak mengalokasikan apa pun.
+Cara kerjanya: program dikompilasi ke pohon closure Go dengan frame slot
+bertipe, dan fungsi bilangan bulat murni dikompilasi lagi ke **bytecode** yang
+dijalankan mesin virtual datar. Fungsi yang mengandung loop tetap memakai
+closure, karena loop jadi loop Go asli dan itu lebih cepat. Detailnya ada di
+`docs/SPEC.md` bab 10.
 
 Benchmark ulang kapan saja:
 

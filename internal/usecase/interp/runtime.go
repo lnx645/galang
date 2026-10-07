@@ -15,6 +15,27 @@ import (
 func (in *Interp) callValue(callee domain.Value, args []domain.Value, pos domain.Position) (domain.Value, error) {
 	switch c := callee.(type) {
 	case *closure:
+		// Bytecode first: one flat loop, no boxed values.
+		if c.code != nil && len(args) == c.code.nparams {
+			unboxed := true
+			for _, a := range args {
+				if _, ok := a.(domain.Int); !ok {
+					unboxed = false
+					break
+				}
+			}
+			if unboxed {
+				vals := make([]int64, len(args))
+				for i, a := range args {
+					vals[i] = int64(a.(domain.Int))
+				}
+				v, err := in.runInt(c.code, vals, pos)
+				if err != nil {
+					return nil, err
+				}
+				return domain.Int(v), nil
+			}
+		}
 		// An integer-only function entered from the general path takes the
 		// unboxed route, so the whole call tree stays unboxed.
 		if c.int != nil && len(args) == c.int.nparams {
