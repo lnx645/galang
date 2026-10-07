@@ -97,6 +97,22 @@ type Interp struct {
 	Modules map[string]func() *domain.Obj
 	// File is the name used in diagnostics for the program being run.
 	File string
+	// parser obtains programs from source. It exists so the caller can plug in a
+	// syntax tree cache without the engine depending on any storage.
+	parser func(src, file string) (*parse.Program, error)
+}
+
+// UseParser installs a source-to-program function, such as a cache.
+func (in *Interp) UseParser(f func(src, file string) (*parse.Program, error)) {
+	in.parser = f
+}
+
+// programFrom parses src, using the installed parser when there is one.
+func (in *Interp) programFrom(src, file string) (*parse.Program, error) {
+	if in.parser != nil {
+		return in.parser(src, file)
+	}
+	return parse.Parse(src, file)
 }
 
 // New creates an interpreter writing to out.
@@ -167,19 +183,20 @@ func (in *Interp) RunFile(path string) error {
 	return err
 }
 
-// CompileFile parses a file into a program.
+// CompileFile parses a file into a program, going through the syntax tree
+// cache when one is installed.
 func (in *Interp) CompileFile(path string) (*parse.Program, error) {
 	src, err := readFile(path)
 	if err != nil {
 		return nil, err
 	}
-	return parse.Parse(src, path)
+	return in.programFrom(src, path)
 }
 
 // Eval parses, compiles and runs source text in the global scope, returning
 // the value of the last statement.
 func (in *Interp) Eval(src, file string) (domain.Value, error) {
-	prog, err := parse.Parse(src, file)
+	prog, err := in.programFrom(src, file)
 	if err != nil {
 		return nil, err
 	}
