@@ -70,19 +70,26 @@ dirinya sendiri.
 
 ## Performa — hasil jujur
 
-Diukur head-to-head dengan PHP 8.2 pada program identik (`./bench/compare.sh`):
+Diukur head-to-head dengan PHP 8.2 pada program identik (`./bench/compare.sh`,
+9 run, ambil tercepat):
 
-| Tes | Garurda v0.1 | PHP 8.2 | Go native |
-|---|---|---|---|
-| rekursi `fib(25)` | 219 ms | **31 ms** | 8 ms |
-| loop 200k iterasi | 93 ms | **25 ms** | 5 ms |
-| 100k pemanggilan fungsi | 29 ms | **24 ms** | 5 ms |
-| memori (RSS) | 8-10 MB | **17-19 MB** | — |
+| Tes | Garurda | PHP 8.2 | Go native | Pemenang |
+|---|---|---|---|---|
+| rekursi `fib(25)` | 42 ms | 28 ms | 8 ms | PHP (1,5x) |
+| loop 200.001 iterasi | **12 ms** | 25 ms | 5 ms | **Garurda (2,1x)** |
+| 100.001 pemanggilan fungsi | **6 ms** | 22 ms | 5 ms | **Garurda (3,7x)** |
+| memori (RSS) | **4,2 MB** | 19 MB | — | **Garurda (4,5x)** |
+| startup proses kosong | **4 ms** | 24-45 ms | — | **Garurda (6-10x)** |
 
-**PHP menang CPU di semua tes; Garurda menang memori 1,8-2,4x.** Target "menang
-telak atas PHP" belum tercapai —-analisis lengkap dan rencana untuk mencapainya
-ada di `docs/SPEC.md` bab 10. Klaim performa tidak boleh dibuat sebelum
-`./bench/compare.sh` benar-benar menaruh Garurda di semua baris.
+Dua dari tiga tes CPU dimenangkan: Garurda menang 2,1x dan 3,7x, memori
+4,5x lebih hemat, dan startup 6-10x lebih cepat. Yang masih kalah adalah `fib`,
+yaitu kode yang memanggil fungsi sangat berat — analisis penyebab dan dua
+langkah penutupnya ada di `docs/SPEC.md` bab 10. Klaim kemenangan di semua tes
+belum sah sampai `./bench/compare.sh` benar-benar menaruh Garurda di setiap
+baris.
+
+Interpreter dikompilasi ke pohon closure Go dengan frame slot bertipe, bukan
+tree-walker, sehingga aritmetika integer pada loop tidak mengalokasikan apa pun.
 
 Benchmark ulang kapan saja:
 

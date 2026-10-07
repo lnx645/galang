@@ -1,5 +1,6 @@
 // call.ga — padanan persis dari bench/php/call.php
-fn kerja($n) {
+// Padanan PHP-nya `function kerja(int $n): int`.
+fn kerja(int $n) int {
 	$acc = 0
 	for $i in 0..$n { $acc = $acc + $i }
 	return $acc

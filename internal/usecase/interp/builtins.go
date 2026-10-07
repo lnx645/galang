@@ -43,8 +43,14 @@ func (in *Interp) strictFn(name string, min, max int, fn builtinFn) *domain.Buil
 // installGlobals registers the builtin namespace in the global scope.
 func (in *Interp) installGlobals() {
 	names := in.builtinNames()
-	for i, v := range names {
-		in.global.define(i, v, nil)
+	// Reserve every slot first, then grow once, then fill: growing between
+	// assignments would discard the values already stored.
+	for name := range names {
+		in.gscope.names[name] = &cslot{kind: slotVal, idx: in.gscope.layout.addVal()}
+	}
+	in.globals.grow(in.gscope.layout)
+	for name, val := range names {
+		in.globals.vals[in.gscope.names[name].idx] = val
 	}
 	in.Modules = map[string]func() *domain.Obj{
 		"strings": in.newStringsModule,
@@ -69,7 +75,7 @@ func (in *Interp) builtinNames() map[string]domain.Value {
 		for _, a := range args {
 			parts = append(parts, a.String())
 		}
-		io_WriteString(in.Out, strings.Join(parts, " "))
+		in.printLine(strings.Join(parts, " "))
 		return domain.Null{}, nil
 	})
 
@@ -466,7 +472,7 @@ func (in *Interp) builtinNames() map[string]domain.Value {
 			if serr != nil {
 				return false
 			}
-			c, err := compareValues(a, b, pos)
+			c, err := compareValues(a, b)
 			if err != nil {
 				serr = err
 				return false
@@ -652,7 +658,7 @@ func (in *Interp) builtinNames() map[string]domain.Value {
 // index argument is dropped, so `map(xs, fn(x) ...)` and
 // `map(xs, fn(x, i) ...)` both work.
 func (in *Interp) callFnHelper(fn domain.Value, args []domain.Value, pos domain.Position) (domain.Value, error) {
-	if f, ok := fn.(*Fn); ok && len(args) > 1 && len(f.Params) == 1 {
+	if f, ok := fn.(*closure); ok && len(args) > 1 && len(f.fn.params) == 1 {
 		args = args[:1]
 	}
 	return in.callValue(fn, args, pos)
@@ -720,7 +726,7 @@ func minMax(in *Interp, args []domain.Value, pos domain.Position, wantMin bool) 
 	}
 	best := list[0]
 	for _, v := range list[1:] {
-		c, err := compareValues(v, best, pos)
+		c, err := compareValues(v, best)
 		if err != nil {
 			return nil, err
 		}

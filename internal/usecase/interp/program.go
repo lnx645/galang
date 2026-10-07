@@ -11,5 +11,7 @@ func (in *Interp) SetProgramArgs(args []string) {
 	for _, a := range args {
 		items = append(items, domain.Str(a))
 	}
-	in.global.define("args", &domain.Arr{Items: items}, &domain.TypeExpr{Name: "array", Args: []*domain.TypeExpr{{Name: "string"}}})
+	in.gscope.names["args"] = &cslot{kind: slotVal, idx: in.gscope.layout.addVal()}
+	in.globals.grow(in.gscope.layout)
+	in.globals.vals[in.gscope.names["args"].idx] = &domain.Arr{Items: items}
 }

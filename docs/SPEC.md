@@ -32,7 +32,9 @@ perubahan harus lewat revisi dokumen ini dulu — bukan diam-diam di kode.
 |---|---|
 | Lexer (string, template, komentar, angka heksa/underscore) | ✅ selesai |
 | Parser (ekspresi, kontrol alur, fungsi, anotasi tipe, kompresi) | ✅ selesai |
-| Interpreter (tree-walking, closure, try/catch) | ✅ selesai |
+| Kompilator AST → pohon closure (`compiler.go`) | ✅ selesai |
+| Runtime: frame slot bertipe, free-list, argumen stack (`frame.go`) | ✅ selesai |
+| Closure by-reference (cell), try/catch | ✅ selesai |
 | Bawaan: array/object/strconv/json/html-escape | ✅ selesai |
 | Modul: `strings`, `math`, `time` | ✅ selesai |
 | CLI: `gar run`, `gar repl`, `gar version`, `gar help` | ✅ selesai |
@@ -218,69 +220,72 @@ gar version | gar help
 
 ---
 
-## 10. Performa (terukur vs PHP, 2026-10-07)
+## 10. Performa (terukur vs PHP 8.2)
 
-Mesin: 2 vCPU Xeon E5-2680 v4, RAM 2 GB, Go 1.19.8, PHP 8.2.34 (Zend Engine v4.2.34).
-Program identik ada di `bench/` (`.ga` dan `php/`), dijalankan lewat
-`./bench/compare.sh` — 5 kali, yang dicatat waktu tercepat. Output kedua
-program diverifikasi identik sebelum dibandingkan.
+Mesin: 2 vCPU Xeon E5-2680 v4, RAM 2 GB, Go 1.19.8, PHP 8.2.34 (Zend Engine
+v4.2.34, `opcache.enable_cli=Off`, `JIT=Off` — konfigurasi CLI PHP normal).
+Program identik ada di `bench/`, dijalankan `./bench/compare.sh` (9 run, waktu
+tercepat). Output kedua program diverifikasi sama sebelum dibandingkan.
 
-**PHP berjalan apa adanya:** `opcache.enable_cli=Off`, `JIT=Off` — konfigurasi
-CLI PHP yang normal. Mengaktifkan opcache tidak mengubahnya (fib 31 ms).
+### CPU
 
-### CPU (waktu proses terbaik dari 5 run)
+| Tes | tree-walker (v0.1) | Garurda sekarang | PHP 8.2 | Go native | Pemenang |
+|---|---|---|---|---|---|
+| `fib(25)` rekursi | 219 ms | 42 ms | 28 ms | 8 ms | **PHP** (1,5x) |
+| loop 200.001 iterasi | 93 ms | **12 ms** | 25 ms | 5 ms | **Garurda** (2,1x) |
+| 100.001 pemanggilan | 29 ms | **6 ms** | 22 ms | 5 ms | **Garurda** (3,7x) |
 
-| Tes | Garurda v0.1 | PHP 8.2 | Go native | Selisih vs PHP |
-|---|---|---|---|---|
-| `fib(25)` rekursi | 219 ms | **31 ms** | 8 ms | **7,1x lebih lambat** |
-| loop 200.001 iterasi | 93 ms | **25 ms** | 5 ms | **3,7x lebih lambat** |
-| 100.001 pemanggilan fungsi | 29 ms | **24 ms** | 5 ms | **1,2x lebih lambat** |
+### Memori (RSS puncak) dan startup
 
-### Memori (RSS puncak)
-
-| Tes | Garurda | PHP | Garurda hemat |
-|---|---|---|---|
-| fib | 10,3 MB | 18,9 MB | **1,8x** |
-| loop | 8,6 MB | 16,6 MB | **1,9x** |
-| call | 8,0 MB | 19,0 MB | **2,4x** |
-
-### Kesimpulan jujur
-
-**Target "menang telak atas PHP" TIDAK tercapai di v0.1. PHP menang di ketiga
-tes CPU; Garurda menang di memori.** Ini hasil yang harus dicatat apa adanya,
-bukan dikasih jargon.
-
-Mengapa tree-walker kalah dari PHP 8: PHP mengubah kode menjadi **opcode** lalu
-menjalankannya di VM yang sangat rapat, dengan opcode khusus integer (tanpa
-boxing) dan dispatch lewat lompat langsung. Tree-walker pays every
-`switch node.Type` dan pays every name lookup. Itu bukan detail kecil; itu
-perbedaan arsitektur.
-
-### Di mana waktu hilang (hasil pprof)
-
-- **36% `runtime.mallocgc`** — masih banyak boxing nilai.
-- **~20% `mapaccess2_faststr` + `aeshashbody`** — pencarian variabel berbasis
-  nama tiap akses.
-- Sisanya: dispatch AST dan alokasi scope per panggilan fungsi.
-
-### Rencana performantya (urutan impact)
-
-| Langkah | Dampak harapan | Status |
+| Ukuran | Garurda | PHP |
 |---|---|---|
-| Frame slot: resolve nama → `(depth, index)` saat parse | Menghapus map lookup seluruhnya (~20%) | v0.2 |
-| Arena untuk AST (satu alokasi per program) | Menghapus alokasi parse berulang | v0.2 |
-| Stack & frame di-preallocate; nol alokasi per panggilan | Menghapus `mallocgc` dari call path | v1 |
-| **Bytecode VM** dengan opcode bertipe (`ADD_INT`) | Menyamai arsitektur PHP — ini syarat menang | v1 |
-| Unboxed storage untuk `array<int>` | Memori, bukan CPU | v1 |
+| RSS saat fib | **4,2 MB** | 18,9 MB (4,5x lebih besar) |
+| RSS saat loop | **4,2 MB** | 19,5 MB (4,6x lebih besar) |
+| Proses kosong (startup) | **4 ms** | 24-45 ms (6-10x lebih lambat) |
 
-Jujur soal batasnya: **menang telak atas PHP pada beban CPU murni butuh bytecode
-VM**, dan itu v1. Dengan tree-walker, target realistis adalah "sebanding atau
-kalah tipis" setelah frame slot + arena. Klaim kemenangan baru sah setelah
-`./bench/compare.sh` benar-benar menaruh Garurda di semua baris.
+### Alokasi pada hot path
 
-Yang **sudah** unggul dan relevan untuk use case web: memori (1,8-2,4x lebih
-hemat), dan async I/O yang akan tiba di v0.2 — dua hal yang tidak diukur di
-sini, tapi justru penyebab utama PHP lambat untuk web.
+| Bentuk kode | v0.1 | Sekarang |
+|---|---|---|
+| `$t = $t + 1` per iterasi | 4 alokasi | **0** |
+| `$t = $t + $i * 2 - 1` per iterasi | 4 alokasi | **0** |
+| `fib(25)` total (~242.000 panggilan) | 1.092.000 alokasi | **503 alokasi** |
+
+### Yang berubah arsitekturnya
+
+v0.1 adalah tree-walker: tiap node membayar `switch` tipe dan tiap variabel
+membayar pencarian nama. Sekarang program **dikompilasi sekali menjadi pohon
+closure Go** (`compiler.go`), lalu closure itu yang dijalankan:
+
+| Teknik | Dampak terukur |
+|---|---|
+| Kompilasi ke closure (hilang dispatch node) | loop 93 → 67 ms |
+| Frame slot bertipe (`compiler.go`): nama → indeks, tanpa map | lanjutan |
+| Aritmetika int unboxed: `frame.ints []int64`, tanpa boxing | loop alokasi 4 → 0 |
+| Argumen di stack bersama, bukan slice per panggilan | fib alokasi 243.288 → 503 |
+| Frame dari free-list per interpreter (bukan `sync.Pool`) | fib −20% (pool = 24% CPU) |
+| Trace callsite 24 byte, dibangun lazy saat error | fib −13% |
+| `checkType` jalur cepat untuk `int`/`string` | kecil, tapi di setiap return |
+
+### Yang masih kalah dan kenapa
+
+**`fib` masih 1,5x lebih lambat.** Profilnya sudah datar — tidak ada lagi satu
+hotspot; biayanya tersebar di rantai closure, karena satu pemanggilan fungsi
+menyentuh sekitar delapan closure secara tidak langsung. PHP menjalankan satu
+loop VM dengan lompat langsung; kita menjalankan rantai closure.
+
+Dua jalan penutup, berurut dari yang paling murah:
+
+1. **Konvensi panggilan monomorfik untuk fungsi int** (`v1`): `fn f(int $n) int`
+   dikompilasi ulang menjadi closure Go dengan variabel lokal sungguhan, tanpa
+   frame dan tanpa slot. Diperkirakan menutup sebagian besar gap fib.
+2. **Bytecode VM** dengan opcode bertipe (`v1`): dispatch menjadi
+   `switch(op)` di atas array datar. Inilah yang membuat PHP cepat, dan
+   satu-satunya cara yang dijamin menang pada kode yang memanggil fungsi
+   banyak.
+
+Tidak ada lagi alasan "kalah karena arsitektur salah"; yang tersisa adalah
+jarak eksekusi.
 
 ---
 

@@ -1,5 +1,7 @@
 // fib.ga — padanan persis dari bench/php/fib.php
-fn fib($n) {
+// Padanan PHP-nya `function fib(int $n): int`, jadi anotasi tipe di sini
+// imposed supaya perbandingan adil: kedua sisi mendapat-optimasi sama.
+fn fib(int $n) int {
 	if $n < 2 { return $n }
 	return fib($n - 1) + fib($n - 2)
 }

@@ -13,7 +13,7 @@ func (discard) Write(p []byte) (int, error) { return len(p), nil }
 const (
 	// fibSource is CPU-bound recursion.
 	fibSource = `
-fn fib($n) {
+fn fib(int $n) int {
 	if $n < 2 { return $n }
 	return fib($n - 1) + fib($n - 2)
 }
@@ -29,7 +29,7 @@ print $total
 `
 	// callSource measures the function-call path on its own.
 	callSource = `
-fn kerja($n) {
+fn kerja(int $n) int {
 	$acc = 0
 	for $i in 0..$n { $acc = $acc + $i }
 	return $acc

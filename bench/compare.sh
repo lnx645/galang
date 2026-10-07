@@ -11,7 +11,7 @@
 set -u
 cd "$(dirname "$0")/.."
 
-RUNS=5
+RUNS=9
 GAR="./bin/gar"
 PHP_BIN="php"
 

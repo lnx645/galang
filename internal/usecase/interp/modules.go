@@ -16,6 +16,18 @@ func (in *Interp) checkType(t *domain.TypeExpr, v domain.Value, p domain.Positio
 	if t == nil || t.Name == "any" {
 		return nil
 	}
+	// Fast paths for the two most common annotations: they run on every
+	// assignment and every return in typed code.
+	if t.Name == "int" && !t.Nullable {
+		if _, ok := v.(domain.Int); ok {
+			return nil
+		}
+	}
+	if t.Name == "string" && !t.Nullable {
+		if _, ok := v.(domain.Str); ok {
+			return nil
+		}
+	}
 	if isNull(v) {
 		if t.Nullable || t.Name == "null" {
 			return nil
@@ -69,7 +81,7 @@ func (in *Interp) checkType(t *domain.TypeExpr, v domain.Value, p domain.Positio
 		}
 	case "function":
 		switch v.(type) {
-		case *Fn, *domain.Builtin:
+		case *closure, *domain.Builtin:
 			return nil
 		}
 	case "error":
@@ -430,7 +442,7 @@ func writeJSON(b *strings.Builder, v domain.Value) error {
 			return err
 		}
 		b.Write(enc)
-	case *Fn, *domain.Builtin:
+	case *closure, *domain.Builtin:
 		return errUnsupportedJSON
 	default:
 		return errUnsupportedJSON

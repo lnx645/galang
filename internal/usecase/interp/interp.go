@@ -1,10 +1,14 @@
-// Package interp evaluates a Garurda syntax tree. It is a tree-walking
-// interpreter: correctness first, with measured optimisations to follow.
+// Package interp evaluates Garurda programs.
+//
+// The engine compiles the syntax tree into Go closures and runs those, so the
+// hot loop contains no node-type dispatch, no name lookups, and (for integers)
+// no boxing. See compiler.go and frame.go.
 package interp
 
 import (
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"garurda/internal/domain"
@@ -29,7 +33,11 @@ type StackFrame struct {
 
 func (e *Error) Error() string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s:%d:%d: %s", e.File, e.Pos.Line, e.Pos.Col, e.Msg)
+	file := e.File
+	if file == "" {
+		file = "<garurda>"
+	}
+	fmt.Fprintf(&b, "%s:%d:%d: %s", file, e.Pos.Line, e.Pos.Col, e.Msg)
 	if len(e.Stack) > 0 {
 		b.WriteString("\n  at ")
 		frames := make([]string, 0, len(e.Stack))
@@ -41,65 +49,14 @@ func (e *Error) Error() string {
 	return b.String()
 }
 
-// Frame captures the call stack while an error unwinds.
+// Frame appends a call site to the trace.
 func (e *Error) Frame(f StackFrame) *Error {
 	e.Stack = append(e.Stack, f)
 	return e
 }
 
-// Thrown reports whether the error was raised by throw and is catchable.
+// Thrown reports whether the error came from throw and is catchable.
 func (e *Error) Thrown() bool { return e.Value != nil }
-
-// env is a lexical scope.
-type scope struct {
-	vars   map[string]domain.Value
-	types  map[string]*domain.TypeExpr
-	parent *scope
-}
-
-func newScope(parent *scope) *scope {
-	return &scope{parent: parent}
-}
-
-// lookup resolves a name through the scope chain. A scope with no variables
-// holds no map at all, which keeps loop-body scopes allocation free.
-func (e *scope) lookup(name string) (domain.Value, *domain.TypeExpr, bool) {
-	for s := e; s != nil; s = s.parent {
-		if s.vars == nil {
-			continue
-		}
-		if v, ok := s.vars[name]; ok {
-			return v, s.types[name], true
-		}
-	}
-	return nil, nil, false
-}
-
-func (e *scope) assign(name string, v domain.Value) {
-	for s := e; s != nil; s = s.parent {
-		if s.vars == nil {
-			continue
-		}
-		if _, ok := s.vars[name]; ok {
-			s.vars[name] = v
-			return
-		}
-	}
-	e.define(name, v, nil)
-}
-
-func (e *scope) define(name string, v domain.Value, t *domain.TypeExpr) {
-	if e.vars == nil {
-		e.vars = make(map[string]domain.Value, 4)
-	}
-	e.vars[name] = v
-	if t != nil {
-		if e.types == nil {
-			e.types = make(map[string]*domain.TypeExpr, 4)
-		}
-		e.types[name] = t
-	}
-}
 
 // Interp evaluates Garurda programs.
 type Interp struct {
@@ -108,9 +65,23 @@ type Interp struct {
 	// Err receives runtime diagnostics.
 	Err io.Writer
 
-	global *scope
-	// calls tracks the active call stack for error traces.
-	calls []StackFrame
+	// globals is the compiled top-level frame plus its layout.
+	globals *frame
+	// gscope is the compile-time scope for top-level names.
+	gscope *cscope
+	// frames is the activation record cache.
+	frames frameCache
+	// trace holds the call stack for error messages. Only a position and a
+	// function pointer are recorded per call; the human readable text is built
+	// when an error is actually formatted. Recording a whole StackFrame per
+	// call cost 13% of fib's CPU time.
+	tracePos   [64]domain.Position
+	traceFn    [64]*compFn
+	traceDepth int
+	// argStack is the shared argument stack. Calls push and pop instead of
+	// allocating a slice per call, which is what makes recursion allocation
+	// free.
+	argStack []domain.Value
 	// depth guards against runaway recursion.
 	depth    int
 	maxDepth int
@@ -125,16 +96,18 @@ func New(out, errOut io.Writer) *Interp {
 	in := &Interp{
 		Out:      out,
 		Err:      errOut,
-		global:   newScope(nil),
-		maxDepth: 2000,
+		maxDepth: 1500,
 		File:     "<stdin>",
 	}
+	gs := newCScope(nil, true)
+	gs.isGlobal = true
+	in.gscope = gs
+	in.globals = &frame{}
+	in.globals.glob = in.globals
+	in.argStack = make([]domain.Value, 0, 64)
 	in.installGlobals()
 	return in
 }
-
-// Global returns the top-level scope.
-func (in *Interp) Global() *scope { return in.global }
 
 func (in *Interp) errf(pos domain.Position, format string, args ...interface{}) *Error {
 	return &Error{Msg: fmt.Sprintf(format, args...), Pos: pos, File: in.File, Stack: in.snapshot()}
@@ -146,10 +119,31 @@ func (in *Interp) Throw(msg string, code string, status int, pos domain.Position
 	return &Error{Msg: msg, Pos: pos, File: in.File, Value: ev, Stack: in.snapshot()}
 }
 
+// wrapThrown converts an error value into a catchable runtime error.
+func (in *Interp) wrapThrown(ev *domain.ErrorValue, p domain.Position) error {
+	return &Error{Msg: ev.Message, Pos: p, File: in.File, Value: ev, Stack: in.snapshot()}
+}
+
 func (in *Interp) snapshot() []StackFrame {
-	out := make([]StackFrame, len(in.calls))
-	copy(out, in.calls)
+	n := in.traceDepth
+	if n > len(in.tracePos) {
+		n = len(in.tracePos)
+	}
+	out := make([]StackFrame, 0, n)
+	for i := 0; i < n; i++ {
+		fr := StackFrame{Pos: in.tracePos[i], File: in.File}
+		if in.traceFn[i] != nil {
+			fr.Func = displayName(in.traceFn[i].name)
+		}
+		out = append(out, fr)
+	}
 	return out
+}
+
+// printLine writes one line plus a newline.
+func (in *Interp) printLine(text string) error {
+	_, err := in.Out.Write([]byte(text + "\n"))
+	return err
 }
 
 // RunFile parses and executes a file.
@@ -168,15 +162,11 @@ func (in *Interp) CompileFile(path string) (*parse.Program, error) {
 	if err != nil {
 		return nil, err
 	}
-	prog, err := parse.Parse(src, path)
-	if err != nil {
-		return nil, err
-	}
-	return prog, nil
+	return parse.Parse(src, path)
 }
 
-// Eval parses and runs source text in the global scope, returning the value of
-// the last evaluated statement, if any.
+// Eval parses, compiles and runs source text in the global scope, returning
+// the value of the last statement.
 func (in *Interp) Eval(src, file string) (domain.Value, error) {
 	prog, err := parse.Parse(src, file)
 	if err != nil {
@@ -185,53 +175,70 @@ func (in *Interp) Eval(src, file string) (domain.Value, error) {
 	return in.Run(prog)
 }
 
-// EvalDiscard runs source text and ignores the resulting value.
-func (in *Interp) EvalDiscard(src, file string) error {
-	_, err := in.Eval(src, file)
-	return err
-}
-
-// Run executes statements, returning the value of the last expression
-// statement, if any. It is used by the REPL.
+// Run compiles and executes a program.
 func (in *Interp) Run(prog *parse.Program) (domain.Value, error) {
 	prev := in.File
 	in.File = prog.File
 	defer func() { in.File = prev }()
-	_, last, err := in.execBlockStmts(prog.Stmts, in.global)
-	return last, err
+
+	// Extend the global layout with any names this program introduces.
+	c := &compiler{in: in, globalScope: in.gscope, captures: &[]capture{}}
+	c.captures = nil
+	c.captures = &[]capture{}
+	body := c.compileStmts(prog.Stmts, in.gscope)
+	if c.err != nil {
+		return nil, c.err
+	}
+	// Grow the globals frame to cover the final layout.
+	in.growGlobals()
+
+	_, v, err := body(in.globals)
+	return v, err
 }
 
-// control is the reason a statement list finished early.
-type control int
-
-const (
-	ctrlNone control = iota
-	ctrlBreak
-	ctrlContinue
-	ctrlReturn
-)
-
-// execBlockStmts runs statements, returning how the block ended.
-func (in *Interp) execBlockStmts(stmts []domain.Stmt, e *scope) (control, domain.Value, error) {
-	var last domain.Value
-	for _, st := range stmts {
-		c, v, err := in.execStmt(st, e)
-		if err != nil {
-			return ctrlNone, nil, err
-		}
-		if c != ctrlNone {
-			return c, v, nil
-		}
-		if v != nil {
-			last = v
+// grow resizes a frame to hold a layout. New value slots start as null so a
+// REPL keeps values the program did not reassign.
+func (f *frame) grow(l *frameLayout) {
+	if cap(f.ints) < l.nints {
+		old := f.ints
+		f.ints = make([]int64, l.nints)
+		copy(f.ints, old)
+		oldIs := f.isInt
+		f.isInt = make([]bool, l.nints)
+		copy(f.isInt, oldIs)
+	}
+	f.ints = f.ints[:l.nints]
+	f.isInt = f.isInt[:l.nints]
+	if cap(f.vals) < l.nvals {
+		old := f.vals
+		f.vals = make([]interface{}, l.nvals)
+		copy(f.vals, old)
+	}
+	f.vals = f.vals[:l.nvals]
+	// Fresh slots read as null, which is also what makes a REPL keep the
+	// values a previous statement stored.
+	for i := range f.vals {
+		if f.vals[i] == nil {
+			f.vals[i] = domain.Null{}
 		}
 	}
-	return ctrlNone, last, nil
 }
 
-func (in *Interp) execBlock(b *domain.Block, e *scope) (control, domain.Value, error) {
-	if b == nil {
-		return ctrlNone, nil, nil
+// growGlobals resizes the globals frame after compilation.
+func (in *Interp) growGlobals() {
+	l := in.gscope.layout
+	g := in.globals
+	g.grow(l)
+}
+
+// Global returns the top-level scope (used by tests and tooling).
+func (in *Interp) Global() *cscope { return in.gscope }
+
+// readFile loads a source file. It is a variable so tests can stub it.
+var readFile = func(path string) (string, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
 	}
-	return in.execBlockStmts(b.Stmts, newScope(e))
+	return string(b), nil
 }
