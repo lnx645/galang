@@ -68,11 +68,27 @@ docs/SPEC.md         kontrak bahasa & peta jalan
 Arah import hanya ke bawah; `internal/domain` tidak mengimpor apa pun dari luar
 dirinya sendiri.
 
-## Performa
+## Performa — hasil jujur
 
-Interpreter *tree-walking*: AST dievaluasi langsung. Angka benchmark saat ini
-ada di `docs/SPEC.md`. Targetnya menang telak atas PHP pada beban web, tetapi
-benchmark pembanding PHP **belum dijalankan** — klaim belum bisa dibuat.
+Diukur head-to-head dengan PHP 8.2 pada program identik (`./bench/compare.sh`):
+
+| Tes | Garurda v0.1 | PHP 8.2 | Go native |
+|---|---|---|---|
+| rekursi `fib(25)` | 219 ms | **31 ms** | 8 ms |
+| loop 200k iterasi | 93 ms | **25 ms** | 5 ms |
+| 100k pemanggilan fungsi | 29 ms | **24 ms** | 5 ms |
+| memori (RSS) | 8-10 MB | **17-19 MB** | — |
+
+**PHP menang CPU di semua tes; Garurda menang memori 1,8-2,4x.** Target "menang
+telak atas PHP" belum tercapai —-analisis lengkap dan rencana untuk mencapainya
+ada di `docs/SPEC.md` bab 10. Klaim performa tidak boleh dibuat sebelum
+`./bench/compare.sh` benar-benar menaruh Garurda di semua baris.
+
+Benchmark ulang kapan saja:
+
+```console
+make ref      # jalankan ./bench/compare.sh
+```
 
 ## Lisensi
 

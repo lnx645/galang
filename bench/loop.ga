@@ -1,0 +1,6 @@
+// loop.ga — padanan persis dari bench/php/loop.php
+$total = 0
+for $i in 0..200000 {
+	$total = $total + $i * 2 - 1
+}
+print $total

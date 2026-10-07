@@ -8,7 +8,7 @@ BIN     := bin/gar
 PKG     := ./...
 GOFLAGS := -p 1
 
-.PHONY: all build run repl test bench vet fmt clean check example
+.PHONY: all build run repl test bench ref vet fmt clean check
 
 all: build test
 
@@ -32,6 +32,11 @@ vet:
 
 fmt:
 	$(GO) fmt $(PKG)
+
+# ref menjalankan pembanding Garurda vs PHP pada program identik.
+ref: build
+	go build $(GOFLAGS) -o bin/ref ./bench/ref.go
+	./bench/compare.sh
 
 # check adalah gerbang yang harus lolos sebelum commit.
 check: vet test

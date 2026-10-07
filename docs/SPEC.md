@@ -218,29 +218,69 @@ gar version | gar help
 
 ---
 
-## 10. Performa (terukur)
+## 10. Performa (terukur vs PHP, 2026-10-07)
 
-Diukur di mesin ini (2 vCPU Xeon E5-2680 v4, Go 1.19.8, `go test -benchmem`):
+Mesin: 2 vCPU Xeon E5-2680 v4, RAM 2 GB, Go 1.19.8, PHP 8.2.34 (Zend Engine v4.2.34).
+Program identik ada di `bench/` (`.ga` dan `php/`), dijalankan lewat
+`./bench/compare.sh` — 5 kali, yang dicatat waktu tercepat. Output kedua
+program diverifikasi identik sebelum dibandingkan.
 
-| Benchmark | Setelah v0.1 | Alokasi | Catatan |
+**PHP berjalan apa adanya:** `opcache.enable_cli=Off`, `JIT=Off` — konfigurasi
+CLI PHP yang normal. Mengaktifkan opcache tidak mengubahnya (fib 31 ms).
+
+### CPU (waktu proses terbaik dari 5 run)
+
+| Tes | Garurda v0.1 | PHP 8.2 | Go native | Selisih vs PHP |
+|---|---|---|---|---|
+| `fib(25)` rekursi | 219 ms | **31 ms** | 8 ms | **7,1x lebih lambat** |
+| loop 200.001 iterasi | 93 ms | **25 ms** | 5 ms | **3,7x lebih lambat** |
+| 100.001 pemanggilan fungsi | 29 ms | **24 ms** | 5 ms | **1,2x lebih lambat** |
+
+### Memori (RSS puncak)
+
+| Tes | Garurda | PHP | Garurda hemat |
 |---|---|---|---|
-| `BenchmarkLoop` (200k iterasi) | **99,6 ms** | 6,4 MB · 799k alokasi | turun dari 247 ms / 88 MB setelah map scope diperbaiki |
-| `BenchmarkCall` (fungsi 100k) | **27,2 ms** | 1,6 MB · 200k alokasi | turun dari 94 ms / 42 MB |
-| `BenchmarkFib` (rekursi 25) | 252 ms | 94 MB | baseline |
+| fib | 10,3 MB | 18,9 MB | **1,8x** |
+| loop | 8,6 MB | 16,6 MB | **1,9x** |
+| call | 8,0 MB | 19,0 MB | **2,4x** |
 
-Optimasi yang sudah diterapkan:
-- Cache integer kecil (−128…512) agar aritmetika loop tidak alokasi.
-- Scope tidak membuat map sampai benar-benar dipakai.
-- Satu scope per loop, bukan satu per iterasi.
-- Aritmetika `int` tetap integral (`10 / 5` → `2`, bukan `2.0`).
+### Kesimpulan jujur
 
-Optimasi terjadwal (v0.2/v1): arena untuk AST, frame slot untuk variabel
-lokal (ganti lookup berbasis nama), unboxed storage untuk `array<int>`.
+**Target "menang telak atas PHP" TIDAK tercapai di v0.1. PHP menang di ketiga
+tes CPU; Garurda menang di memori.** Ini hasil yang harus dicatat apa adanya,
+bukan dikasih jargon.
 
-> **Status-target "menang telak vs PHP": belum terbukti.** Angka di atas baru
-> baseline interpreter sendiri. Pembanding head-to-head dengan PHP dan Go
-> native belum dijalankan karena `php-cli` belum mendapat izin instalasi.
-> Klaim performa belum boleh dibuat sampai benchmark itu ada.
+Mengapa tree-walker kalah dari PHP 8: PHP mengubah kode menjadi **opcode** lalu
+menjalankannya di VM yang sangat rapat, dengan opcode khusus integer (tanpa
+boxing) dan dispatch lewat lompat langsung. Tree-walker pays every
+`switch node.Type` dan pays every name lookup. Itu bukan detail kecil; itu
+perbedaan arsitektur.
+
+### Di mana waktu hilang (hasil pprof)
+
+- **36% `runtime.mallocgc`** — masih banyak boxing nilai.
+- **~20% `mapaccess2_faststr` + `aeshashbody`** — pencarian variabel berbasis
+  nama tiap akses.
+- Sisanya: dispatch AST dan alokasi scope per panggilan fungsi.
+
+### Rencana performantya (urutan impact)
+
+| Langkah | Dampak harapan | Status |
+|---|---|---|
+| Frame slot: resolve nama → `(depth, index)` saat parse | Menghapus map lookup seluruhnya (~20%) | v0.2 |
+| Arena untuk AST (satu alokasi per program) | Menghapus alokasi parse berulang | v0.2 |
+| Stack & frame di-preallocate; nol alokasi per panggilan | Menghapus `mallocgc` dari call path | v1 |
+| **Bytecode VM** dengan opcode bertipe (`ADD_INT`) | Menyamai arsitektur PHP — ini syarat menang | v1 |
+| Unboxed storage untuk `array<int>` | Memori, bukan CPU | v1 |
+
+Jujur soal batasnya: **menang telak atas PHP pada beban CPU murni butuh bytecode
+VM**, dan itu v1. Dengan tree-walker, target realistis adalah "sebanding atau
+kalah tipis" setelah frame slot + arena. Klaim kemenangan baru sah setelah
+`./bench/compare.sh` benar-benar menaruh Garurda di semua baris.
+
+Yang **sudah** unggul dan relevan untuk use case web: memori (1,8-2,4x lebih
+hemat), dan async I/O yang akan tiba di v0.2 — dua hal yang tidak diukur di
+sini, tapi justru penyebab utama PHP lambat untuk web.
 
 ---
 

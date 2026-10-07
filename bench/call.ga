@@ -1,0 +1,8 @@
+// call.ga — padanan persis dari bench/php/call.php
+fn kerja($n) {
+	$acc = 0
+	for $i in 0..$n { $acc = $acc + $i }
+	return $acc
+}
+$hasil = kerja(100000)
+print $hasil
