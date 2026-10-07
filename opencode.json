@@ -1,0 +1,30 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "naraya": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "NaraRouter",
+      "options": {
+        "baseURL": "https://router.bynara.id/v1",
+        "apiKey": "sk-nry-IgNdqjBzNKlnKQkOjOVIODnGZvmS-rz9DmwMY4zz3MM"
+      },
+      "models": {
+        "stepfun-3.7-flash": {
+          "name": "stepfun-3.7-flash,
+          "modalities": {
+            "input": ["text", "image"],
+            "output": ["text"]
+          }
+        },
+        "exo-stealh": {
+          "name": "exo-stealh,
+          "modalities": {
+            "input": ["text", "image"],
+            "output": ["text"]
+          }
+        }
+      }
+    }
+  },
+  "model": "naraya/stepfun-3.7-flash"
+}
