@@ -950,10 +950,17 @@ func (c *compiler) compileFnExpr(x *domain.FnExpr, s *cscope) (func(f *frame) do
 	fn.nvals = body.layout.nvals
 	fn.captures = caps
 
+	// Try the integer-only compilation. Failure is not an error: the function
+	// simply keeps the general path.
+	specialised := (&intCompiler{in: c.in}).compileIntFn(x)
+	if specialised != nil && specialised.nints > fn.nints {
+		fn.nints = specialised.nints
+	}
+
 	factory := func(f *frame) domain.Value {
 		// The defining frame must stay alive as long as the closure exists.
 		f.refs++
-		return &closure{fn: fn, def: f}
+		return &closure{fn: fn, def: f, int: specialised}
 	}
 	return factory, fn
 }

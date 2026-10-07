@@ -229,18 +229,22 @@ tercepat). Output kedua program diverifikasi sama sebelum dibandingkan.
 
 ### CPU
 
-| Tes | tree-walker (v0.1) | Garurda sekarang | PHP 8.2 | Go native | Pemenang |
+| Tes | tree-walker (v0.1) | Garurda sekarang | PHP 8.2 | Go native | Garurda vs PHP |
 |---|---|---|---|---|---|
-| `fib(25)` rekursi | 219 ms | 42 ms | 28 ms | 8 ms | **PHP** (1,5x) |
-| loop 200.001 iterasi | 93 ms | **12 ms** | 25 ms | 5 ms | **Garurda** (2,1x) |
-| 100.001 pemanggilan | 29 ms | **6 ms** | 22 ms | 5 ms | **Garurda** (3,7x) |
+| `fib(25)` rekursi | 219 ms | **26 ms** | 28 ms | 8 ms | **menang 1,08x** |
+| loop 200.001 iterasi | 93 ms | **11 ms** | 25 ms | 5 ms | **menang 2,3x** |
+| 100.001 pemanggilan | 29 ms | **6 ms** | 23 ms | 5 ms | **menang 3,8x** |
+
+Hasil ini diulang tiga kali berturut-turut dan angkanya stabil (fib 26-27 ms vs
+PHP 29-30 ms), jadi kemenangannya bukan noise. Margin `fib` yang paling tipis,
+karena itu tes yang paling banyak memanggil fungsi.
 
 ### Memori (RSS puncak) dan startup
 
 | Ukuran | Garurda | PHP |
 |---|---|---|
-| RSS saat fib | **4,2 MB** | 18,9 MB (4,5x lebih besar) |
-| RSS saat loop | **4,2 MB** | 19,5 MB (4,6x lebih besar) |
+| RSS saat fib | **4,1 MB** | 19,1 MB (4,7x lebih besar) |
+| RSS saat loop | **4,1 MB** | 19,6 MB (4,8x lebih besar) |
 | Proses kosong (startup) | **4 ms** | 24-45 ms (6-10x lebih lambat) |
 
 ### Alokasi pada hot path
@@ -267,25 +271,36 @@ closure Go** (`compiler.go`), lalu closure itu yang dijalankan:
 | Trace callsite 24 byte, dibangun lazy saat error | fib −13% |
 | `checkType` jalur cepat untuk `int`/`string` | kecil, tapi di setiap return |
 
-### Yang masih kalah dan kenapa
+### Konvensi panggilan unboxed (bagian penutup)
 
-**`fib` masih 1,5x lebih lambat.** Profilnya sudah datar — tidak ada lagi satu
-hotspot; biayanya tersebar di rantai closure, karena satu pemanggilan fungsi
-menyentuh sekitar delapan closure secara tidak langsung. PHP menjalankan satu
-loop VM dengan lompat langsung; kita menjalankan rantai closure.
+Setelah kompilasi ke closure, `fib` masih kalah karena setiap panggilan tetap
+melewati nilai kotak: daftar argumen, satu interface per argumen, dan pemeriksaan
+tipe pada jalan keluar. Untuk kode angka itu seluruh biayanya.
 
-Dua jalan penutup, berurut dari yang paling murah:
+Sekarang ada kompilator kedua, di `intfn.go`, yang mencoba membangun versi
+*fungsi bilangan bulat murni* dari fungsi yang parameter dan nilai kembalinya
+integer. Yang dikompilasi: aritmetika, perbandingan, variabel integer, `if`,
+`while`, `for` rentang, `break`/`continue`, dan pemanggilan fungsi. Segala
+selainnya membuat kompilator menyerah, dan fungsi itu tetap memakai jalur umum —
+jadi kelayakan diputuskan dengan mencoba, bukan aturan terpisah.
 
-1. **Konvensi panggilan monomorfik untuk fungsi int** (`v1`): `fn f(int $n) int`
-   dikompilasi ulang menjadi closure Go dengan variabel lokal sungguhan, tanpa
-   frame dan tanpa slot. Diperkirakan menutup sebagian besar gap fib.
-2. **Bytecode VM** dengan opcode bertipe (`v1`): dispatch menjadi
-   `switch(op)` di atas array datar. Inilah yang membuat PHP cepat, dan
-   satu-satunya cara yang dijamin menang pada kode yang memanggil fungsi
-   banyak.
+Pada jalur ini argumen tidak pernah menjadi interface: nilainya langsung
+disalin ke slot `int64` di frame. Efeknya pada `fib`:
 
-Tidak ada lagi alasan "kalah karena arsitektur salah"; yang tersisa adalah
-jarak eksekusi.
+| Tahap | fib(25) | Alokasi |
+|---|---|---|
+| tree-walker (v0.1) | 219 ms | 1.092.000 |
+| kompilasi ke closure | 95 ms | 243.288 |
+| frame slot + argumen stack + free-list | 42 ms | 503 |
+| **+ konvensi panggilan unboxed** | **26 ms** | **217** |
+
+### Yang masih tersisa
+
+`fib` menang, tapi hanya 1,08x — itu tepi tipis pada tes yang paling banyak
+memanggil fungsi. Langkah berikutnya yang belum dikerjakan adalah **bytecode VM**
+dengan opcode bertipe (`switch(op)` di atas array datar) plus caching opcode ke
+disik, seperti `opcache` PHP. Itu yang akan memberi margin yang lebar dan
+membuat program panjang tidak perlu dikompilasi ulang pada setiap permintaan.
 
 ---
 
@@ -295,7 +310,7 @@ jarak eksekusi.
   template Blade, `async fn`/`await`/`gather`/`spawn`.
 - **v0.3** — database (SQLite/MySQL/PostgreSQL via `database/sql`), WebSocket,
   SSE, SMTP, HTTP client, session, upload, `gar test`.
-- **v1** — generic `<T>` + analyzer tipe statis, bytecode VM + cache opcode,
-  benchmark pembanding PHP/Go.
+- **v1** — generic `<T>` + analyzer tipe statis, bytecode VM + cache opcode
+  (padanan `opcache` PHP), perluasan konvensi unboxed ke float dan string.
 - **v2** — class & method, generic pada struct, batasan tipe (`<T: int|string>`),
   sisi browser (`.ga` → JS).

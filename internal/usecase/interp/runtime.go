@@ -15,6 +15,27 @@ import (
 func (in *Interp) callValue(callee domain.Value, args []domain.Value, pos domain.Position) (domain.Value, error) {
 	switch c := callee.(type) {
 	case *closure:
+		// An integer-only function entered from the general path takes the
+		// unboxed route, so the whole call tree stays unboxed.
+		if c.int != nil && len(args) == c.int.nparams {
+			unboxed := make([]int64, len(args))
+			allInt := true
+			for i, a := range args {
+				n, ok := a.(domain.Int)
+				if !ok {
+					allInt = false
+					break
+				}
+				unboxed[i] = int64(n)
+			}
+			if allInt {
+				v, err := in.callInt(c, unboxed, pos)
+				if err != nil {
+					return nil, err
+				}
+				return domain.Int(v), nil
+			}
+		}
 		return in.callClosure(c, args, pos)
 	case *domain.Builtin:
 		if c.MinArgs > 0 && len(args) < c.MinArgs {

@@ -93,10 +93,13 @@ type compFn struct {
 	pos  domain.Position
 }
 
-// closure is a compiled function bound to its defining frame.
+// closure is a compiled function bound to its defining frame. int is set when
+// the whole function is integer only, which enables an unboxed calling
+// convention with no boxed argument list.
 type closure struct {
 	fn  *compFn
 	def *frame
+	int *intCompFn
 }
 
 func (c *closure) Type() domain.TypeTag { return domain.TypeFunc }

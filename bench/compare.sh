@@ -48,22 +48,22 @@ peak_rss_kb() {
   echo "$peak"
 }
 
-printf "%-8s | %-10s | %-10s | %-9s | %-9s\n" \
-  "TESTS" "Garurda" "PHP" "PHP/Ga" "winner"
-printf -- "----------|------------|------------|------------|-------------\n"
+printf "%-8s | %-10s | %-10s | %-12s | %-9s\n" \
+  "TESTS" "Garurda" "PHP" "Garurda lebih" "winner"
+printf -- "----------|------------|------------|--------------|-------------\n"
 
 overall_ok=1
 for t in fib loop call; do
   g_ms=$(time_ms "$GAR" run "bench/$t.ga")
   p_ms=$(time_ms "$PHP_BIN" "bench/php/$t.php")
 
-  # ratio = berapa kali lebih lambat Garurda dibanding PHP (>1 = PHP menang).
-  ratio=$(awk -v g="$g_ms" -v p="$p_ms" 'BEGIN{ if (g>0) printf "%.2f", g/p; else print "n/a" }')
+  # ratio = berapa kali lebih cepat Garurda dibanding PHP (>1 = Garurda menang).
+  ratio=$(awk -v g="$g_ms" -v p="$p_ms" 'BEGIN{ if (g>0) printf "%.2fx", p/g; else print "n/a" }')
 
   if [ "$g_ms" -lt "$p_ms" ]; then verdict="Garurda"; else verdict="PHP"; overall_ok=0; fi
 
-  printf "%-8s | %-10s | %-10s | %-9s | %-9s\n" \
-    "$t" "${g_ms}ms" "${p_ms}ms" "${ratio}x lebih lambat" "$verdict"
+  printf "%-8s | %-10s | %-10s | %-12s | %-9s\n" \
+    "$t" "${g_ms}ms" "${p_ms}ms" "$ratio" "$verdict"
 done
 
 printf -- "----------|------------|------------|------------|-------------\n"
