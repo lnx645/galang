@@ -16,55 +16,12 @@ func (in *Interp) callValue(callee domain.Value, args []domain.Value, pos domain
 	switch c := callee.(type) {
 	case *closure:
 		// An async call returns a promise; the body runs when awaited.
+		// newPromiseClosure copies the arguments, so the shared argStack
+		// view can be handed over as is.
 		if c.fn.async {
-			argsCopy := append([]domain.Value(nil), args...)
-			return in.newPromise(pos, func() (domain.Value, error) {
-				return in.callClosure(c, argsCopy, pos)
-			}), nil
+			return in.newPromiseClosure(pos, c, args), nil
 		}
-		// Bytecode first: one flat loop, no boxed values.
-		if c.code != nil && len(args) == c.code.nparams {
-			unboxed := true
-			for _, a := range args {
-				if _, ok := a.(domain.Int); !ok {
-					unboxed = false
-					break
-				}
-			}
-			if unboxed {
-				vals := make([]int64, len(args))
-				for i, a := range args {
-					vals[i] = int64(a.(domain.Int))
-				}
-				v, err := in.runInt(c.code, vals, pos)
-				if err != nil {
-					return nil, err
-				}
-				return domain.Int(v), nil
-			}
-		}
-		// An integer-only function entered from the general path takes the
-		// unboxed route, so the whole call tree stays unboxed.
-		if c.int != nil && len(args) == c.int.nparams {
-			unboxed := make([]int64, len(args))
-			allInt := true
-			for i, a := range args {
-				n, ok := a.(domain.Int)
-				if !ok {
-					allInt = false
-					break
-				}
-				unboxed[i] = int64(n)
-			}
-			if allInt {
-				v, err := in.callInt(c, unboxed, pos)
-				if err != nil {
-					return nil, err
-				}
-				return domain.Int(v), nil
-			}
-		}
-		return in.callClosure(c, args, pos)
+		return in.callBody(c, args, pos)
 	case *domain.Builtin:
 		if c.MinArgs > 0 && len(args) < c.MinArgs {
 			return nil, in.errf(pos, "%s() expects at least %d argument(s), got %d", c.Name, c.MinArgs, len(args))
@@ -72,6 +29,55 @@ func (in *Interp) callValue(callee domain.Value, args []domain.Value, pos domain
 		return c.Fn(args, pos)
 	}
 	return nil, in.errf(pos, "%s is not callable", domain.TypeName(callee))
+}
+
+// callBody runs a compiled function, trying the unboxed backends first.
+// It is what both the sync path and a promise's thunk call, so an async
+// function costs the same as its sync twin once resolved.
+func (in *Interp) callBody(c *closure, args []domain.Value, pos domain.Position) (domain.Value, error) {
+	// Bytecode first: one flat loop, no boxed values.
+	if c.code != nil && len(args) == c.code.nparams {
+		unboxed := true
+		for _, a := range args {
+			if _, ok := a.(domain.Int); !ok {
+				unboxed = false
+				break
+			}
+		}
+		if unboxed {
+			vals := make([]int64, len(args))
+			for i, a := range args {
+				vals[i] = int64(a.(domain.Int))
+			}
+			v, err := in.runInt(c.code, vals, pos)
+			if err != nil {
+				return nil, err
+			}
+			return domain.Int(v), nil
+		}
+	}
+	// An integer-only function entered from the general path takes the
+	// unboxed route, so the whole call tree stays unboxed.
+	if c.int != nil && len(args) == c.int.nparams {
+		unboxed := make([]int64, len(args))
+		allInt := true
+		for i, a := range args {
+			n, ok := a.(domain.Int)
+			if !ok {
+				allInt = false
+				break
+			}
+			unboxed[i] = int64(n)
+		}
+		if allInt {
+			v, err := in.callInt(c, unboxed, pos)
+			if err != nil {
+				return nil, err
+			}
+			return domain.Int(v), nil
+		}
+	}
+	return in.callClosure(c, args, pos)
 }
 
 // callClosure runs a compiled function.

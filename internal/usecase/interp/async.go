@@ -14,8 +14,17 @@ import (
 // promise carries a deferred call. It implements domain.Value so it can be
 // stored in variables and passed around like any other value.
 type promise struct {
-	in   *Interp
+	in *Interp
+
+	// A promise runs either a compiled closure (async fn, spawn of a
+	// closure) or a generic callable. Keeping the closure inline avoids
+	// allocating a thunk closure per promise.
+	fn   *closure
+	args []domain.Value
 	call func() (domain.Value, error)
+	// Up to two arguments are held inline (arr) so the common
+	// one-argument promise costs a single allocation instead of two.
+	arr [2]domain.Value
 
 	ran bool
 	val domain.Value
@@ -38,21 +47,43 @@ func (p *promise) String() string {
 	}
 }
 
-// newPromise builds a promise for a deferred call and registers it so an
-// unawaited spawn still runs at the next drain.
+// newPromiseClosure builds a promise for a deferred closure call and
+// registers it so an unawaited spawn still runs at the next drain. The
+// callee and arguments are stored as fields — no thunk closure per promise —
+// and up to two arguments are copied into the struct itself so the common
+// case costs a single allocation.
+func (in *Interp) newPromiseClosure(pos domain.Position, c *closure, args []domain.Value) *promise {
+	p := &promise{in: in, fn: c, pos: pos}
+	if len(args) <= len(p.arr) {
+		copy(p.arr[:], args)
+		p.args = p.arr[:len(args)]
+	} else {
+		p.args = append(make([]domain.Value, 0, len(args)), args...)
+	}
+	in.pending = append(in.pending, p)
+	return p
+}
+
+// newPromise builds a promise from a generic callable and registers it.
 func (in *Interp) newPromise(pos domain.Position, call func() (domain.Value, error)) *promise {
 	p := &promise{in: in, call: call, pos: pos}
 	in.pending = append(in.pending, p)
 	return p
 }
 
-// run executes the thunk once and records the outcome.
+// run executes the deferred call once and records the outcome.
 func (p *promise) run() (domain.Value, error) {
 	if p.ran {
 		return p.val, p.err
 	}
 	p.running = true
-	v, err := p.call()
+	var v domain.Value
+	var err error
+	if p.fn != nil {
+		v, err = p.in.callBody(p.fn, p.args, p.pos)
+	} else {
+		v, err = p.call()
+	}
 	p.running = false
 	p.ran = true
 	p.val = v
@@ -70,7 +101,14 @@ func (in *Interp) awaitValue(v domain.Value, pos domain.Position) (domain.Value,
 	if p.running {
 		return nil, in.errf(pos, "await: cyclic await on a promise that is still running")
 	}
-	return p.run()
+	v, err := p.run()
+	// Drop the promise from the pending queue when it is the newest entry
+	// (the common LIFO case), so an awaited loop does not accumulate a
+	// million dead promises until the next drain.
+	if n := len(in.pending); n > 0 && in.pending[n-1] == p {
+		in.pending = in.pending[:n-1]
+	}
+	return v, err
 }
 
 // drainPending runs every promise that has not run yet, including promises

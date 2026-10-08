@@ -1,0 +1,9 @@
+// spawn.ga — mengukur 100.000 tugas fire-and-forget yang dijalankan saat
+// drain. Padanan persis dari bench/js/spawn.mjs.
+async fn f($n) {
+	return $n + 1
+}
+for $i in 0..99999 {
+	spawn(f, $i)
+}
+print "selesai"

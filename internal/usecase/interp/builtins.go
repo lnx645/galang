@@ -150,10 +150,14 @@ func (in *Interp) builtinNames() map[string]domain.Value {
 	// spawn queues a call as a fire-and-forget promise; it runs at the
 	// next await/drain.
 	reg("spawn", 1, func(in *Interp, args []domain.Value, pos domain.Position) (domain.Value, error) {
-		f := args[0]
+		if c, ok := args[0].(*closure); ok {
+			// newPromiseClosure copies the argument slice.
+			return in.newPromiseClosure(pos, c, args[1:]), nil
+		}
 		rest := append([]domain.Value(nil), args[1:]...)
+		target := args[0]
 		return in.newPromise(pos, func() (domain.Value, error) {
-			return in.callValue(f, rest, pos)
+			return in.callValue(target, rest, pos)
 		}), nil
 	})
 

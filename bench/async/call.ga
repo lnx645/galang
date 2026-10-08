@@ -1,0 +1,11 @@
+// call.ga — KONTROL: panggilan fungsi sinkron yang identik dengan await.ga
+// (loop dan beban sama, tanpa async/await). Dipakai untuk memisahkan biaya
+// mekanisme async dari kecepatan mentah eksekusi.
+fn f($n) {
+	return $n + 1
+}
+$total = 0
+for $i in 0..100000 {
+	$total = f($total)
+}
+print $total

@@ -1,0 +1,10 @@
+// await.ga — mengukur biaya `await` berurutan di dalam loop.
+// Padanan persis dari bench/js/await.mjs.
+async fn f($n) {
+	return $n + 1
+}
+$total = 0
+for $i in 0..100000 {
+	$total = await f($total)
+}
+print $total
