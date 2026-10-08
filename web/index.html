@@ -12,7 +12,10 @@
     window.$docsify = {
       name: 'Garurda',
       repo: 'lnx645/galang',
-      loadSidebar: '/docs/_sidebar.md',
+      loadSidebar: '_sidebar.md',
+      alias: {
+        '/.*/_sidebar.md': '/docs/_sidebar.md'
+      },
       subMaxLevel: 2,
       search: 'auto',
       basePath: '/docs/',
