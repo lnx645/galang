@@ -185,3 +185,38 @@ use "http"
 use "file"
 use "database"
 ```
+
+## Penanganan Error
+
+```garurda
+try {
+    $u = null
+    if $u == null { throw not_found("user tidak ada") }
+} catch e {
+    print("Error: ${e.message} (code: ${e.code})")
+}
+```
+
+Error constructors:
+
+```garurda
+throw not_found("...")       // 404
+throw bad_request("...")     // 400
+throw unauthorized("...")    // 401
+throw forbidden("...")       // 403
+throw conflict("...")        // 409
+throw server_error("...")    // 500
+```
+
+Error value memiliki 3 field:
+- `e.message` — pesan error
+- `e.code` — kode error (`not_found`, `bad_request`, ...)
+- `e.status` — HTTP status code (404, 400, ...)
+
+## Yang Belum Ada
+
+- `async fn` / `await` / `gather` / `spawn` — direncanakan v0.2 server
+- Generic `<T>` — direncanakan v1
+- Class & method — direncanakan v2
+- `try/catch` yang lebih kompleks (multiple catch, finally)
+
