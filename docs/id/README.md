@@ -29,7 +29,7 @@ http.listen(8868)
 
 ## Status Versi
 
-Versi saat ini: **v0.2.0** — rilis binari tersedia di
+Versi saat ini: **v0.2.1** — rilis binari tersedia di
 [GitHub Releases](https://github.com/lnx645/galang/releases).
 
 Sudah lengkap:
