@@ -49,6 +49,12 @@ type frame struct {
 	ints  []int64
 	vals  []interface{}
 	isInt []bool
+	// ivals holds the boxed value of an int slot that was demoted (assigned a
+	// non-int, or a float). It is indexed in the int index space (nints), the
+	// same space as ints/isInt — writing a demoted int slot into vals would
+	// collide with the val index space and corrupt unrelated variables or
+	// builtins.
+	ivals []interface{}
 	dyn   map[string]domain.Value
 	// def is the frame the running function was defined in. Captured
 	// variables are reached through it.
@@ -174,9 +180,13 @@ func (in *Interp) newFrame(fn *compFn, def *frame, args []domain.Value, pos doma
 		f.isInt = make([]bool, fn.nints)
 		f.vals = make([]interface{}, fn.nvals)
 	}
+	if cap(f.ivals) < fn.nints {
+		f.ivals = make([]interface{}, fn.nints)
+	}
 	f.ints = f.ints[:fn.nints]
 	f.isInt = f.isInt[:fn.nints]
 	f.vals = f.vals[:fn.nvals]
+	f.ivals = f.ivals[:fn.nints]
 	// Reset: the isInt flag is what distinguishes an unboxed int from a
 	// demoted value slot, so it is cleared first.
 	for i := range f.isInt {
@@ -185,6 +195,9 @@ func (in *Interp) newFrame(fn *compFn, def *frame, args []domain.Value, pos doma
 	}
 	for i := range f.vals {
 		f.vals[i] = nil
+	}
+	for i := range f.ivals {
+		f.ivals[i] = nil
 	}
 	f.dyn = nil
 	f.def = def
@@ -223,13 +236,18 @@ func (in *Interp) newFrame(fn *compFn, def *frame, args []domain.Value, pos doma
 				in.frames.put(f)
 				return nil, err
 			}
+			// Anything that is not a plain int demotes the slot: the boxed
+			// value lives in ivals (the int index space), and isInt turns
+			// false so readers take the boxed path. Storing it in vals would
+			// collide with the val index space, and forcing isInt true here
+			// would leave readers a stale integer.
 			if fv, isFloat := v.(domain.Float); isFloat {
-				f.ints[p.idx] = int64(fv)
-				f.isInt[p.idx] = true
+				f.ivals[p.idx] = fv
+				f.isInt[p.idx] = false
 				continue
 			}
-			f.vals[p.idx] = v
-			f.isInt[p.idx] = true
+			f.ivals[p.idx] = v
+			f.isInt[p.idx] = false
 			continue
 		}
 		f.vals[p.idx] = v
@@ -253,6 +271,9 @@ func (f *frame) release(cache *frameCache) {
 	for i := range f.vals {
 		f.vals[i] = nil
 	}
+	for i := range f.ivals {
+		f.ivals[i] = nil
+	}
 	f.dyn = nil
 	f.glob = nil
 	f.def = nil
@@ -273,6 +294,15 @@ func (f *frame) getVal(idx int) domain.Value {
 		return nil
 	}
 	v, _ := f.vals[idx].(domain.Value)
+	return v
+}
+
+// getIval reads the demoted value of an int slot (the int index space).
+func (f *frame) getIval(idx int) domain.Value {
+	if idx < 0 || idx >= len(f.ivals) {
+		return nil
+	}
+	v, _ := f.ivals[idx].(domain.Value)
 	return v
 }
 
@@ -309,13 +339,11 @@ func (f *frame) store(kind slotKind, idx int, name string, v domain.Value) {
 			f.isInt[idx] = true
 			return
 		}
-		if fl, ok := v.(domain.Float); ok {
-			f.ints[idx] = int64(fl)
-			f.isInt[idx] = true
-			return
-		}
+		// A float must not be squeezed into the int64 slot (that silently
+		// truncates $x = 72 → $x = 3.9): the slot demotes and the boxed
+		// value lives in ivals, the int index space.
 		f.isInt[idx] = false
-		f.vals[idx] = v
+		f.ivals[idx] = v
 	case slotCell:
 		if cl := f.cellAt(idx); cl != nil {
 			cl.v = v
@@ -363,7 +391,7 @@ func (f *frame) load(kind slotKind, idx int, name string) (domain.Value, bool) {
 		if f.isInt[idx] {
 			return domain.Int(f.ints[idx]), true
 		}
-		v := f.getVal(idx)
+		v := f.getIval(idx)
 		return v, v != nil
 	case slotCell:
 		if cl := f.cellAt(idx); cl != nil {

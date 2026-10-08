@@ -226,7 +226,12 @@ func builtinMethod(recv domain.Value, name string) (func(in *Interp, args []doma
 	}
 	if name == "is" {
 		return func(in *Interp, a []domain.Value, p domain.Position) (domain.Value, error) {
-			return domain.Bool(ev.Code == a[0].String()), nil
+			// a[0] is the receiver (the error itself); the code to compare
+			// against arrives as a[1].
+			if len(a) < 2 {
+				return nil, in.errf(p, "error.is() expects a code string")
+			}
+			return domain.Bool(ev.Code == a[1].String()), nil
 		}, true
 	}
 	return nil, false

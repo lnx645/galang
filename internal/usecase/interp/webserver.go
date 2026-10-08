@@ -170,21 +170,54 @@ func (in *Interp) serveRequest(handler domain.Value, params map[string]string, w
 
 	reqObj := in.buildRequestObj(r, params)
 	result, err := in.callValue(handler, []domain.Value{reqObj}, domain.Position{})
+	if err == nil {
+		// An async handler returns a promise; resolve it, then run any
+		// fire-and-forget spawns before the response goes out.
+		if result, err = in.awaitValue(result, domain.Position{}); err == nil {
+			err = in.drainPending()
+		}
+	}
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	// An async handler returns a promise; resolve it, then run any
-	// fire-and-forget spawns before the response goes out.
-	if result, err = in.awaitValue(result, domain.Position{}); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if err := in.drainPending(); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		in.writeThrown(w, err)
 		return
 	}
 	in.writeResponse(w, result)
+}
+
+// writeThrown turns an error that escaped a route handler into a response.
+//
+// A thrown error carries its own HTTP status (not_found → 404,
+// error(msg, {status: 418}) → 418), so the client receives that status with a
+// JSON body {message, code, status}. Internal errors — undefined variable,
+// division by zero, ... — are not domain errors and fall back to a plain 500.
+func (in *Interp) writeThrown(w http.ResponseWriter, err error) {
+	if e, ok := err.(*Error); ok && e.Value != nil {
+		status := e.Value.Status
+		if status < 100 || status > 599 {
+			status = http.StatusInternalServerError
+		}
+		body, merr := json.Marshal(map[string]interface{}{
+			"message": e.Value.Message,
+			"code":    e.Value.Code,
+			"status":  status,
+		})
+		if merr != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(status)
+		w.Write(body)
+		return
+	}
+	// Internal errors carry file paths and a stack trace — useful in the
+	// terminal, but never in a public response. Log them and answer plainly.
+	if in.Err != nil {
+		fmt.Fprintf(in.Err, "http handler error: %v\n", err)
+	} else if in.Out != nil {
+		fmt.Fprintf(in.Out, "http handler error: %v\n", err)
+	}
+	http.Error(w, "internal server error", http.StatusInternalServerError)
 }
 
 // serveWS upgrades the connection to WebSocket and calls the Garurda

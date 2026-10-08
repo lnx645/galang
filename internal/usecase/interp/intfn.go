@@ -375,6 +375,12 @@ func (c *intCompiler) assign(name string, value domain.Expr, sc *iscope) (intStm
 		sc.names[name] = &islot{idx: idx}
 		slot = sc.names[name]
 	}
+	if slot.value && !slot.global {
+		// A plain-value global lives in the val index space; the unboxed
+		// local slots cannot represent it, and writing idx 0 would clobber
+		// the return channel. Give up and let the general path run.
+		return nil, errNotIntFn
+	}
 	ex, err := c.expr(value, sc)
 	if err != nil {
 		return nil, err
@@ -406,6 +412,9 @@ func (c *intCompiler) compoundAssign(x *domain.AssignStmt, sc *iscope) (intStmt,
 	if slot == nil || slot.builtin {
 		return nil, errNotIntFn
 	}
+	if slot.value && !slot.global {
+		return nil, errNotIntFn
+	}
 	rhs, err := c.expr(x.Value, sc)
 	if err != nil {
 		return nil, err
@@ -417,6 +426,11 @@ func (c *intCompiler) compoundAssign(x *domain.AssignStmt, sc *iscope) (intStmt,
 		base := f
 		if global {
 			base = f.glob
+			// The general path may have demoted this global after we
+			// specialised; ints[idx] would then be a stale integer.
+			if !base.isInt[slotIdx] {
+				return ctrlNone, in.errf(pos, "variable '%s' is not an integer here", tgt.Name)
+			}
 		}
 		cur := base.ints[slotIdx]
 		v, err := rhs(in, f)
@@ -469,6 +483,12 @@ func (c *intCompiler) expr(e domain.Expr, sc *iscope) (intExpr, error) {
 	case *domain.Ident:
 		slot := sc.lookup(x.Name)
 		if slot == nil || slot.builtin {
+			return nil, errNotIntFn
+		}
+		if slot.value && !slot.global {
+			// A plain-value global is boxed and lives in the val index space.
+			// Falling through to the local reader would return f.ints[0] —
+			// the return channel — as if it were the variable.
 			return nil, errNotIntFn
 		}
 		idx, global := slot.idx, slot.global
@@ -643,6 +663,11 @@ func (c *intCompiler) call(x *domain.CallExpr, sc *iscope) (intExpr, error) {
 	if !ok2 {
 		return nil, errNotIntFn
 	}
+	if globalSlot.kind != slotVal {
+		// The callee is looked up with getVal, which uses the val index
+		// space; an int or cell slot there would read an unrelated value.
+		return nil, errNotIntFn
+	}
 	args := make([]intExpr, 0, len(x.Args))
 	for _, a := range x.Args {
 		ex, err := c.expr(a, sc)
@@ -658,20 +683,16 @@ func (c *intCompiler) call(x *domain.CallExpr, sc *iscope) (intExpr, error) {
 	return func(in *Interp, f *frame) (int64, error) {
 		g := f.glob
 		gv := g.getVal(idx)
-		cl, ok := gv.(*closure)
-		if !ok {
+		if _, ok := gv.(*closure); !ok {
 			return 0, in.errf(pos, "'%s' is not a function", callee.Name)
 		}
-		if cl.int == nil || cl.int.nparams != n {
-			return 0, in.errf(pos, "'%s' is not an integer function", callee.Name)
-		}
-		// Fast path: arguments stay unboxed and go straight into the frame.
+		// Evaluate every argument once, unboxed.
 		if n == 1 {
 			a0, err := args[0](in, f)
 			if err != nil {
 				return 0, err
 			}
-			return in.callInt(cl, []int64{a0}, pos)
+			return in.dispatchInt(gv, []int64{a0}, callee.Name, pos)
 		}
 		vals := make([]int64, n)
 		for i, ex := range args {
@@ -681,8 +702,37 @@ func (c *intCompiler) call(x *domain.CallExpr, sc *iscope) (intExpr, error) {
 			}
 			vals[i] = v
 		}
-		return in.callInt(cl, vals, pos)
+		return in.dispatchInt(gv, vals, callee.Name, pos)
 	}, nil
+}
+
+// dispatchInt runs a callee reached from the unboxed calling convention,
+// choosing the backend it actually has: bytecode, the integer fast path, or
+// the general closures. The old code demanded cl.int and failed at runtime,
+// which made a specialised function with a loop unable to call an ordinary
+// function — a valid program — at all.
+func (in *Interp) dispatchInt(gv domain.Value, vals []int64, name string, pos domain.Position) (int64, error) {
+	cl := gv.(*closure)
+	if cl.code != nil && cl.code.nparams == len(vals) {
+		return in.callCode(cl.code, vals, pos)
+	}
+	if cl.int != nil && cl.int.nparams == len(vals) {
+		return in.callInt(cl, vals, pos)
+	}
+	// General path: box the arguments and require an integer back.
+	boxed := make([]domain.Value, len(vals))
+	for i, v := range vals {
+		boxed[i] = domain.Int(v)
+	}
+	res, err := in.callValue(gv, boxed, pos)
+	if err != nil {
+		return 0, err
+	}
+	iv, isInt := res.(domain.Int)
+	if !isInt {
+		return 0, in.errf(pos, "'%s' returned %s where an integer was required", name, domain.TypeName(res))
+	}
+	return int64(iv), nil
 }
 
 // callInt runs a specialised integer function.

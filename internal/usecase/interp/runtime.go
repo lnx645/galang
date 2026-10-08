@@ -49,7 +49,7 @@ func (in *Interp) callBody(c *closure, args []domain.Value, pos domain.Position)
 			for i, a := range args {
 				vals[i] = int64(a.(domain.Int))
 			}
-			v, err := in.runInt(c.code, vals, pos)
+			v, err := in.callCode(c.code, vals, pos)
 			if err != nil {
 				return nil, err
 			}

@@ -591,6 +591,15 @@ func (in *Interp) builtinNames() map[string]domain.Value {
 		out := domain.NewObj()
 		for i, it := range a.Items {
 			switch kv := it.(type) {
+			// [key, value] pair, the canonical form.
+			case *domain.Arr:
+				if len(kv.Items) >= 2 {
+					if key, ok := indexKey(kv.Items[0]); ok {
+						out.Set(key, kv.Items[1])
+						continue
+					}
+				}
+				out.Set(strconvItoa(i), it)
 			case *domain.Obj:
 				if len(kv.Keys()) >= 2 {
 					k0, _ := kv.Get(kv.Keys()[0])

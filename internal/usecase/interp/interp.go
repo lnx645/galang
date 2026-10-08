@@ -264,11 +264,22 @@ func (f *frame) grow(l *frameLayout) {
 		copy(f.vals, old)
 	}
 	f.vals = f.vals[:l.nvals]
+	if cap(f.ivals) < l.nints {
+		old := f.ivals
+		f.ivals = make([]interface{}, l.nints)
+		copy(f.ivals, old)
+	}
+	f.ivals = f.ivals[:l.nints]
 	// Fresh slots read as null, which is also what makes a REPL keep the
 	// values a previous statement stored.
 	for i := range f.vals {
 		if f.vals[i] == nil {
 			f.vals[i] = domain.Null{}
+		}
+	}
+	for i := range f.ivals {
+		if f.ivals[i] == nil {
+			f.ivals[i] = domain.Null{}
 		}
 	}
 }

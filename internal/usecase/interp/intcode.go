@@ -195,6 +195,10 @@ func (c *bcCompiler) stmt(st domain.Stmt, sc *bcScope) bool {
 			c.why = "compound assignment target is not an integer local"
 			return false
 		}
+		if slot.value && !slot.global {
+			c.why = "compound assignment target is a plain-value global"
+			return false
+		}
 		// The left operand goes first: the VM computes `a op b` with a on top
 		// minus one, so `$x -= 3` must push $x before 3.
 		if slot.global {
@@ -380,6 +384,13 @@ func (c *bcCompiler) assign(name string, value domain.Expr, sc *bcScope) bool {
 	if slot.builtin {
 		return false
 	}
+	if slot.value && !slot.global {
+		// A global holding a plain value lives in the val index space; the
+		// VM's unboxed local slots cannot represent it. Writing it would hit
+		// local slot 0 (the return channel) and silently corrupt the result.
+		c.why = "assignment target '" + name + "' is a plain-value global"
+		return false
+	}
 	if !c.expr(value, sc) {
 		return false
 	}
@@ -406,6 +417,13 @@ func (c *bcCompiler) expr(e domain.Expr, sc *bcScope) bool {
 	case *domain.Ident:
 		slot := sc.lookup(x.Name)
 		if slot == nil || slot.builtin {
+			return false
+		}
+		if slot.value && !slot.global {
+			// Plain-value globals are boxed values in the val index space;
+			// emitting opLoadLocal for one would read local slot 0 (the
+			// return channel) and produce garbage. Give up instead.
+			c.why = "global '" + x.Name + "' is not an integer slot"
 			return false
 		}
 		if slot.global {
@@ -478,6 +496,12 @@ func (c *bcCompiler) call(x *domain.CallExpr, sc *bcScope) bool {
 	target, ok := c.in.gscope.names[callee.Name]
 	if !ok {
 		c.why = "callee is not a global: " + callee.Name
+		return false
+	}
+	// opCall reads globals.vals[target.idx]; only a slotVal global lives
+	// there. An int or cell slot would resolve to the wrong value.
+	if target.kind != slotVal {
+		c.why = "callee global is not a value slot: " + callee.Name
 		return false
 	}
 	for _, a := range x.Args {

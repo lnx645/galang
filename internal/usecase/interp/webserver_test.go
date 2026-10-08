@@ -3,6 +3,7 @@ package interp
 import (
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 
 	"garurda/internal/domain"
@@ -100,6 +101,36 @@ func TestBuildRequestObj(t *testing.T) {
 	rp, _ := obj.Get("params")
 	if id, _ := rp.(*domain.Obj).Get("id"); id.String() != "9" {
 		t.Fatalf("params.id = %v", id)
+	}
+}
+
+// TestWriteThrown pins the thrown-error contract: a domain error answers with
+// its own HTTP status and a JSON body; internal errors answer a plain 500.
+func TestWriteThrown(t *testing.T) {
+	in := New(nil, nil)
+
+	// Domain error → its status + JSON body.
+	ev := &domain.ErrorValue{Message: "hilang", Code: "http_error", Status: 404}
+	rec := &testResponseWriter{header: make(http.Header)}
+	in.writeThrown(rec, in.wrapThrown(ev, domain.Position{}))
+	if rec.code != 404 {
+		t.Fatalf("status = %d, want 404", rec.code)
+	}
+	if rec.header.Get("Content-Type") != "application/json; charset=utf-8" {
+		t.Fatalf("content-type = %q", rec.header.Get("Content-Type"))
+	}
+	if !strings.Contains(rec.body, `"message":"hilang"`) || !strings.Contains(rec.body, `"status":404`) {
+		t.Fatalf("body = %q", rec.body)
+	}
+
+	// Internal error → plain 500, no stack trace in the response.
+	rec2 := &testResponseWriter{header: make(http.Header)}
+	in.writeThrown(rec2, in.errf(domain.Position{}, "boom"))
+	if rec2.code != 500 {
+		t.Fatalf("status = %d, want 500", rec2.code)
+	}
+	if strings.Contains(rec2.body, "boom") {
+		t.Fatalf("internal error leaked to client: %q", rec2.body)
 	}
 }
 

@@ -432,6 +432,17 @@ try { gagal() } catch e { println "${e.status} ${e.message}" }`); got != "400 in
 print $e.code`); got != "kustom" {
 		t.Errorf("error(): got %q", got)
 	}
+	// error.is(code) compares against the argument, not the receiver.
+	if got := evalStr(t, `$e = error("x", {code: "kustom"})
+print $e.is("kustom")`); got != "true" {
+		t.Errorf("error.is match: got %q", got)
+	}
+	if got := evalStr(t, `not_found("cari").is("http_error")`); got != "true" {
+		t.Errorf("error.is http_error: got %q", got)
+	}
+	if got := evalStr(t, `not_found("cari").is("conflict")`); got != "false" {
+		t.Errorf("error.is mismatch: got %q", got)
+	}
 	// Undefined variables are errors.
 	evalFails(t, `print $tidak_ada`, "undefined variable")
 	// Division by zero.
@@ -541,10 +552,129 @@ true
 	}
 }
 
+// TestToObjectPairs pins the canonical [key, value] pair form.
+func TestToObjectPairs(t *testing.T) {
+	if got := evalStr(t, `print to_object([["k", 1], ["j", 2]])`); got != "{k: 1, j: 2}" {
+		t.Errorf("to_object pairs: got %q", got)
+	}
+	// Non-pair elements fall back to indexed keys.
+	if got := evalStr(t, `print to_object([7])`); got != "{0: 7}" {
+		t.Errorf("to_object fallback: got %q", got)
+	}
+}
+
 func TestReservedWordsUsableWithSigil(t *testing.T) {
 	// `$string` and friends are legal variable names thanks to the sigil.
 	if got := evalStr(t, `$string = "nilai"
 print $string`); got != "nilai" {
 		t.Errorf("reserved word as variable: got %q", got)
+	}
+}
+
+// TestIntSlotDemotion pins the demotion rules: a demoted int slot keeps its
+// boxed value in the int index space (never colliding with val slots, which
+// used to corrupt builtins at random), a float is never squeezed into the
+// int64 slot, and a nullable int parameter binds its null default instead of
+// panicking in newFrame.
+func TestIntSlotDemotion(t *testing.T) {
+	cases := []struct{ src, want string }{
+		// any reassigns across types; the old code wrote the string into
+		// vals[int-idx] and clobbered whichever val slot shared the index
+		// (a builtin, most often `print` → "string is not callable").
+		{`any $x = 1
+$x = "teks"
+print type($x)`, "string"},
+		// A float demotes instead of truncating ($x = 72; $x = 3.9 used to
+		// store int64(3.9) = 3).
+		{`$x = 72
+$x = 3.9
+print($x)`, "3.9"},
+		// number parameters keep their fraction.
+		{`fn h(number $x) { print($x) }
+h(3.5)`, "3.5"},
+		// Nullable int parameter with a null default: nvals == 0 used to
+		// panic with index out of range in newFrame.
+		{`fn g(?int $x = null) { print($x) }
+g()`, "null"},
+		// Demotion inside a function whose frame has no val slots at all.
+		{`fn local_demote() {
+    $y = 1
+    $y = "teks"
+    print($y)
+}
+local_demote()`, "teks"},
+		// A demoted slot reads back as its new value, not the stale int.
+		{`$a = 1
+$a = "lima"
+print($a)`, "lima"},
+	}
+	for _, c := range cases {
+		if got := evalStr(t, c.src); got != c.want {
+			t.Errorf("demotion: got %q, want %q\nsource:\n%s", got, c.want, c.src)
+		}
+	}
+	// An int-annotated variable still rejects a string.
+	evalFails(t, `int $a = 72
+$a = "teks"`, "expected int")
+}
+
+// TestCallDispatchAcrossBackends: an unboxed caller must be able to reach a
+// callee on any backend. Demanding cl.int failed valid programs with
+// "'g' is not an integer function", and entering bytecode with runInt from
+// inside an active VM loop reset live frames and panicked.
+func TestCallDispatchAcrossBackends(t *testing.T) {
+	// int-specialised caller (has a loop) → general callee.
+	if got := evalStr(t, `fn gen($a) { return $a * 2 }
+fn f(int $a) int {
+    $t = 0
+    for $i in 1..2 { $t = $t + 1 }
+    return gen($a) + $t
+}
+print(f(5))`); got != "12" {
+		t.Errorf("intfn → general: got %q, want 12", got)
+	}
+	// int-specialised caller → bytecode callee.
+	if got := evalStr(t, `fn bc(int $a) int { return $a * 2 }
+fn f(int $a) int {
+    $t = 0
+    for $i in 1..2 { $t = $t + 1 }
+    return bc($a) + $t
+}
+print(f(5))`); got != "12" {
+		t.Errorf("intfn → bytecode: got %q, want 12", got)
+	}
+	// bytecode caller → general callee → bytecode callee: the nested entry
+	// used to panic with index out of range inside runLoop.
+	if got := evalStr(t, `fn bc(int $a) int { return $a * 2 }
+fn gen($a) { return bc($a) }
+fn f(int $a) int { return gen($a) + 1 }
+print(f(5))`); got != "11" {
+		t.Errorf("bytecode → general → bytecode: got %q, want 11", got)
+	}
+}
+
+// TestValueGlobalInIntFn: a global holding a plain value lives in the val
+// index space. The specialised backends used to read it from local slot 0
+// (the return channel) or write to it, silently producing garbage; they must
+// fall back to the general path instead.
+func TestValueGlobalInIntFn(t *testing.T) {
+	// Reading a string global in an int function: the general path computes
+	// "x" + 5 and reports the type error; the old code returned 5.
+	evalFails(t, `$s = "x"
+fn f(int $a) int {
+    $b = $s
+    return $b + $a
+}
+print(f(5))`, "cannot add int to string")
+	// Assigning a string global from an int function reaches the general
+	// path, so the global really changes.
+	if got := evalStr(t, `$s = "a"
+fn f(int $a) int {
+    $s = "b"
+    return $a
+}
+print(f(5))
+print($s)`); got != "5\nb" {
+		t.Errorf("value global assign: got %q, want \"5\\nb\"", got)
 	}
 }

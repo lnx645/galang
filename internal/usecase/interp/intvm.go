@@ -85,11 +85,55 @@ func (in *Interp) runInt(code *intCode, args []int64, pos domain.Position) (int6
 	copy(in.locals[1:], args)
 	in.vframes = append(in.vframes, vmFrame{code: code, localBase: 0})
 
-	if err := in.runLoop(pos); err != nil {
+	if err := in.runLoop(pos, 0); err != nil {
 		return 0, err
 	}
 	// runInt stores the result of the outermost frame in in.retVal.
 	return in.retVal, nil
+}
+
+// callCode enters a bytecode function while preserving the state of any
+// runLoop that is already active. runInt resets the stacks, which is correct
+// only at top level; resetting them from inside an active loop (a bytecode
+// function calling an ordinary one that calls bytecode again) destroyed the
+// live frames and panicked. Instead, this pushes a frame like opCall does and
+// lets the loop drive it — stopping when the frame pops, so the suspended
+// outer loop is never run twice.
+func (in *Interp) callCode(code *intCode, args []int64, pos domain.Position) (int64, error) {
+	depth := len(in.vframes)
+	if depth >= in.maxDepth {
+		return 0, in.errf(pos, "maximum call depth exceeded (%d): recursion too deep?", in.maxDepth)
+	}
+	if depth == 0 {
+		// Top-level entry owns the stacks: clear leftovers from a previous
+		// run (an aborted loop leaves frames behind) before starting.
+		in.vstack = in.vstack[:0]
+		in.locals = in.locals[:0]
+		in.vframes = in.vframes[:0]
+	}
+	newBase := len(in.locals)
+	in.locals = growLocals(in.locals, code.nlocals)
+	copy(in.locals[newBase+1:], args)
+	in.vframes = append(in.vframes, vmFrame{code: code, localBase: newBase})
+
+	if depth == 0 {
+		if err := in.runLoop(pos, 0); err != nil {
+			return 0, err
+		}
+		return in.retVal, nil
+	}
+	// Nested: run only until our own frame pops; opReturn then leaves the
+	// result on top of the outer frame's stack.
+	if err := in.runLoop(pos, depth); err != nil {
+		return 0, err
+	}
+	n := len(in.vstack) - 1
+	if n < 0 {
+		return 0, in.errf(pos, "internal: bytecode call left no result")
+	}
+	ret := in.vstack[n]
+	in.vstack = in.vstack[:n]
+	return ret, nil
 }
 
 // growLocals extends the local stack, zeroing the new slots.
@@ -112,10 +156,15 @@ func growLocals(locals []int64, n int) []int64 {
 // Everything the loop touches lives in the interpreter, so a frame push or pop
 // can never leave a stale copy behind. That was a real bug in the first
 // version, which cached the stacks in locals and lost values on every call.
-func (in *Interp) runLoop(pos domain.Position) error {
+//
+// stopDepth is the vframes length at which this invocation must stop: a
+// nested loop (see callCode) drives frames pushed above depth and returns as
+// soon as they pop, leaving the suspended outer invocation to resume its own
+// frames. At top level it is 0, which means "run until the stack is empty".
+func (in *Interp) runLoop(pos domain.Position, stopDepth int) error {
 	for {
 		fi := len(in.vframes) - 1
-		if fi < 0 {
+		if fi < stopDepth {
 			return nil
 		}
 		cur := in.vframes[fi].code
@@ -141,6 +190,14 @@ func (in *Interp) runLoop(pos domain.Position) error {
 				in.vstack = in.vstack[:n]
 
 			case opLoadGlobal:
+				// The global is an int slot by construction, but the general
+				// path may have demoted it (reassigned to a non-int value)
+				// after this function was compiled. The value stack holds
+				// int64 only, so a demoted global is a runtime error rather
+				// than a silently stale integer.
+				if !in.globals.isInt[ins.a] {
+					return in.errf(pos, "global slot %d is not an integer here (it was reassigned to a non-int value)", ins.a)
+				}
 				in.vstack = append(in.vstack, in.globals.ints[ins.a])
 
 			case opStoreGlobal:

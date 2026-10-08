@@ -15,7 +15,7 @@ import (
 )
 
 // Version is the interpreter release.
-const Version = "0.1.0"
+const Version = "0.2.0"
 
 // Run executes the CLI and returns a process exit code.
 func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {

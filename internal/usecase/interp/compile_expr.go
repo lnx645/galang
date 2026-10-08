@@ -140,7 +140,7 @@ func (c *compiler) compileIdent(x *domain.Ident, s *cscope) exprFn {
 			if g.isInt[idx] {
 				return domain.Int(g.ints[idx]), nil
 			}
-			if v := g.getVal(idx); v != nil {
+			if v := g.getIval(idx); v != nil {
 				return v, nil
 			}
 			return nil, in.errf(pos, "undefined variable '%s'", name)
@@ -150,7 +150,7 @@ func (c *compiler) compileIdent(x *domain.Ident, s *cscope) exprFn {
 			if f.isInt[idx] {
 				return domain.Int(f.ints[idx]), nil
 			}
-			if v := f.getVal(idx); v != nil {
+			if v := f.getIval(idx); v != nil {
 				return v, nil
 			}
 			return nil, in.errf(pos, "undefined variable '%s'", name)
@@ -225,7 +225,7 @@ func (c *compiler) compileIntExpr(e domain.Expr, s *cscope) intFn {
 				if f.glob.isInt[idx] {
 					return f.glob.ints[idx], true, nil
 				}
-				if v := f.glob.getVal(idx); v != nil {
+				if v := f.glob.getIval(idx); v != nil {
 					if n, isInt := v.(domain.Int); isInt {
 						return int64(n), true, nil
 					}
@@ -237,7 +237,7 @@ func (c *compiler) compileIntExpr(e domain.Expr, s *cscope) intFn {
 			if f.isInt[idx] {
 				return f.ints[idx], true, nil
 			}
-			if v := f.getVal(idx); v != nil {
+			if v := f.getIval(idx); v != nil {
 				if n, isInt := v.(domain.Int); isInt {
 					return int64(n), true, nil
 				}
@@ -346,12 +346,12 @@ func (c *compiler) compileString(x *domain.StrLit, s *cscope) exprFn {
 							if g.isInt[idx] {
 								v = domain.Int(g.ints[idx])
 							} else {
-								v = g.getVal(idx)
+								v = g.getIval(idx)
 							}
 						} else if f.isInt[idx] {
 							v = domain.Int(f.ints[idx])
 						} else {
-							v = f.getVal(idx)
+							v = f.getIval(idx)
 						}
 					case slotCell:
 						if isGlobal {
