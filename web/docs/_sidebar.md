@@ -1,0 +1,6 @@
+- [Beranda](index.md)
+- [Memulai Cepat](getting-started.md)
+- [Sintaks Bahasa](language.md)
+- [Modul Standar](modules.md)
+- [Web Runtime](web.md)
+- [CLI](cli.md)
