@@ -35,9 +35,11 @@ $kosong = null
 ```
 +  -  *  /  %   // aritmatika
 == != < > <= >= // perbandingan
-&& || !          // logika
+and or not       // logika (keyword, bukan && || !)
 in                // keanggotaan array/object
 ```
+
+**Catatan:** Garurda memakai keyword `and`, `or`, `not` — bukan `&&`, `||`, `!`.
 
 ## String
 

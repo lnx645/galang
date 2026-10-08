@@ -35,7 +35,7 @@ $kosong = null
 ```
 +  -  *  /  %   // aritmatika
 == != < > <= >= // perbandingan
-&& || !          // logika
+and or not       // logika (keyword, bukan && || !)
 in                // keanggotaan array/object
 ```
 
