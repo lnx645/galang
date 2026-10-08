@@ -57,12 +57,13 @@ release:
 			linux/amd64|windows/amd64) cgo=1 ;; \
 		esac; \
 		if [ "$$goos/$$goarch" = "windows/amd64" ]; then cc=$(MINGW); fi; \
+		if [ "$$goos" = "windows" ]; then ext=.exe; else ext=; fi; \
 		if [ -n "$$cc" ]; then \
 			GOOS=$$goos GOARCH=$$goarch CGO_ENABLED=$$cgo CC="$$cc" \
-				$(GO) build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/gar-$$goos-$$goarch$(if $(filter windows/%,$(platform)),.exe,) ./cmd/gar; \
+				$(GO) build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/gar-$$goos-$$goarch$$ext ./cmd/gar; \
 		else \
 			GOOS=$$goos GOARCH=$$goarch CGO_ENABLED=$$cgo \
-				$(GO) build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/gar-$$goos-$$goarch$(if $(filter windows/%,$(platform)),.exe,) ./cmd/gar; \
+				$(GO) build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/gar-$$goos-$$goarch$$ext ./cmd/gar; \
 		fi; \
 		echo "Built: gar-$$goos-$$goarch (CGO=$$cgo)"; \
 	done
