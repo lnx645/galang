@@ -277,6 +277,12 @@ func (in *Interp) buildRequestObj(r *http.Request, params map[string]string) *do
 	}
 	obj.Set("params", routeParams)
 
+	cookies := domain.NewObj()
+	for _, c := range r.Cookies() {
+		cookies.Set(c.Name, domain.Str(c.Value))
+	}
+	obj.Set("cookies", cookies)
+
 	body := ""
 	if r.Body != nil {
 		data, err := io.ReadAll(r.Body)
@@ -297,7 +303,7 @@ func (in *Interp) buildRequestObj(r *http.Request, params map[string]string) *do
 //   - int/float/bool     → text/plain (200)
 //
 // Structured object fields: status (int), type (string),
-// body (string), headers (object).
+// body (string), headers (object), cookies (object).
 func (in *Interp) writeResponse(w http.ResponseWriter, result domain.Value) {
 	// Structured response: explicit "body" field.
 	if obj, ok := result.(*domain.Obj); ok {
@@ -323,6 +329,14 @@ func (in *Interp) writeResponse(w http.ResponseWriter, result domain.Value) {
 					for _, k := range ho.Keys() {
 						v, _ := ho.Get(k)
 						w.Header().Set(k, v.String())
+					}
+				}
+			}
+			if cks, found := obj.Get("cookies"); found {
+				if co, ok := cks.(*domain.Obj); ok {
+					for _, k := range co.Keys() {
+						v, _ := co.Get(k)
+						http.SetCookie(w, &http.Cookie{Name: k, Value: v.String()})
 					}
 				}
 			}
