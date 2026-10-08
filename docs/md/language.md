@@ -20,15 +20,28 @@ $kosong = null
 
 ## Tipe Data
 
-| Tipe | Contoh |
-|---|---|
-| `int` | `72`, `0xFF`, `1_000` |
-| `float` | `3.14`, `1.0e3` |
-| `string` | `"teks"`, backtick raw string |
-| `bool` | `true`, `false` |
-| `array` | `[1, 2, 3]` |
-| `object` | `{a: 1, b: 2}` |
-| `null` | `null` |
+| Tipe | Contoh | Keterangan |
+|---|---|---|
+| `int` | `72`, `0xFF`, `1_000` | Bilangan bulat (support hex & underscore) |
+| `float` | `3.14`, `1.0e3` | Bilangan desimal |
+| `string` | `"teks"`, backtick raw | String |
+| `bool` | `true`, `false` | Boolean |
+| `array` | `[1, 2, 3]` | Daftar |
+| `object` | `{a: 1, b: 2}` | Peta/kamus |
+| `function` | `fn() { ... }` | Fungsi |
+| `error` | — | Error value |
+| `null` | `null` | Null |
+| `any` | — | Tipe apa saja (tanpa pemeriksaan) |
+
+## Number Literals
+
+```garurda
+$desimal = 42
+$heksa = 0xFF
+$bawah = 1_000_000
+$pecahan = 3.14
+$scientific = 1.0e3
+```
 
 ## Operator
 
@@ -36,6 +49,8 @@ $kosong = null
 +  -  *  /  %   // aritmatika
 == != < > <= >= // perbandingan
 and or not   // atau gunakan && || ! — keduanya valid
+in                // keanggotaan array/object
+```
 
 ## String
 
@@ -43,6 +58,8 @@ and or not   // atau gunakan && || ! — keduanya valid
 $nama = "Garurda"
 print("Hello, $nama!")       // interpolasi
 print("Hello, ${nama}!")     // interpolasi ekspresi
+$raw = `baris literal
+multi baris`                  // backtick = raw string
 ```
 
 ## Array
@@ -51,6 +68,16 @@ print("Hello, ${nama}!")     // interpolasi ekspresi
 $angka = [1, 2, 3, 4, 5]
 print($angka[0])       // 1
 print($angka.len)      // 5
+print($angka.first)    // 1
+print($angka.last)     // 5
+print($angka.joined)   // "1,2,3,4,5"
+```
+
+## Array Comprehension
+
+```garurda
+$kali2 = [$n * 2 for $n in [1, 2, 3]]   // [2, 4, 6]
+$besar = [$n for $n in $xs if $n > 10]
 ```
 
 ## Object
@@ -58,6 +85,7 @@ print($angka.len)      // 5
 ```garurda
 $user = {nama: "Dadan", umur: 25}
 print($user.nama)      // Dadan
+$user.nama = "Dad"     // set property
 ```
 
 ## Percabangan
@@ -77,17 +105,35 @@ $status = $n > 0 ? "ok" : "gagal"   // ternary
 ## Perulangan
 
 ```garurda
-for $i < 10 {
-    print($i)
-}
-
-for $item in $angka {
-    print($item)
-}
-
+// while
 while $i < 10 {
     print($i)
     $i = $i + 1
+}
+
+// for array
+for $item in [1, 2, 3] {
+    print($item)
+}
+
+// for range — inklusif kedua sisi
+for $i in 1..10 {
+    print($i)
+}
+
+// for range dengan langkah
+for $i in 0..10..5 {
+    print($i)
+}
+
+// for range turun
+for $i in 3..1 {
+    print($i)
+}
+
+// for key-value pada object
+for $k, $v in {a: 1, b: 2} {
+    print("$k -> $v")
 }
 ```
 
@@ -109,6 +155,26 @@ fn penghitung() {
 }
 ```
 
+## Fungsi dengan Default Parameter
+
+```garurda
+fn greet($nama, $sapaan = "Halo") {
+    return "${sapaan}, ${nama}!"
+}
+print(greet("Dadan"))          // Halo, Dadan!
+print(greet("Dadan", "Selamat")) // Selamat, Dadan!
+```
+
+## Anotasi Tipe
+
+```garurda
+fn hitung(int $a, int $b) int {
+    return $a + $b
+}
+```
+
+Tipe yang tersedia: `int`, `float`, `number`, `string`, `bool`, `array`, `object`, `any`, `function`, `error`, `request`, `response`, `module`.
+
 ## Modul
 
 ```garurda
@@ -116,4 +182,6 @@ use "strings"
 use "math"
 use "time"
 use "http"
+use "file"
+use "database"
 ```
