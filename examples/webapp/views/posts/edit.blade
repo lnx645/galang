@@ -1,0 +1,45 @@
+@extends("layouts/app")
+
+@section("title", "Edit Post")
+
+@section("content")
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h4 class="mb-0">Edit Post</h4>
+                <a href="/posts/{{$post.id}}" class="btn btn-sm btn-outline-secondary">Lihat</a>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="/posts/{{$post.id}}">
+                    <input type="hidden" name="_method" value="PUT">
+
+                    <div class="mb-3">
+                        <label for="title" class="form-label">Judul <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="title" name="title" value="{{$post.title}}" required maxlength="255">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="content" class="form-label">Konten <span class="text-danger">*</span></label>
+                        <textarea class="form-control" id="content" name="content" rows="10" required>{{$post.content}}</textarea>
+                        <div class="form-text">Gunakan Markdown untuk formatting.</div>
+                    </div>
+
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="published" name="published" value="1" @if($post.published) checked @endif>
+                        <label class="form-check-label" for="published">Published</label>
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-save"></i> Update
+                        </button>
+                        <a href="/posts" class="btn btn-secondary">Batal</a>
+                        <a href="/posts/{{$post.id}}" class="btn btn-outline-secondary">Lihat</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+@endsection

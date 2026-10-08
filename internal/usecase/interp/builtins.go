@@ -53,9 +53,12 @@ func (in *Interp) installGlobals() {
 		in.globals.vals[in.gscope.names[name].idx] = val
 	}
 	in.Modules = map[string]func() *domain.Obj{
-		"strings": in.newStringsModule,
-		"math":    in.newMathModule,
-		"time":    in.newTimeModule,
+		"strings":  in.newStringsModule,
+		"math":     in.newMathModule,
+		"time":     in.newTimeModule,
+		"http":     in.newHttpModule,
+		"database": in.newDatabaseModule,
+		"file":     in.newFileModule,
 	}
 }
 

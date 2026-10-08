@@ -178,11 +178,13 @@ func convertBladeToGoTemplate(source string) string {
 	// Handle @include with data
 	source = regexp.MustCompile(`@include\s*\(\s*['"]([^'"]+)['"]\s*,\s*([^)]+)\)`).ReplaceAllString(source, `{{template "$1" $2}}`)
 
-	// Handle {{ }} (escaped)
-	source = regexp.MustCompile(`\{\{\s*([^}]+)\s*\}\}`).ReplaceAllString(source, `{{. | html}}`)
+	// Handle {{ expr }} (escaped output) — preserve expression,
+	// html/template auto-escapes by default.
+	source = regexp.MustCompile(`\{\{\s*([^}]+?)\s*\}\}`).ReplaceAllString(source, `{{ $1 }}`)
 
-	// Handle {!! !!} (unescaped)
-	source = regexp.MustCompile(`\{\{\!\s*([^}]+)\s*\!\}\}`).ReplaceAllString(source, `{{$1}}`)
+	// Handle {!! expr !!} (unescaped output) — pipe through raw
+	// so html/template treats it as safe HTML.
+	source = regexp.MustCompile(`\{!!\s*(.+?)\s*!!\}`).ReplaceAllString(source, `{{ $1 | raw }}`)
 
 	// Handle {{-- --}} comments
 	source = regexp.MustCompile(`\{\{--\s*([^}]+)\s*--\}\}`).ReplaceAllString(source, ``)
@@ -214,16 +216,31 @@ func convertBladeToGoTemplate(source string) string {
 	return source
 }
 
-// Execute executes the compiled template with the given data.
+// Execute executes the template with the given data. Blade syntax
+// is converted to Go template syntax first, and the funcMap
+// (raw escapes, etc.) is registered.
 func (t *Template) Execute(data map[string]interface{}) (string, error) {
-	// For now, use a simple approach with Go's text/template
-	// In production, this would use the compiled Go code
-	tmpl := template.Must(template.New(t.name).Parse(t.source))
+	converted := convertBladeToGoTemplate(t.source)
+	tmpl, err := template.New(t.name).Funcs(t.funcMap()).Parse(converted)
+	if err != nil {
+		return "", fmt.Errorf("template %s parse error: %w", t.name, err)
+	}
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, data); err != nil {
 		return "", err
 	}
 	return buf.String(), nil
+}
+
+// funcMap returns the template functions available in Blade templates.
+func (t *Template) funcMap() template.FuncMap {
+	return map[string]interface{}{
+		"raw": func(v interface{}) template.HTML { return template.HTML(fmt.Sprint(v)) },
+		"tojson": func(v interface{}) string {
+			b, _ := json.Marshal(v)
+			return string(b)
+		},
+	}
 }
 
 // Helper functions for template

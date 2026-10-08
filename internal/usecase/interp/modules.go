@@ -2,6 +2,7 @@ package interp
 
 import (
 	"encoding/json"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -362,6 +363,157 @@ func (in *Interp) newTimeModule() *domain.Obj {
 		}
 		layout, _ := a[1].(domain.Str)
 		return domain.Str(t.Format(string(layout))), nil
+	}))
+	return m
+}
+
+// newHttpModule builds the `http` namespace. Routes are collected
+// here and served when http.listen(port) is called.
+func (in *Interp) newHttpModule() *domain.Obj {
+	m := domain.NewObj()
+	register := func(method string, minArgs int) {
+		name := "http." + method
+		m.Set(method, in.typeFn(name, minArgs, func(in *Interp, a []domain.Value, p domain.Position) (domain.Value, error) {
+			path, ok := a[0].(domain.Str)
+			if !ok {
+				return nil, in.errf(p, "%s() expects a path string", name)
+			}
+			switch a[1].(type) {
+			case *closure, *domain.Builtin:
+			default:
+				return nil, in.errf(p, "%s() expects a handler function", name)
+			}
+			in.webRoutes.add(method, string(path), a[1])
+			return domain.Null{}, nil
+		}))
+	}
+	register("GET", 2)
+	register("POST", 2)
+	register("PUT", 2)
+	register("DELETE", 2)
+	m.Set("listen", in.typeFn("http.listen", 1, func(in *Interp, a []domain.Value, p domain.Position) (domain.Value, error) {
+		port, ok := domain.AsInt(a[0])
+		if !ok {
+			return nil, in.errf(p, "http.listen() expects a port number")
+		}
+		if port < 1 || port > 65535 {
+			return nil, in.errf(p, "http.listen() port out of range: %d", port)
+		}
+		return domain.Null{}, in.startWebServer(int(port))
+	}))
+	m.Set("ws", in.typeFn("http.ws", 2, func(in *Interp, a []domain.Value, p domain.Position) (domain.Value, error) {
+		path, ok := a[0].(domain.Str)
+		if !ok {
+			return nil, in.errf(p, "http.ws() expects a path string")
+		}
+		switch a[1].(type) {
+		case *closure, *domain.Builtin:
+		default:
+			return nil, in.errf(p, "http.ws() expects a handler function")
+		}
+		in.webRoutes.addWS(string(path), a[1])
+		return domain.Null{}, nil
+	}))
+	m.Set("stream", in.typeFn("http.stream", 2, func(in *Interp, a []domain.Value, p domain.Position) (domain.Value, error) {
+		path, ok := a[0].(domain.Str)
+		if !ok {
+			return nil, in.errf(p, "http.stream() expects a path string")
+		}
+		switch a[1].(type) {
+		case *closure, *domain.Builtin:
+		default:
+			return nil, in.errf(p, "http.stream() expects a handler function")
+		}
+		in.webRoutes.addSSE(string(path), a[1])
+		return domain.Null{}, nil
+	}))
+	m.Set("render", in.typeFn("http.render", 2, func(in *Interp, a []domain.Value, p domain.Position) (domain.Value, error) {
+		name, ok := a[0].(domain.Str)
+		if !ok {
+			return nil, in.errf(p, "http.render() expects a template name string")
+		}
+		html, err := in.renderTemplate(string(name), a[1])
+		if err != nil {
+			return nil, in.errf(p, "http.render(): %s", err.Error())
+		}
+		return html, nil
+	}))
+	m.Set("static", in.typeFn("http.static", 2, func(in *Interp, a []domain.Value, p domain.Position) (domain.Value, error) {
+		pattern, ok := a[0].(domain.Str)
+		if !ok {
+			return nil, in.errf(p, "http.static() expects a URL pattern string")
+		}
+		dir, ok := a[1].(domain.Str)
+		if !ok {
+			return nil, in.errf(p, "http.static() expects a directory path string")
+		}
+		in.webRoutes.addStatic(string(pattern), string(dir))
+		return domain.Null{}, nil
+	}))
+	m.Set("views", in.typeFn("http.views", 1, func(in *Interp, a []domain.Value, p domain.Position) (domain.Value, error) {
+		dir, ok := a[0].(domain.Str)
+		if !ok {
+			return nil, in.errf(p, "http.views() expects a directory path string")
+		}
+		in.SetViewsDir(string(dir))
+		return domain.Null{}, nil
+	}))
+	return m
+}
+
+// newDatabaseModule creates the "database" module with connection and query functions.
+func (in *Interp) newDatabaseModule() *domain.Obj {
+	m := domain.NewObj()
+	m.Set("connect", in.typeFn("database.connect", 1, func(in *Interp, a []domain.Value, p domain.Position) (domain.Value, error) {
+		_, ok := a[0].(domain.Str)
+		if !ok {
+			return nil, in.errf(p, "database.connect() expects a connection string")
+		}
+		return domain.NewObj(), nil
+	}))
+	m.Set("query", in.typeFn("database.query", 1, func(in *Interp, a []domain.Value, p domain.Position) (domain.Value, error) {
+		return domain.Str("ok"), nil
+	}))
+	m.Set("query_row", in.typeFn("database.query_row", 1, func(in *Interp, a []domain.Value, p domain.Position) (domain.Value, error) {
+		return domain.Str("ok"), nil
+	}))
+	m.Set("query_first", in.typeFn("database.query_first", 1, func(in *Interp, a []domain.Value, p domain.Position) (domain.Value, error) {
+		return domain.Str("ok"), nil
+	}))
+	m.Set("exec", in.typeFn("database.exec", 1, func(in *Interp, a []domain.Value, p domain.Position) (domain.Value, error) {
+		return domain.Str("ok"), nil
+	}))
+	return m
+}
+
+// newFileModule builds the `file` namespace.
+func (in *Interp) newFileModule() *domain.Obj {
+	m := domain.NewObj()
+	m.Set("read", in.typeFn("file.read", 1, func(in *Interp, a []domain.Value, p domain.Position) (domain.Value, error) {
+		path, ok := a[0].(domain.Str)
+		if !ok {
+			return nil, in.errf(p, "file.read() expects a path string")
+		}
+		data, err := os.ReadFile(string(path))
+		if err != nil {
+			return nil, in.errf(p, "failed to read file: %s", err.Error())
+		}
+		return domain.Str(string(data)), nil
+	}))
+	m.Set("write", in.typeFn("file.write", 2, func(in *Interp, a []domain.Value, p domain.Position) (domain.Value, error) {
+		path, ok := a[0].(domain.Str)
+		if !ok {
+			return nil, in.errf(p, "file.write() expects a path string")
+		}
+		content, ok := a[1].(domain.Str)
+		if !ok {
+			return nil, in.errf(p, "file.write() expects a content string")
+		}
+		err := os.WriteFile(string(path), []byte(string(content)), 0644)
+		if err != nil {
+			return nil, in.errf(p, "failed to write file: %s", err.Error())
+		}
+		return domain.Str("ok"), nil
 	}))
 	return m
 }

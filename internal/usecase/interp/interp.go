@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"garurda/internal/domain"
+	"garurda/internal/infra/template"
 	"garurda/internal/usecase/parse"
 )
 
@@ -95,11 +96,21 @@ type Interp struct {
 	maxDepth int
 	// Modules are the builtin module factories, e.g. "strings" and "math".
 	Modules map[string]func() *domain.Obj
+	// webRoutes holds HTTP routes registered from Garurda code via the
+	// http module. It is nil until the http module is first loaded.
+	webRoutes *webRoutes
+	// engine renders Blade templates for the http module.
+	engine *template.Engine
 	// File is the name used in diagnostics for the program being run.
 	File string
 	// parser obtains programs from source. It exists so the caller can plug in a
 	// syntax tree cache without the engine depending on any storage.
 	parser func(src, file string) (*parse.Program, error)
+}
+
+// SetViewsDir sets the directory used by http.render() for Blade templates.
+func (in *Interp) SetViewsDir(dir string) {
+	in.engine = template.NewEngine(dir)
 }
 
 // UseParser installs a source-to-program function, such as a cache.
@@ -132,6 +143,8 @@ func New(out, errOut io.Writer) *Interp {
 	in.vstack = make([]int64, 0, 256)
 	in.locals = make([]int64, 0, 256)
 	in.vframes = make([]vmFrame, 0, 64)
+	in.webRoutes = &webRoutes{}
+	in.engine = template.NewEngine("views")
 	in.installGlobals()
 	return in
 }

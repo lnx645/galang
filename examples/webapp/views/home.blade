@@ -1,0 +1,48 @@
+@extends("layouts/app")
+
+@section("title", "Beranda")
+
+@section("content")
+<div class="row">
+    <div class="col-lg-8 mx-auto text-center">
+        <div class="py-5">
+            <h1 class="display-4 fw-bold mb-3">Selamat Datang di Garurda</h1>
+            <p class="lead mb-4">Framework web modern, cepat, dan ringan dengan sintaks Blade.</p>
+            <div class="d-grid gap-2 d-sm-flex justify-content-sm-center">
+                <a href="/login" class="btn btn-primary btn-lg px-4 me-sm-3">Login</a>
+                <a href="/register" class="btn btn-outline-secondary btn-lg px-4">Register</a>
+            </div>
+        </div>
+
+        <div class="row mt-5">
+            <div class="col-md-4 mb-3">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <i class="bi bi-lightning-charge-fill text-primary" style="font-size: 3rem;"></i>
+                        <h5 class="card-title mt-3">Cepat</h5>
+                        <p class="card-text">Bytecode VM + dual backend untuk performa maksimal.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 mb-3">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <i class="bi bi-shield-lock-fill text-success" style="font-size: 3rem;"></i>
+                        <h5 class="card-title mt-3">Aman</h5>
+                        <p class="card-text">Auto-escape XSS, CSRF protection, type-safe.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 mb-3">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <i class="bi bi-code-slash text-info" style="font-size: 3rem;"></i>
+                        <h5 class="card-title mt-3">Modern</h5>
+                        <p class="card-text">Async/await, WebSocket, SSE, type hints.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+@endsection

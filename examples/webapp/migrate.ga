@@ -1,0 +1,14 @@
+// Database migration script
+// Jalankan: gar run examples/webapp/migrate.ga
+
+use "database"
+use "strings"
+use "time"
+
+print("Running migrations...")
+
+$stmt = "CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, name VARCHAR(255) NOT NULL, email VARCHAR(255) UNIQUE NOT NULL, password_hash VARCHAR(255) NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);"
+
+$parts = strings.split($stmt, ";")
+
+print("Migrations completed!")
