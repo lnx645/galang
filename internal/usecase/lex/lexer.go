@@ -576,7 +576,24 @@ func (l *Lexer) scanOperator() error {
 			l.emit(domain.TokenNeq, "!=", p)
 			return nil
 		}
-		return l.errorf(p, "unexpected '!'; use 'not' for negation")
+		l.emit(domain.TokenNot, "!", p)
+		return nil
+	case '&':
+		if l.peekByte() == '&' {
+			l.advance()
+			l.emit(domain.TokenAnd, "&&", p)
+		} else {
+			return l.errorf(p, "unexpected '&'; use '&&' for AND")
+		}
+		return nil
+	case '|':
+		if l.peekByte() == '|' {
+			l.advance()
+			l.emit(domain.TokenOr, "||", p)
+		} else {
+			return l.errorf(p, "unexpected '|'; use '||' for OR")
+		}
+		return nil
 	case '<':
 		if l.peekByte() == '=' {
 			l.advance()
