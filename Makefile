@@ -67,12 +67,16 @@ release:
 		echo "Built: gar-$$goos-$$goarch (CGO=$$cgo)"; \
 	done
 
-# Buat archive zip untuk distribusi
+# Buat archive zip untuk distribusi.
+# Tiap zip berisi binari platform + gne.h (header ABI GNE untuk penulis
+# ekstensi — sengaja ditempel di setiap zip agar mudah diambil).
 release-zip: release
+	@cp include/gne.h $(DIST_DIR)/
 	@cd $(DIST_DIR) && \
 	for f in gar-*; do \
+		case $$f in *.zip) continue ;; esac; \
 		base=$${f%.*}; \
-		zip -q $${base}.zip $$f; \
+		zip -q $${base}.zip $$f gne.h; \
 		echo "Created: $$base.zip"; \
 	done
 
