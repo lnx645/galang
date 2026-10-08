@@ -29,7 +29,7 @@ http.listen(8868)
 
 ## Version Status
 
-Current version: **v0.2.1** — binary releases are available on
+Current version: **v0.3.0** — binary releases are available on
 [GitHub Releases](https://github.com/lnx645/galang/releases).
 
 Already complete:
