@@ -22,9 +22,15 @@ cd "$(dirname "$0")/.."
 RUNS=9
 GAR="./bin/gar"
 JS_BIN="bun"
+PEAK="./bin/peak"
 
 if [ ! -x "$GAR" ]; then echo "build dulu: make build" >&2; exit 1; fi
 if ! command -v "$JS_BIN" >/dev/null 2>&1; then echo "bun belum terpasang" >&2; exit 1; fi
+if [ ! -x "$PEAK" ]; then
+  if command -v go >/dev/null 2>&1; then
+    go build -o "$PEAK" ./bench/peak 2>/dev/null || true
+  fi
+fi
 
 # time_ms menjalankan satu perintah RUNS kali dan mencetak waktu terbaik (ms).
 time_ms() {
@@ -72,6 +78,34 @@ for t in await gather spawn; do
   ja=$(awk -v a="${j_ms_of[$t]}" -v b="${j_ms_of[call]}" 'BEGIN{ if (b>0) printf "%.2fx", a/b; else print "n/a" }')
   printf "  %-8s Garurda %-8s   JS %-8s\n" "$t" "$ga" "$ja"
 done
+
+echo
+echo "Memori puncak (RSS via getrusage, bukan sampling):"
+if [ -x "$PEAK" ]; then
+  gb=$("$PEAK" "$GAR" run bench/async/empty.ga 2>/dev/null | tail -1)
+  jb=$("$PEAK" "$JS_BIN" bench/js/empty.mjs 2>/dev/null | tail -1)
+  printf "  %-8s Garurda %8s KiB   JS %8s KiB\n" "baseline" "$gb" "$jb"
+  mem_ok=1
+  for t in call await gather spawn; do
+    gk=$("$PEAK" "$GAR" run "bench/async/$t.ga" 2>/dev/null | tail -1)
+    jk=$("$PEAK" "$JS_BIN" "bench/js/$t.mjs" 2>/dev/null | tail -1)
+    if awk -v g="$gk" -v j="$jk" 'BEGIN{ exit !((g+0)>0 && (j+0)>0 && (g+0)<(j+0)) }'; then
+      verdict="Garurda"
+    else
+      verdict="JS"; mem_ok=0
+    fi
+    printf "  %-8s Garurda %8s KiB   JS %8s KiB   (memori lebih kecil: %s)\n" \
+      "$t" "$gk" "$jk" "$verdict"
+  done
+  echo
+  if [ "$mem_ok" -eq 1 ]; then
+    echo "MEMORI: Garurda di bawah JS di semua pola."
+  else
+    echo "MEMORI: JS lebih kecil di setidaknya satu pola."
+  fi
+else
+  echo "  (alat ukur bin/peak gagal dibangun — lewati)"
+fi
 
 echo
 echo "Interpreter vs JIT: JS dieksekusi Bun (JavaScriptCore, JIT penuh),"
