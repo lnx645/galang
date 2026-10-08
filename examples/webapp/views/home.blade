@@ -1,48 +1,69 @@
 @extends("layouts/app")
 
-@section("title", "Beranda")
+@section("judul", "Demo Web Publik Garurda")
 
-@section("content")
-<div class="row">
-    <div class="col-lg-8 mx-auto text-center">
-        <div class="py-5">
-            <h1 class="display-4 fw-bold mb-3">Selamat Datang di Garurda</h1>
-            <p class="lead mb-4">Framework web modern, cepat, dan ringan dengan sintaks Blade.</p>
-            <div class="d-grid gap-2 d-sm-flex justify-content-sm-center">
-                <a href="/login" class="btn btn-primary btn-lg px-4 me-sm-3">Login</a>
-                <a href="/register" class="btn btn-outline-secondary btn-lg px-4">Register</a>
-            </div>
-        </div>
-
-        <div class="row mt-5">
-            <div class="col-md-4 mb-3">
-                <div class="card h-100">
-                    <div class="card-body text-center">
-                        <i class="bi bi-lightning-charge-fill text-primary" style="font-size: 3rem;"></i>
-                        <h5 class="card-title mt-3">Cepat</h5>
-                        <p class="card-text">Bytecode VM + dual backend untuk performa maksimal.</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4 mb-3">
-                <div class="card h-100">
-                    <div class="card-body text-center">
-                        <i class="bi bi-shield-lock-fill text-success" style="font-size: 3rem;"></i>
-                        <h5 class="card-title mt-3">Aman</h5>
-                        <p class="card-text">Auto-escape XSS, CSRF protection, type-safe.</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4 mb-3">
-                <div class="card h-100">
-                    <div class="card-body text-center">
-                        <i class="bi bi-code-slash text-info" style="font-size: 3rem;"></i>
-                        <h5 class="card-title mt-3">Modern</h5>
-                        <p class="card-text">Async/await, WebSocket, SSE, type hints.</p>
-                    </div>
-                </div>
-            </div>
+@section("isi")
+<section class="hero">
+    <div class="wrap">
+        <p class="eyebrow">v0.2.0 &middot; bytecode VM + dual backend</p>
+        <h1>Garurda di browser,<br><span class="accent">bukan cuma di terminal.</span></h1>
+        <p class="lead">Halaman ini dirender <strong>Blade template</strong>, CSS &amp; JS-nya disajikan
+        <code>http.static</code>, dan API-nya balik JSON otomatis — semua dari satu runtime.</p>
+        <div class="actions">
+            <a class="btn primary" href="#coba">Coba API-nya</a>
+            <a class="btn ghost" href="/fitur">Lihat fitur bahasa</a>
         </div>
     </div>
-</div>
+</section>
+
+<section class="wrap cards">
+    @foreach($kartu as $k)
+    <article class="card">
+        <h3>{{ $k.judul }}</h3>
+        <p>{{ $k.teks }}</p>
+    </article>
+    @endforeach
+</section>
+
+<section class="wrap split" id="coba">
+    <div>
+        <h2>Coba API langsung</h2>
+        <p class="muted">Semua request di bawah dibuat JavaScript polos ke endpoint Garurda.</p>
+
+        <form id="form-sapa" class="demo-form" autocomplete="off">
+            <label for="inp-nama">GET /api/sapa/{nama}</label>
+            <div class="row">
+                <input id="inp-nama" type="text" value="dunia" placeholder="nama" required>
+                <button class="btn primary" type="submit">Kirim</button>
+            </div>
+        </form>
+        <pre class="hasil" id="hasil-sapa">// menunggu permintaan…</pre>
+
+        <form id="form-echo" class="demo-form" autocomplete="off">
+            <label for="inp-echo">POST /api/echo — body JSON bebas</label>
+            <textarea id="inp-echo" rows="3">{"pesan": "halo dari pengguna", "angka": 42}</textarea>
+            <div class="row">
+                <button class="btn primary" type="submit">Kirim JSON</button>
+                <button class="btn ghost" type="button" id="btn-user">GET /api/user/999 (404)</button>
+            </div>
+        </form>
+        <pre class="hasil" id="hasil-echo">// menunggu permintaan…</pre>
+
+        <p class="muted">Endpoint lain: <code>GET /api/daftar</code> (array → JSON array) &middot;
+        <code>GET /halo/Nama</code> (template tanpa layout)</p>
+    </div>
+    <div>
+        <h2>Kode servernya</h2>
+        @include("partials/kode", {judul: "main.ga", isi: $contoh})
+        <p class="muted">Cukup <code>return</code> — string jadi HTML, object/array jadi JSON,
+        object dengan <code>body</code> jadi respons terstruktur.</p>
+    </div>
+</section>
+
+<section class="wrap clock">
+    <h2>Waktu klien</h2>
+    <p id="jam" class="big">—</p>
+    <p class="muted">Dihitung JavaScript di halaman ini; <code>time.now_ms()</code> di server bisa
+    kamu bandingkan lewat <code>GET /api/sapa/x</code>.</p>
+</section>
 @endsection

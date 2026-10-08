@@ -69,8 +69,8 @@ Binary siap pakai tersedia di direktori `dist/` dan di
 # Jalankan script
 gar run hello.ga
 
-# Coba contoh web
-gar run examples/webapp/main.ga
+# Coba contoh web (port 5800)
+cd examples/webapp && gar run main.ga
 
 # REPL interaktif
 gar repl

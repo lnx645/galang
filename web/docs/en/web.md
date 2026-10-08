@@ -172,6 +172,16 @@ Content-Type: application/json
 | `conflict(...)` | 409 |
 | `error(...)` / `server_error(...)` | 500 |
 
+### `json_decode` → thrown error 400
+
+Invalid JSON body makes `json_decode()` throw an `json_error` with status
+**400**. The error is catchable with `try/catch`; if it escapes a handler,
+the server answers:
+
+```json
+{"code":"json_error","message":"invalid JSON: ...","status":400}
+```
+
 ### Internal errors → plain 500
 
 Internal bugs (division by zero, out-of-bounds index, undefined variable)
@@ -229,35 +239,52 @@ http.GET("/", fn($req) {
 <h1>{{ $title }}</h1>          {{-- HTML-escaped automatically --}}
 {!! $rawHTML !!}              {{-- no escaping --}}
 
-@if($user)
-  <p>Hello, {{ $user.name }}</p>
-@elseif($admin)
-  <p>Admin</p>
+@if($x > 3 && !$admin)
+  <p>Large</p>
+@elseif($x == 2)
+  <p>Two</p>
 @else
-  <p>Tamu</p>
+  <p>Small</p>
 @endif
 
 @foreach($items as $item)
   <li>{{ $item }}</li>
 @else
-  <li>Kosong</li>
+  <li>Empty</li>
+@endforeach
+
+@foreach($ages as $name => $value) {{-- key => value form --}}
+  <li>{{ $name }}: {{ $value }}</li>
 @endforeach
 
 @extends("layouts/app")
-@yield("content")
+@section("title", "Home")      {{-- inline section --}}
+@section("content")
+  <p>Page content…</p>
+@endsection
+@yield("title")                {{-- slot in the layout --}}
+@yield("scripts", "")          {{-- default when the child leaves it empty --}}
 
-@include("partials/header")
+@include("partials/nav")
+@include("partials/kode", {judul: "main.ga", isi: $contoh}) {{-- partial with data --}}
 ```
+
+Expressions inside `{{ }}` and `@if` conditions support the full operator
+set: comparisons (`>`, `>=`, `==`, `!=`, `<`, `<=`), logic (`&&`, `||`, `!`,
+`and`, `or`, `not`), arithmetic (`+`, `-`, `*`, `/`), function calls
+(`count($x)`, `len($x)`), pipes (`| upper`), and object literals `{k: v}`
+(used as `@include` data). Outside `{{ }}`, `$var` is plain text.
 
 | Directive | Purpose |
 |---|---|
 | `{{ $x }}` | expression, HTML-escaped |
 | `{!! $x !!}` | raw expression |
-| `@if` `@elseif` `@else` `@endif` | conditionals |
-| `@foreach` `@else` `@endforeach` | loops (`@else` when empty) |
+| `@if` `@elseif` `@else` `@endif` | conditionals (operators allowed) |
+| `@foreach` `@else` `@endforeach` | loops (`@else` when empty); `@foreach($m as $k => $v)` for keys |
 | `@extends("layout")` | layout inheritance |
-| `@section("nama")` `@yield("nama")` | layout content & slots |
-| `@include("partial")` | insert a partial |
+| `@section("name")` `@section("name", "value")` | fill a slot (block / inline) |
+| `@yield("name")` `@yield("name", "default")` | slot in the layout + default |
+| `@include("partial")` `@include("partial", {k: v})` | insert a partial (with data) |
 | `{{-- --}}` | comment |
 
 ## SSE (Server-Sent Events)

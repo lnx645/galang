@@ -1,0 +1,71 @@
+@extends("layouts/app")
+
+@section("judul", "Fitur bahasa Garurda")
+
+@section("isi")
+<section class="wrap page-head">
+    <h1>Fitur bahasa</h1>
+    <p class="lead">Data di bawah datang dari handler sebagai object, lalu diiterasi
+    <code>@foreach</code> — termasuk perbandingan <code>$f.kategori == "…"</code> dan
+    aritmetika <code>len($fitur)</code>.</p>
+</section>
+
+<section class="wrap">
+    <p class="muted" id="ringkas">{{ $total }} fitur tercantum di bawah.</p>
+    <div class="tabel-wrap">
+        <table class="tabel">
+            <thead>
+                <tr><th>Kode</th><th>Fitur</th><th>Kategori</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+                @foreach($fitur as $f)
+                <tr>
+                    <td><code>{{ $f.kode }}</code></td>
+                    <td>{{ $f.nama }}</td>
+                    <td>{{ $f.kategori }}</td>
+                    <td>
+                        @if($f.populer)
+                            <span class="pill on">populer</span>
+                        @elseif($f.kategori == "runtime")
+                            <span class="pill">runtime</span>
+                        @else
+                            <span class="pill off">lengkap</span>
+                        @endif
+                    </td>
+                </tr>
+                @endforeach
+            </tbody>
+        </table>
+    </div>
+
+    <div class="kartu-grid">
+        <article class="card">
+            <h3>Definisi &amp; tipe</h3>
+            <ul>
+                <li><code>$x = 5</code> — tanpa deklarasi</li>
+                <li><code>?int</code>, <code>number</code>, <code>bool</code>, <code>array</code></li>
+                <li>Default parameter <code>$x = 1</code></li>
+                <li>Destructuring <code>$a, $b = $pair</code></li>
+            </ul>
+        </article>
+        <article class="card">
+            <h3>Kontrol</h3>
+            <ul>
+                <li><code>if / else if / else</code></li>
+                <li><code>switch / case / default</code></li>
+                <li><code>and or not</code> dan <code>&amp;&amp; || !</code></li>
+                <li><code>try / catch / throw</code></li>
+            </ul>
+        </article>
+        <article class="card">
+            <h3>Async</h3>
+            <ul>
+                <li><code>async fn</code> + <code>await</code></li>
+                <li><code>gather(...)</code> paralel</li>
+                <li><code>spawn(...)</code> fire-and-forget</li>
+                <li>Promise ringan 64 byte</li>
+            </ul>
+        </article>
+    </div>
+</section>
+@endsection

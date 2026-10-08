@@ -501,6 +501,15 @@ print $v.b[0]`); got != "1\ntrue" {
 		t.Errorf("json_decode: got %q", got)
 	}
 	evalFails(t, `json_decode("{bukan json")`, "invalid JSON")
+	// Input rusak = error lempar: bisa ditangkap dan membawa status 400.
+	if got := evalStr(t, `try {
+	json_decode("{rusak")
+} catch e {
+	println e.code
+	println e.status
+}`); got != "json_error\n400" {
+		t.Errorf("json_decode tidak bisa ditangkap: got %q", got)
+	}
 	// XSS protection helper.
 	if got := evalStr(t, `print html_escape("<b>a & b</b>")`); got != "&lt;b&gt;a &amp; b&lt;/b&gt;" {
 		t.Errorf("html_escape: got %q", got)

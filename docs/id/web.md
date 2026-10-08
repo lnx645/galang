@@ -171,6 +171,16 @@ Content-Type: application/json
 | `conflict(...)` | 409 |
 | `error(...)` / `server_error(...)` | 500 |
 
+### `json_decode` → error lempar 400
+
+Body JSON yang rusak membuat `json_decode()` melempar error `json_error`
+dengan status **400**. Error ini bisa ditangkap `try/catch`; bila lolos dari
+handler, server menjawab:
+
+```json
+{"code":"json_error","message":"invalid JSON: ...","status":400}
+```
+
 ### Error internal → 500 polos
 
 Bug internal (pembagian nol, index di luar batas, variabel undefined)
@@ -227,12 +237,12 @@ http.GET("/", fn($req) {
 <h1>{{ $title }}</h1>          {{-- escape HTML otomatis --}}
 {!! $rawHTML !!}              {{-- tanpa escape --}}
 
-@if($user)
-  <p>Hello, {{ $user.name }}</p>
-@elseif($admin)
-  <p>Admin</p>
+@if($x > 3 && !$admin)
+  <p>Besar</p>
+@elseif($x == 2)
+  <p>Dua</p>
 @else
-  <p>Tamu</p>
+  <p>Kecil</p>
 @endif
 
 @foreach($items as $item)
@@ -241,21 +251,38 @@ http.GET("/", fn($req) {
   <li>Kosong</li>
 @endforeach
 
-@extends("layouts/app")
-@yield("content")
+@foreach($umur as $nama => $nilai) {{-- bentuk kunci => nilai --}}
+  <li>{{ $nama }}: {{ $nilai }}</li>
+@endforeach
 
-@include("partials/header")
+@extends("layouts/app")
+@section("judul", "Beranda")   {{-- section inline --}}
+@section("content")
+  <p>Isi halaman…</p>
+@endsection
+@yield("judul")                {{-- slot di layout --}}
+@yield("scripts", "")          {{-- default bila child tidak mengisi --}}
+
+@include("partials/nav")
+@include("partials/kode", {judul: "main.ga", isi: $contoh}) {{-- partial berdata --}}
 ```
+
+Ekspresi di dalam `{{ }}` dan kondisi `@if` mendukung operator lengkap:
+perbandingan (`>`, `>=`, `==`, `!=`, `<`, `<=`), logika (`&&`, `||`, `!`,
+`and`, `or`, `not`), aritmetika (`+`, `-`, `*`, `/`), pemanggilan fungsi
+(`count($x)`, `len($x)`), pipe (`| upper`), dan literal object `{k: v}`
+(dipakai untuk data `@include`). Di luar `{{ }}`, `$var` adalah teks biasa.
 
 | Directive | Fungsi |
 |---|---|
 | `{{ $x }}` | ekspresi, HTML-escape |
 | `{!! $x !!}` | ekspresi mentah |
-| `@if` `@elseif` `@else` `@endif` | percabangan |
-| `@foreach` `@else` `@endforeach` | perulangan (`@else` saat kosong) |
+| `@if` `@elseif` `@else` `@endif` | percabangan (boleh pakai operator) |
+| `@foreach` `@else` `@endforeach` | perulangan (`@else` saat kosong); `@foreach($m as $k => $v)` untuk kunci |
 | `@extends("layout")` | pewarisan layout |
-| `@section("nama")` `@yield("nama")` | isi & slot layout |
-| `@include("partial")` | sisipkan partial |
+| `@section("nama")` `@section("nama", "nilai")` | isi slot layout (blok / inline) |
+| `@yield("nama")` `@yield("nama", "default")` | slot di layout + default |
+| `@include("partial")` `@include("partial", {k: v})` | sisipkan partial (dengan data) |
 | `{{-- --}}` | komentar |
 
 ## SSE (Server-Sent Events)

@@ -1,33 +1,103 @@
-// Web application example for Garurda v0.2
-// Jalankan: gar run examples/webapp/main.ga
-
+// Contoh aplikasi web publik Garurda — demo di port 5800.
+//
+// Menunjukkan: routing + path parameter, Blade template (@extends,
+// @section, @yield, @include, @foreach, @if), file statis CSS/JS,
+// respons JSON otomatis, structured response, dan error berstatus.
+//
+// Jalankan dari direktori ini:
+//     cd examples/webapp && gar run main.ga
 use "http"
 use "strings"
 use "time"
 
-http.views("examples/webapp/views")
-http.static("/public/", "examples/webapp/public")
+http.views("views")
+http.static("/public/", "public")
+
+// Data kartu beranda — diiterasi lewat @foreach di template.
+$kartu = [
+    {judul: "Blade", teks: "Layout @extends, slot @yield + @yield(\"b\", \"default\"), partial @include."},
+    {judul: "JSON otomatis", teks: "Object/array yang di-return langsung menjadi respons application/json."},
+    {judul: "CSS + JS statis", teks: "http.static menyajikan public/ — halaman ini tanpa CDN."},
+    {judul: "Error berstatus", teks: "throw not_found(...) → 404 dengan body {code, message, status}."}
+]
+
+// Data fitur bahasa untuk halaman /fitur.
+$fitur = [
+    {kode: "async", nama: "async / await / gather", kategori: "runtime", populer: true},
+    {kode: "spawn", nama: "spawn (fire-and-forget)", kategori: "runtime", populer: false},
+    {kode: "promise", nama: "promise + then/catch", kategori: "runtime", populer: true},
+    {kode: "type", nama: "Type hints: ?int, number, bool", kategori: "bahasa", populer: true},
+    {kode: "opt", nama: `Default parameter: $x = 1`, kategori: "bahasa", populer: false},
+    {kode: "ops", nama: "and / or / not + && / || / !", kategori: "bahasa", populer: true},
+    {kode: "match", nama: "switch / case / default", kategori: "bahasa", populer: false},
+    {kode: "try", nama: "try / catch + throw error", kategori: "bahasa", populer: true},
+    {kode: "slice", nama: "Slice [a:b] + method chaining", kategori: "data", populer: false},
+    {kode: "destr", nama: `Destructuring: $a, $b = ...`, kategori: "data", populer: false}
+]
 
 http.GET("/", fn($req) {
-    $data = {title: "Garurda v0.2", message: "Hello from Garurda!"}
-    return http.render("welcome.blade", $data)
+    // Backtick = string raw tanpa interpolasi — aman untuk kode bercontoh $var.
+    $kodeContoh = `http.GET("/api/sapa/{nama}", fn($req) {
+    return {sapaan: "Halo, " + $req.params.nama}
 })
 
-http.GET("/health", fn($req) {
-    return {status: "ok", now: time.now()}
+http.listen(5800)   // object → JSON otomatis`
+    return http.render("home.blade", {
+        judul: "Garurda — contoh web publik",
+        kartu: $kartu,
+        contoh: $kodeContoh
+    })
 })
 
-http.GET("/greet/{name}", fn($req) {
-    $name = strings.upper($req.params.name)
-    return "Hello, " + $name + "!"
+http.GET("/fitur", fn($req) {
+    return http.render("fitur.blade", {
+        judul: "Fitur bahasa Garurda",
+        fitur: $fitur,
+        total: len($fitur)
+    })
 })
 
-http.GET("/api/users", fn($req) {
-    return http.json({users: ["Alice", "Bob", "Charlie"]})
+// Template sederhana tanpa layout — sapaan personal.
+http.GET("/halo/{nama}", fn($req) {
+    $nama = strings.trim($req.params.nama)
+    return http.render("welcome.blade", {
+        title: "Halo, " + $nama,
+        message: "Dirender langsung dari http.render tanpa layout."
+    })
 })
 
-http.stream("/events", fn($req) {
-    return "ping"
+// ── API JSON ────────────────────────────────────────────────────────────
+http.GET("/api/sapa/{nama}", fn($req) {
+    $nama = strings.trim($req.params.nama)
+    if $nama == "" {
+        throw bad_request("nama tidak boleh kosong")
+    }
+    return {
+        sapaan: "Halo, " + strings.upper($nama) + "!",
+        panjang: len($nama),
+        waktu_ms: time.now_ms()
+    }
 })
 
-http.listen(8873)
+http.POST("/api/echo", fn($req) {
+    $data = json_decode($req.body)
+    if $data == null {
+        throw bad_request("body harus berupa JSON yang valid")
+    }
+    return {diterima: $data, metode: $req.method, panjang_body: len($req.body)}
+})
+
+// Error berstatus: id selain "1" → 404 + body JSON terstruktur.
+http.GET("/api/user/{id}", fn($req) {
+    if $req.params.id != "1" {
+        throw not_found("user dengan id " + $req.params.id + " tidak ada")
+    }
+    return {id: 1, nama: "Dadan", peran: "admin"}
+})
+
+// Respons array → JSON array otomatis.
+http.GET("/api/daftar", fn($req) {
+    return $fitur
+})
+
+http.listen(5800)

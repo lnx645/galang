@@ -683,7 +683,9 @@ func (in *Interp) builtinNames() map[string]domain.Value {
 		}
 		v, err := jsonDecode(string(s))
 		if err != nil {
-			return nil, in.errf(pos, "invalid JSON: %s", err.Error())
+			// Body yang rusak adalah kesalahan INPUT, bukan bug runtime:
+			// lempar error yang bisa ditangkap try/catch (default 400).
+			return nil, in.Throw("invalid JSON: "+err.Error(), "json_error", 400, pos)
 		}
 		return v, nil
 	})

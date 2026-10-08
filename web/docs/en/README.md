@@ -69,8 +69,8 @@ Ready-to-use binaries are available in the `dist/` directory and on
 # Run a script
 gar run hello.ga
 
-# Try the web example
-gar run examples/webapp/main.ga
+# Try the web example (port 5800)
+cd examples/webapp && gar run main.ga
 
 # Interactive REPL
 gar repl

@@ -265,21 +265,19 @@ func Timeout(d time.Duration) *Promise {
 	return p
 }
 
-// Race returns a promise that resolves or rejects as soon as one of the promises resolves.
+// Race returns a promise that settles as soon as one of the promises settles.
 func Race(promises ...*Promise) *Promise {
 	p := NewPromise()
 	for _, pr := range promises {
-		go func(p *Promise) {
+		go func(pr *Promise) {
 			v, err := pr.Await()
-			p.mu.Lock()
-			if !p.done {
-				if err != nil {
-					p.Reject(err)
-				} else {
-					p.Resolve(v)
-				}
+			// Resolve/Reject sudah mengunci p.mu sendiri dan mengabaikan
+			// panggilan kedua lewat flag done — jangan dikunci dua kali.
+			if err != nil {
+				p.Reject(err)
+			} else {
+				p.Resolve(v)
 			}
-			p.mu.Unlock()
 		}(pr)
 	}
 	return p
@@ -303,21 +301,31 @@ func All(promises ...*Promise) *Promise {
 	return p
 }
 
-// Any returns a promise that resolves when any of the promises resolves.
+// Any returns a promise that resolves as soon as one promise resolves. It
+// rejects only after every promise has rejected (Promise.any semantics);
+// the last rejection reason is used.
 func Any(promises ...*Promise) *Promise {
 	p := NewPromise()
+	if len(promises) == 0 {
+		p.Reject(errors.New("any: no promises"))
+		return p
+	}
+	var mu sync.Mutex
+	remaining := len(promises)
 	for _, pr := range promises {
 		go func(pr *Promise) {
 			v, err := pr.Await()
-			p.mu.Lock()
-			if !p.done {
-				if err != nil {
-					p.Reject(err)
-				} else {
-					p.Resolve(v)
-				}
+			if err == nil {
+				p.Resolve(v) // penyelesai pertama menang (dijaga flag done).
+				return
 			}
-			p.mu.Unlock()
+			mu.Lock()
+			remaining--
+			last := remaining == 0
+			mu.Unlock()
+			if last {
+				p.Reject(err)
+			}
 		}(pr)
 	}
 	return p
