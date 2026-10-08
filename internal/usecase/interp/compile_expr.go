@@ -645,6 +645,15 @@ func (c *compiler) compilePrefix(x *domain.PrefixExpr, s *cscope) exprFn {
 		}
 	}
 	val := c.compileExpr(x.Right, s)
+	if x.Op == domain.TokenAwait {
+		return func(f *frame) (domain.Value, error) {
+			v, err := val(f)
+			if err != nil {
+				return nil, err
+			}
+			return in.awaitValue(v, x.P)
+		}
+	}
 	if x.Op == domain.TokenNot {
 		return func(f *frame) (domain.Value, error) {
 			v, err := val(f)

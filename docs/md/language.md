@@ -213,10 +213,115 @@ Error value memiliki 3 field:
 - `e.code` — kode error (`not_found`, `bad_request`, ...)
 - `e.status` — HTTP status code (404, 400, ...)
 
+### finally
+
+Blok `finally` berjalan **selalu** — saat try sukses, saat catch menangani
+error, maupun saat error diteruskan (rethrow). Ini tempat membersihkan sumber
+daya.
+
+```garurda
+try {
+    $data = file.read("config.json")
+} catch $e {
+    print("gagal baca")
+} finally {
+    print("bersihkan di sini")   // selalu dieksekusi
+}
+```
+
+`finally` tanpa `catch` juga valid:
+
+```garurda
+try {
+    $r = risky()
+} finally {
+    $conn.close()
+}
+throw $r   // error lalu diteruskan setelah finally jalan
+```
+
+## Async — `async fn`, `await`, `gather`, `spawn`
+
+Fungsi yang dideklarasikan `async` **mengembalikan promise** saat dipanggil,
+bukan hasilnya langsung. Promise berisi tugas yang belum dijalankan.
+
+```garurda
+async fn ambil_user($id) {
+    return {"id": $id, "nama": "Budi"}
+}
+
+$u = await ambil_user(7)     // jalankan tugasnya, ambil hasilnya
+print($u.nama)
+```
+
+Aturan `await`:
+
+- `await <promise>` — menjalankan tugasnya **sekarang** lalu mengembalikan hasil.
+- `await <nilai biasa>` — nilai dilepas begitu saja (`await 42` → `42`).
+- `await` pada promise yang gagal (ada `throw` di dalamnya) akan melempar error
+  yang sama — bisa ditangkap `try/catch`.
+- Promise bisa disimpan di variabel, lalu di-await nanti:
+
+```garurda
+$p = ambil_user(9)          // dipanggil, hasilnya belum ada
+print(type($p))             // "promise"
+$hasil = await $p           // dikerjakan di sini
+```
+
+### `gather` — selesaikan banyak promise sekaligus
+
+```garurda
+async fn a() { return 1 }
+async fn b() { return 2 }
+
+$r = gather(a(), b())       // [1, 2]
+print($r[0] + $r[1])        // 3
+```
+
+`gather(...)` menerima nilai biasa juga (langsung dipakai apa adanya).
+Error dari salah satu promise langsung melempar.
+
+### `spawn` — tugas latar belakang (fire-and-forget)
+
+```garurda
+fn catat($pesan) { print("log: " + $pesan) }
+
+spawn(catat, "user login")  // dijanjikan, bukan dijalankan di sini
+print("program lanjut")
+// ... tugas spawn dijalankan saat drain (akhir eksekusi / akhir request HTTP)
+```
+
+`spawn` selalu menghasilkan promise; jika di-await, hasilnya dikembalikan.
+
+### promise sebagai nilai
+
+```garurda
+print(type(await ambil_user(1)))   // "object"
+print(is_promise(ambil_user(1)))   // true
+```
+
+Promise adalah tipe nilai sendiri (`promise`): bisa disimpan, dikirim ke
+fungsi, dan di-await berulang kali (tugasnya hanya berjalan sekali).
+
+*Cara kerja: eksekusi async bersifat kooperatif — tugas dijalankan oleh
+`await`, `gather`, atau drain. Belum ada paralelisme I/O; itu menyusul bersama
+builtin async I/O.*
+
+## print / println
+
+Dua bentuk didukung:
+
+```garurda
+print("nilai:", $x)      // gaya pemanggilan
+print "nilai:", $x       // gaya pernyataan
+println()                // baris kosong
+```
+
 ## Yang Belum Ada
 
-- `async fn` / `await` / `gather` / `spawn` — direncanakan v0.2 server
 - Generic `<T>` — direncanakan v1
 - Class & method — direncanakan v2
-- `try/catch` yang lebih kompleks (multiple catch, finally)
+- Paralelisme I/O async (async I/O builtin) — eksekusi async saat ini kooperatif
+- Modul `database` — fungsi masih stub/placeholder (lihat modul)
+- `session`, SMTP, dan unit-test framework — direncanakan v0.3
 

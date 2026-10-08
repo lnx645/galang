@@ -15,6 +15,13 @@ import (
 func (in *Interp) callValue(callee domain.Value, args []domain.Value, pos domain.Position) (domain.Value, error) {
 	switch c := callee.(type) {
 	case *closure:
+		// An async call returns a promise; the body runs when awaited.
+		if c.fn.async {
+			argsCopy := append([]domain.Value(nil), args...)
+			return in.newPromise(pos, func() (domain.Value, error) {
+				return in.callClosure(c, argsCopy, pos)
+			}), nil
+		}
 		// Bytecode first: one flat loop, no boxed values.
 		if c.code != nil && len(args) == c.code.nparams {
 			unboxed := true

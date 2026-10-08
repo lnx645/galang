@@ -174,6 +174,16 @@ func (in *Interp) serveRequest(handler domain.Value, params map[string]string, w
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	// An async handler returns a promise; resolve it, then run any
+	// fire-and-forget spawns before the response goes out.
+	if result, err = in.awaitValue(result, domain.Position{}); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if err := in.drainPending(); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	in.writeResponse(w, result)
 }
 

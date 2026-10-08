@@ -162,6 +162,8 @@ func (p *Parser) parseStmt() (domain.Stmt, error) {
 			return p.parseThrow()
 		case "try":
 			return p.parseTry()
+		case "async":
+			return p.parseAsyncStmt()
 		case "use":
 			return p.parseUse()
 		case "var":
@@ -308,6 +310,43 @@ func (p *Parser) parseTypeExpr() (*domain.TypeExpr, error) {
 func (p *Parser) parsePrint(newline bool) (domain.Stmt, error) {
 	t := p.next() // print / println
 	st := &domain.PrintStmt{Newline: newline, P: pos(t)}
+	p.skipNewlines()
+	// A call-style list `println(a, b)` is accepted for familiarity. The
+	// opening paren is only treated that way when a comma follows the first
+	// argument; otherwise it rewinds so `print (2 + 3) * 4` still reads the
+	// paren as part of the expression.
+	if p.at(domain.TokenLParen) {
+		save := p.i
+		p.next() // (
+		p.skipNewlines()
+		if p.at(domain.TokenRParen) {
+			p.next()
+			return st, nil // println()
+		}
+		first, err := p.parseExpr()
+		if err != nil {
+			return nil, err
+		}
+		p.skipNewlines()
+		if p.at(domain.TokenComma) {
+			st.Values = append(st.Values, first)
+			for p.at(domain.TokenComma) {
+				p.next()
+				p.skipNewlines()
+				x, err := p.parseExpr()
+				if err != nil {
+					return nil, err
+				}
+				st.Values = append(st.Values, x)
+				p.skipNewlines()
+			}
+			if _, err := p.expect(domain.TokenRParen, "')'"); err != nil {
+				return nil, err
+			}
+			return st, nil
+		}
+		p.i = save
+	}
 	for {
 		p.skipNewlines()
 		if p.atNewlineOrEnd() || p.at(domain.TokenSemi) {
@@ -454,6 +493,19 @@ func (p *Parser) parseTry() (domain.Stmt, error) {
 	} else {
 		p.i = save
 	}
+	// optional finally clause
+	save2 := p.i
+	p.skipSeparators()
+	if p.isKeyword("finally") {
+		p.next()
+		blk, err := p.parseBlock()
+		if err != nil {
+			return nil, err
+		}
+		st.Finally = blk
+	} else {
+		p.i = save2
+	}
 	return st, nil
 }
 
@@ -525,6 +577,34 @@ func (p *Parser) parseFnStmt() (domain.Stmt, error) {
 		return &domain.FnDecl{Fn: fn, P: pos(start)}, nil
 	}
 	// Anonymous function used as an expression statement.
+	p.i = save
+	x, err := p.parseExpr()
+	if err != nil {
+		return nil, err
+	}
+	return &domain.ExprStmt{X: x, P: pos(start)}, nil
+}
+
+// parseAsyncStmt parses `async fn name(...) { ... }` and the anonymous form
+// `async fn(...) { ... }` used as an expression statement.
+func (p *Parser) parseAsyncStmt() (domain.Stmt, error) {
+	start := p.cur() // async
+	save := p.i
+	p.next() // async
+	if p.at(domain.TokenKeyword) && p.cur().Text == "fn" {
+		p.next() // fn
+		if p.at(domain.TokenIdent) {
+			name := p.next().Text
+			fn, err := p.parseFnRest(name, pos(start))
+			if err != nil {
+				return nil, err
+			}
+			fn.Async = true
+			return &domain.FnDecl{Fn: fn, P: pos(start)}, nil
+		}
+	}
+	// Anonymous async function (or a plain expression that happens to start
+	// with `async fn`): reparse from `async` as an expression.
 	p.i = save
 	x, err := p.parseExpr()
 	if err != nil {

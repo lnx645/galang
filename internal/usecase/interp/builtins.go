@@ -86,7 +86,7 @@ func (in *Interp) builtinNames() map[string]domain.Value {
 	regs("type", 1, 1, func(in *Interp, args []domain.Value, pos domain.Position) (domain.Value, error) {
 		return domain.Str(domain.TypeName(args[0])), nil
 	})
-	for _, t := range []string{"int", "float", "string", "bool", "array", "object", "null", "error", "function"} {
+	for _, t := range []string{"int", "float", "string", "bool", "array", "object", "null", "error", "function", "promise"} {
 		want := t
 		regs("is_"+want, 1, 1, func(in *Interp, args []domain.Value, pos domain.Position) (domain.Value, error) {
 			return domain.Bool(string(domain.TypeName(args[0])) == want), nil
@@ -131,6 +131,30 @@ func (in *Interp) builtinNames() map[string]domain.Value {
 	})
 	regs("bool", 1, 1, func(in *Interp, args []domain.Value, pos domain.Position) (domain.Value, error) {
 		return domain.Bool(domain.Truthy(args[0])), nil
+	})
+
+	// ---- async ----
+	// gather resolves every argument (promises run now) and returns an
+	// array of results; the first rejection propagates.
+	reg("gather", 0, func(in *Interp, args []domain.Value, pos domain.Position) (domain.Value, error) {
+		out := make([]domain.Value, 0, len(args))
+		for _, a := range args {
+			v, err := in.awaitValue(a, pos)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, v)
+		}
+		return &domain.Arr{Items: out}, nil
+	})
+	// spawn queues a call as a fire-and-forget promise; it runs at the
+	// next await/drain.
+	reg("spawn", 1, func(in *Interp, args []domain.Value, pos domain.Position) (domain.Value, error) {
+		f := args[0]
+		rest := append([]domain.Value(nil), args[1:]...)
+		return in.newPromise(pos, func() (domain.Value, error) {
+			return in.callValue(f, rest, pos)
+		}), nil
 	})
 
 	// ---- errors ----

@@ -44,13 +44,16 @@ func infixPrec(t domain.TokenType) int {
 // precedence its operand is parsed with.
 //
 // `not` binds looser than the comparison operators, so `not a == b` reads as
-// `not (a == b)`. `-` binds tightest, so `-a * b` is `(-a) * b`.
+// `not (a == b)`. `-` binds tightest, so `-a * b` is `(-a) * b`. `await`
+// binds like a prefix: `await f() + 1` is `(await f()) + 1`.
 func prefixOp(t domain.TokenType) (int, bool) {
 	switch t {
 	case domain.TokenMinus:
 		return precUnary, true
 	case domain.TokenNot:
 		return precAnd, true
+	case domain.TokenAwait:
+		return precUnary, true
 	}
 	return 0, false
 }
@@ -316,6 +319,19 @@ func (p *Parser) parsePrimary() (domain.Expr, error) {
 		case "fn":
 			p.next()
 			return p.parseFnRest("", pos(t))
+		case "async":
+			p.next()
+			// `async fn(...)`: the fn keyword must follow.
+			if p.at(domain.TokenKeyword) && p.cur().Text == "fn" {
+				p.next()
+				fn, err := p.parseFnRest("", pos(t))
+				if err != nil {
+					return nil, err
+				}
+				fn.Async = true
+				return fn, nil
+			}
+			return nil, p.errAt("expected 'fn' after 'async'")
 		}
 		// Type names double as builtin constructors, so `error(...)` and
 		// `object(...)` work despite being keywords.

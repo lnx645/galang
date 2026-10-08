@@ -91,6 +91,9 @@ type Interp struct {
 	// allocating a slice per call, which is what makes recursion allocation
 	// free.
 	argStack []domain.Value
+	// pending holds promises whose thunk has not run yet; drained after
+	// Run and after each HTTP handler so unawaited spawns still execute.
+	pending []*promise
 	// depth guards against runaway recursion.
 	depth    int
 	maxDepth int
@@ -234,6 +237,11 @@ func (in *Interp) Run(prog *parse.Program) (domain.Value, error) {
 	in.growGlobals()
 
 	_, v, err := body(in.globals)
+	// Promises created but never awaited still run, so `spawn` at top level
+	// has an effect before the program exits.
+	if derr := in.drainPending(); err == nil && derr != nil {
+		err = derr
+	}
 	return v, err
 }
 

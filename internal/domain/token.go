@@ -28,6 +28,9 @@ const (
 	TokenAnd TokenType = "and"
 	TokenNot TokenType = "not"
 
+	// TokenAwait is the unary `await` operator: it resolves a promise.
+	TokenAwait TokenType = "await"
+
 	// Operators
 	TokenPlus    TokenType = "+"
 	TokenMinus   TokenType = "-"
@@ -112,7 +115,8 @@ var Keywords = map[string]bool{
 	"in": true, "while": true, "break": true, "continue": true,
 	"print": true, "println": true, "and": true, "or": true, "not": true,
 	"true": true, "false": true, "null": true, "throw": true, "try": true,
-	"catch": true, "use": true, "var": true,
+	"catch": true, "finally": true, "use": true, "var": true,
+	"async": true, "await": true,
 
 	// Type names usable in declarations and annotations.
 	"int": true, "float": true, "number": true, "string": true, "bool": true,

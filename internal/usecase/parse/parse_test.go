@@ -110,7 +110,7 @@ func TestLexerErrors(t *testing.T) {
 		{`$`, "'$' must be followed"},
 		{`$1abc`, "'$' must be followed"},
 		{`@`, "unexpected character"},
-		{`!`, "use 'not'"},
+		{`&`, "use '&&'"},
 	}
 	for _, c := range cases {
 		_, err := lex.Tokenize(c.src, "t.ga")

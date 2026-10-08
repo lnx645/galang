@@ -266,6 +266,9 @@ func (l *Lexer) emitName(name string, p domain.Position, dollar bool) {
 		case "not":
 			l.emit(domain.TokenNot, name, p)
 			return
+		case "await":
+			l.emit(domain.TokenAwait, name, p)
+			return
 		}
 		l.emit(domain.TokenKeyword, name, p)
 		return

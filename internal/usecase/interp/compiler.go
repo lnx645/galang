@@ -842,9 +842,32 @@ func (c *compiler) compileThrow(x *domain.ThrowStmt, s *cscope) stmtFn {
 
 func (c *compiler) compileTry(x *domain.TryStmt, s *cscope) stmtFn {
 	body := c.compileStmts(x.Body.Stmts, c.scopeForBlock(s))
-	if x.Catch == nil {
-		return func(f *frame) (ctrl, domain.Value, error) { return body(f) }
+
+	var final stmtFn
+	if x.Finally != nil {
+		final = c.compileStmts(x.Finally.Stmts, c.scopeForBlock(s))
 	}
+	runFinally := func(f *frame) error {
+		if final == nil {
+			return nil
+		}
+		_, _, ferr := final(f)
+		return ferr
+	}
+
+	if x.Catch == nil {
+		if final == nil {
+			return func(f *frame) (ctrl, domain.Value, error) { return body(f) }
+		}
+		return func(f *frame) (ctrl, domain.Value, error) {
+			k, v, err := body(f)
+			if ferr := runFinally(f); ferr != nil {
+				return ctrlNone, nil, ferr
+			}
+			return k, v, err
+		}
+	}
+
 	catchScope := c.scopeForBlock(s)
 	var catchErrSlot *cslot
 	if x.HasVar {
@@ -860,15 +883,26 @@ func (c *compiler) compileTry(x *domain.TryStmt, s *cscope) stmtFn {
 	return func(f *frame) (ctrl, domain.Value, error) {
 		k, v, err := body(f)
 		if err == nil {
+			if ferr := runFinally(f); ferr != nil {
+				return ctrlNone, nil, ferr
+			}
 			return k, v, nil
 		}
 		re, ok := err.(*Error)
 		if !ok || !re.Thrown() {
-			// Interpreter bugs are never swallowed by user code.
+			// Interpreter bugs are never swallowed by user code,
+			// but finally still runs for cleanup.
+			if ferr := runFinally(f); ferr != nil {
+				return ctrlNone, nil, ferr
+			}
 			return ctrlNone, nil, err
 		}
 		storeSlot(f, catchErrSlot, name, re.Value)
-		return handler(f)
+		ck, cv, cerr := handler(f)
+		if ferr := runFinally(f); ferr != nil {
+			return ctrlNone, nil, ferr
+		}
+		return ck, cv, cerr
 	}
 }
 
@@ -922,7 +956,7 @@ func (c *compiler) compileFnExpr(x *domain.FnExpr, s *cscope) (func(f *frame) do
 	// be shareable, so those slots become boxes up front.
 	body.forceCell = hasFnLiteral(x.Body.Stmts)
 
-	fn := &compFn{name: x.Name, retType: x.Ret, elem: elemOf(x.Ret), pos: x.P}
+	fn := &compFn{name: x.Name, retType: x.Ret, elem: elemOf(x.Ret), async: x.Async, pos: x.P}
 	for _, p := range x.Params {
 		isInt := p.Type != nil && (p.Type.Name == "int" || p.Type.Name == "number")
 		// Parameters join the function scope so the body resolves them.
@@ -1089,6 +1123,9 @@ func hasFnLiteral(stmts []domain.Stmt) bool {
 				walkStmts(x.Body.Stmts)
 				if x.Catch != nil {
 					walkStmts(x.Catch.Stmts)
+				}
+				if x.Finally != nil {
+					walkStmts(x.Finally.Stmts)
 				}
 			case *domain.Block:
 				walkStmts(x.Stmts)

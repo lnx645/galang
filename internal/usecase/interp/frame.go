@@ -84,6 +84,8 @@ type compFn struct {
 	body     stmtFn
 	params   []paramSlot
 	captures []capture
+	// async marks `async fn`: a call returns a promise resolved by await.
+	async bool
 	// minArgs counts parameters without a default value.
 	minArgs int
 	// retType is the declared return annotation, if any.

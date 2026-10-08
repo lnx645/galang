@@ -21,6 +21,7 @@ const (
 	TypeArray      TypeTag = "array"
 	TypeObject     TypeTag = "object"
 	TypeFunc       TypeTag = "function"
+	TypePromise    TypeTag = "promise"
 	TypeError      TypeTag = "error"
 	TypeCallObject TypeTag = "callable-object" // request, response, session, ...
 )

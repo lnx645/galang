@@ -192,6 +192,9 @@ type FnExpr struct {
 	Ret   *TypeExpr
 	Body  *Block
 	Arrow bool // written as fn(x) => expr
+	// Async marks `async fn`: calling it returns a promise instead of the
+	// result, resolved by `await`/`gather`.
+	Async bool
 	P     Position
 }
 
