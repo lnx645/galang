@@ -126,27 +126,45 @@ file.write("output.txt", "isi")       // write/overwrite a file
 
 ## database
 
+A real connection to **SQLite**, **MySQL**, or **PostgreSQL** via
+`database/sql` — the driver is chosen from the DSN prefix.
+
 ```garurda
 use "database"
 
-$db = database.connect("sqlite:///app.db")
+$db = database.connect("sqlite:///app.db")   // or "sqlite:app.db"
 $rows = $db.query("SELECT * FROM users")
 $one  = $db.query_first("SELECT * FROM users WHERE id = ?", [$id])
-$row  = $db.query_row("SELECT count(*) FROM users")
+$row  = $db.query_row("SELECT count(*) AS n FROM users")
 $res  = $db.exec("INSERT INTO users (name) VALUES (?)", ["Dadan"])
+$db.close()
 ```
 
-**Important note: the `database` functions are currently stubs/placeholders** —
-the names and signatures are already in place, but there is no real database
-connection behind them. This is planned as the next step after v0.2.
-
-| Function | Plan |
+| Method | Result |
 |---|---|
-| `connect(dsn)` | open a connection (dsn `sqlite:///...`, etc.) |
-| `query(sql, params)` | SELECT → all rows |
-| `query_first(sql, params)` | SELECT → the first row |
-| `query_row(sql, params)` | SELECT → a single row |
-| `exec(sql, params)` | INSERT/UPDATE/DELETE → execution result |
+| `$db.query(sql, [$params])` | array of objects — one per row; `[]` when empty |
+| `$db.query_first(sql, [$params])` | first row object, or `null` |
+| `$db.query_row(sql, [$params])` | row object, or `null` |
+| `$db.exec(sql, [$params])` | `{rows_affected, last_insert_id}` |
+| `$db.close()` | close the connection (returns `null`) |
+| `$db.driver` | driver name: `sqlite3` / `mysql` / `postgres` |
+
+- **DSN**: `sqlite:path` or a plain path (including `sqlite::memory:`)
+  → SQLite; `mysql:...` / `mysql://...` → MySQL;
+  `postgres://...` / `postgresql://...` → PostgreSQL.
+- **Parameters** are optional and passed as an **array**. Placeholders
+  follow the driver: `?` for sqlite/mysql, `$1, $2, ...` for postgres.
+- **Result types**: NULL → `null`, INTEGER → number, REAL → number,
+  text/`[]byte` → string, time (drivers that support it) → RFC3339
+  string. SQLite stores `true/false` as 1/0 (integers).
+- **Errors**: a failed connection or bad SQL throws a `db_error`
+  (status 500) catchable with `try/catch` — `e.code` is `"db_error"`.
+  Malformed arguments (e.g. parameters that are not an array) are
+  ordinary programming errors.
+- **CGO for SQLite**: native binaries (e.g. `gar-linux-amd64`) include
+  SQLite support; cross-compiled binaries (windows/darwin from Linux)
+  are built without CGO — SQLite is inactive there, but MySQL and
+  PostgreSQL (pure Go) still work.
 
 ---
 

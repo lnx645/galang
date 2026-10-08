@@ -550,7 +550,7 @@ use "math"
 use "time"
 use "file"
 use "http"
-use "database"    // masih stub
+use "database"    // SQLite, MySQL, PostgreSQL
 ```
 
 Detail: [Modul Standar](modules.md).
@@ -561,5 +561,4 @@ Detail: [Modul Standar](modules.md).
 - Class & method — direncanakan v2
 - Operator compound (`+=`) dan `??`
 - Paralelisme I/O async (async I/O builtin) — async saat ini kooperatif
-- Modul `database` — fungsi masih stub (lihat [Modul Standar](modules.md))
-- `session`, SMTP, dan unit-test framework — direncanakan v0.3
+- SMTP dan unit-test framework — direncanakan

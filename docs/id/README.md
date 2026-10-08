@@ -40,12 +40,13 @@ Sudah lengkap:
 - Operator `&&`, `||`, `!` selain `and`, `or`, `not`
 - `async fn` / `await` / `gather` / `spawn` (eksekusi kooperatif)
 - `try` / `catch` / `finally`
+- Middleware HTTP (`http.use`) + sesi HTTP (`http.session`, cookie HttpOnly)
+- Modul `database` nyata: SQLite, MySQL, PostgreSQL
 - Bytecode VM + fast path int
 
 Belum ada (direncanakan):
 
-- Modul `database` — nama fungsi sudah ada, isi masih stub
-- Session HTTP, SMTP, unit-test framework — rencana v0.3
+- SMTP dan unit-test framework
 - Generic `<T>` (v1), class & method (v2)
 - Paralelisme I/O async — async saat ini kooperatif
 

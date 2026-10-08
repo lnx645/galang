@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"garurda/internal/domain"
+	"garurda/internal/infra/dbsql"
 )
 
 // ---- type checking ----
@@ -541,27 +542,21 @@ func (in *Interp) newHttpModule() *domain.Obj {
 	return m
 }
 
-// newDatabaseModule creates the "database" module with connection and query functions.
+// newDatabaseModule creates the "database" module. database.connect(dsn)
+// opens a real connection and returns an object with query /
+// query_first / query_row / exec / close methods (see database.go).
 func (in *Interp) newDatabaseModule() *domain.Obj {
 	m := domain.NewObj()
 	m.Set("connect", in.typeFn("database.connect", 1, func(in *Interp, a []domain.Value, p domain.Position) (domain.Value, error) {
-		_, ok := a[0].(domain.Str)
+		dsn, ok := a[0].(domain.Str)
 		if !ok {
 			return nil, in.errf(p, "database.connect() expects a connection string")
 		}
-		return domain.NewObj(), nil
-	}))
-	m.Set("query", in.typeFn("database.query", 1, func(in *Interp, a []domain.Value, p domain.Position) (domain.Value, error) {
-		return domain.Str("ok"), nil
-	}))
-	m.Set("query_row", in.typeFn("database.query_row", 1, func(in *Interp, a []domain.Value, p domain.Position) (domain.Value, error) {
-		return domain.Str("ok"), nil
-	}))
-	m.Set("query_first", in.typeFn("database.query_first", 1, func(in *Interp, a []domain.Value, p domain.Position) (domain.Value, error) {
-		return domain.Str("ok"), nil
-	}))
-	m.Set("exec", in.typeFn("database.exec", 1, func(in *Interp, a []domain.Value, p domain.Position) (domain.Value, error) {
-		return domain.Str("ok"), nil
+		db, driver, err := dbsql.Open(string(dsn))
+		if err != nil {
+			return nil, in.dbThrow("cannot connect: "+err.Error(), p)
+		}
+		return in.connObj(db, driver), nil
 	}))
 	return m
 }

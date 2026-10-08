@@ -1,15 +1,24 @@
 // Contoh aplikasi web publik Garurda — demo di port 5800.
 //
 // Menunjukkan: routing + path parameter, middleware http.use, sesi
-// http.session (cookie HttpOnly), Blade template (@extends, @section,
-// @yield, @include, @foreach, @if), file statis CSS/JS, respons JSON
-// otomatis, structured response, dan error berstatus.
+// http.session (cookie HttpOnly), database SQLite nyata (query/exec),
+// Blade template (@extends, @section, @yield, @include, @foreach, @if),
+// file statis CSS/JS, respons JSON otomatis, structured response, dan
+// error berstatus.
 //
 // Jalankan dari direktori ini:
 //     cd examples/webapp && gar run main.ga
 use "http"
 use "strings"
 use "time"
+use "database"
+use "file"
+
+// Koneksi SQLite + bootstrap idempoten: schema.sql memakai
+// CREATE TABLE IF NOT EXISTS + INSERT OR IGNORE, jadi aman dijalankan
+// setiap start. File demo.db dibuat otomatis (lihat .gitignore).
+$db = database.connect("sqlite:demo.db")
+$db.exec(file.read("schema.sql"))
 
 http.views("views")
 http.static("/public/", "public")
@@ -96,12 +105,13 @@ http.POST("/api/echo", fn($req) {
     return {diterima: $data, metode: $req.method, panjang_body: len($req.body)}
 })
 
-// Error berstatus: id selain "1" → 404 + body JSON terstruktur.
+// Ambil dari SQLite: baris → objek; tak ada di database → 404.
 http.GET("/api/user/{id}", fn($req) {
-    if $req.params.id != "1" {
+    $row = $db.query_first("SELECT id, name, email FROM users WHERE id = ?", [$req.params.id])
+    if $row == null {
         throw not_found("user dengan id " + $req.params.id + " tidak ada")
     }
-    return {id: 1, nama: "Dadan", peran: "admin"}
+    return $row
 })
 
 // Respons array → JSON array otomatis.

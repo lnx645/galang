@@ -40,12 +40,13 @@ Already complete:
 - The `&&`, `||`, `!` operators in addition to `and`, `or`, `not`
 - `async fn` / `await` / `gather` / `spawn` (cooperative execution)
 - `try` / `catch` / `finally`
+- HTTP middleware (`http.use`) + HTTP sessions (`http.session`, HttpOnly cookie)
+- Real `database` module: SQLite, MySQL, PostgreSQL
 - Bytecode VM + fast path int
 
 Not yet available (planned):
 
-- The `database` module — function names exist, the contents are still stubs
-- HTTP sessions, SMTP, a unit-test framework — planned for v0.3
+- SMTP and a unit-test framework
 - Generics `<T>` (v1), classes & methods (v2)
 - Async I/O parallelism — async is currently cooperative
 

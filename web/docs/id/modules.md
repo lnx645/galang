@@ -125,27 +125,45 @@ file.write("output.txt", "isi")       // tulis/timpa file
 
 ## database
 
+Koneksi nyata ke **SQLite**, **MySQL**, atau **PostgreSQL** lewat
+`database/sql` — driver dipilih dari prefiks DSN.
+
 ```garurda
 use "database"
 
-$db = database.connect("sqlite:///app.db")
+$db = database.connect("sqlite:///app.db")   // atau "sqlite:app.db"
 $rows = $db.query("SELECT * FROM users")
 $one  = $db.query_first("SELECT * FROM users WHERE id = ?", [$id])
-$row  = $db.query_row("SELECT count(*) FROM users")
+$row  = $db.query_row("SELECT count(*) AS n FROM users")
 $res  = $db.exec("INSERT INTO users (name) VALUES (?)", ["Dadan"])
+$db.close()
 ```
 
-**Catatan penting: fungsi `database` saat ini masih stub/placeholder** —
-nama dan tanda tangannya sudah terpasang, tetapi belum ada koneksi database
-nyata di baliknya. Ini direncanakan sebagai langkah berikutnya setelah v0.2.
-
-| Fungsi | Rencana |
+| Method | Hasil |
 |---|---|
-| `connect(dsn)` | buka koneksi (dsn `sqlite:///...`, dsb.) |
-| `query(sql, params)` | SELECT → semua baris |
-| `query_first(sql, params)` | SELECT → satu baris pertama |
-| `query_row(sql, params)` | SELECT → satu baris |
-| `exec(sql, params)` | INSERT/UPDATE/DELETE → hasil eksekusi |
+| `$db.query(sql, [$params])` | array objek — satu per baris; `[]` bila kosong |
+| `$db.query_first(sql, [$params])` | objek baris pertama, atau `null` |
+| `$db.query_row(sql, [$params])` | objek baris, atau `null` |
+| `$db.exec(sql, [$params])` | `{rows_affected, last_insert_id}` |
+| `$db.close()` | tutup koneksi (return `null`) |
+| `$db.driver` | nama driver: `sqlite3` / `mysql` / `postgres` |
+
+- **DSN**: `sqlite:path` atau path biasa (termasuk `sqlite::memory:`)
+  → SQLite; `mysql:...` / `mysql://...` → MySQL;
+  `postgres://...` / `postgresql://...` → PostgreSQL.
+- **Parameter** opsional dikirim sebagai **array**. Placeholder mengikuti
+  driver: `?` untuk sqlite/mysql, `$1, $2, ...` untuk postgres.
+- **Tipe hasil**: NULL → `null`, INTEGER → number, REAL → number,
+  teks/`[]byte` → string, waktu (driver yang mendukung) → string
+  RFC3339. SQLite menyimpan `true/false` sebagai 1/0 (integer).
+- **Galat**: koneksi gagal atau SQL salah melempar error `db_error`
+  (status 500) yang bisa ditangkap `try/catch` — `e.code` = `"db_error"`.
+  Salah bentuk argumen (mis. parameter bukan array) adalah galat
+  pemrograman seperti biasa.
+- **CGO untuk SQLite**: biner native (mis. `gar-linux-amd64`) sudah
+  mendukung SQLite; biner hasil silang (windows/darwin dari Linux)
+  dibangun tanpa CGO — SQLite tidak aktif di sana, tetapi MySQL dan
+  PostgreSQL (pure Go) tetap berfungsi.
 
 ---
 

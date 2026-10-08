@@ -1,14 +1,21 @@
-// Database migration script
-// Jalankan: gar run examples/webapp/migrate.ga
-
+// Migrasi database contoh — jalankan dari direktori ini:
+//     gar run migrate.ga
+//
+// Membaca schema.sql (idempoten: CREATE TABLE IF NOT EXISTS +
+// INSERT OR IGNORE) lalu mencetak jumlah baris sebagai bukti.
+// main.ga juga melakukan bootstrap yang sama saat start, jadi script
+// ini opsional — berguna untuk melihat langkah migrasi terpisah.
 use "database"
-use "strings"
-use "time"
+use "file"
 
-print("Running migrations...")
+print("Membaca schema.sql ...")
+$sql = file.read("schema.sql")
 
-$stmt = "CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, name VARCHAR(255) NOT NULL, email VARCHAR(255) UNIQUE NOT NULL, password_hash VARCHAR(255) NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);"
+$db = database.connect("sqlite:demo.db")
+print("Menjalankan migrasi ...")
+$db.exec($sql)
 
-$parts = strings.split($stmt, ";")
-
-print("Migrations completed!")
+$users = $db.query_row("SELECT count(*) AS n FROM users")
+$posts = $db.query_row("SELECT count(*) AS n FROM posts")
+print("Migrasi selesai. users=" + str($users.n) + ", posts=" + str($posts.n))
+$db.close()

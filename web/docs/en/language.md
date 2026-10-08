@@ -553,7 +553,7 @@ use "math"
 use "time"
 use "file"
 use "http"
-use "database"    // still a stub
+use "database"    // SQLite, MySQL, PostgreSQL
 ```
 
 Details: [Standard Library](modules.md).
@@ -564,6 +564,4 @@ Details: [Standard Library](modules.md).
 - Classes & methods — planned for v2
 - Compound assignment (`+=`) and `??`
 - Async I/O parallelism (built-in async I/O) — async is currently cooperative
-- The `database` module — the functions are still stubs (see the
-  [Standard Library](modules.md))
-- `session`, SMTP, and a unit-test framework — planned for v0.3
+- SMTP and a unit-test framework — planned
