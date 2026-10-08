@@ -1,6 +1,5 @@
-// Web application example for Garurda v0.2 with HTTP, templates, static files
+// Web application example for Garurda v0.2
 // Jalankan: gar run examples/webapp/main.ga
-// Buka: http://localhost:8872
 
 use "http"
 use "strings"
@@ -15,8 +14,7 @@ http.GET("/", fn($req) {
 })
 
 http.GET("/health", fn($req) {
-    $now = time.now()
-    return {status: 200, type: "application/json", body: "{\"status\":\"ok\",\"now\":\"" + $now + "\"}"}
+    return {status: "ok", now: time.now()}
 })
 
 http.GET("/greet/{name}", fn($req) {
@@ -24,8 +22,12 @@ http.GET("/greet/{name}", fn($req) {
     return "Hello, " + $name + "!"
 })
 
-http.stream("/events", fn($req) {
-    return "event: ping\ndata: {}"
+http.GET("/api/users", fn($req) {
+    return http.json({users: ["Alice", "Bob", "Charlie"]})
 })
 
-http.listen(8872)
+http.stream("/events", fn($req) {
+    return "ping"
+})
+
+http.listen(8873)

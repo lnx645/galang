@@ -300,13 +300,14 @@ type ThrowStmt struct {
 	P     Position
 }
 
-// TryStmt is try / catch e.
+// TryStmt is try / catch e / finally.
 type TryStmt struct {
-	Body   *Block
-	Var    string
-	HasVar bool
-	Catch  *Block
-	P      Position
+	Body    *Block
+	Var     string
+	HasVar  bool
+	Catch   *Block
+	Finally *Block
+	P       Position
 }
 
 // UseStmt imports a builtin module: use "strings".
