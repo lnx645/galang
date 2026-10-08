@@ -555,6 +555,42 @@ use "database"    // SQLite, MySQL, PostgreSQL
 
 Detail: [Modul Standar](modules.md).
 
+### Modul dari file sendiri
+
+`use` juga memuat file `.ga` lain — path relatif terhadap file yang
+memanggilnya. File itu menjadi namespace yang berisi semua `fn`
+top-level-nya:
+
+```garurda
+// db.ga — satu direktori dengan program utama
+$koneksi = database.connect("sqlite:app.db")   // privat: tidak ikut diekspor
+
+fn ambil_user($id) {
+    return $koneksi.query_first("SELECT * FROM users WHERE id = ?", [$id])
+}
+```
+
+```garurda
+// main.ga
+use "db"              // mencari db.ga di direktori main.ga
+use "lib/util.ga"     // path relatif; namespace yang diikat: util
+print(db.ambil_user(1).name)
+```
+
+Aturan:
+
+- **Modul bawaan menang lebih dulu** — `use "http"` selalu memuat modul
+  bawaan, apa pun `http.ga` di direktori kerja.
+- **Yang diekspor hanya `fn`** — variabel top-level file bersifat privat:
+  terbaca oleh `fn` di file yang sama (contohnya `$koneksi` di atas),
+  tetapi `db.rahasia` bernilai `null`.
+- **File dieksekusi sekali** — `use` kedua memakai objek yang sama;
+  rantai melingkar (`a.ga` → `b.ga` → `a.ga`) ditolak dengan pesan jelas.
+- **`use` di dalam file modul juga boleh** — path berikutnya relatif
+  terhadap direktori file modul itu sendiri.
+- Galat kompilasi maupun runtime di dalam modul dilaporkan dengan nama
+  file modulnya.
+
 ## 15. Yang Belum Ada
 
 - Generic `<T>` — direncanakan v1

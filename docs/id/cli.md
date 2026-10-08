@@ -77,7 +77,7 @@ Preload `file.ga` berguna untuk menyiapkan fungsi/modul sebelum bereksperimen.
 ## Environment
 
 `gar run` tidak membaca flag khusus; konfigurasi aplikasi (port dsb.) diatur
-di dalam script, mis. `http.listen(8868)`.
+di dalam script, mis. `http.listen(8869)`.
 
 ## Systemd Service (deployment)
 

@@ -9,7 +9,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
+	"sync"
 
 	"garurda/internal/domain"
 	"garurda/internal/infra/template"
@@ -108,6 +110,20 @@ type Interp struct {
 	// http.session() work without an explicit argument. Guarded by
 	// webRoutes.execMu: only one handler runs at a time.
 	curReq *domain.Obj
+	// curDir is the directory of the file whose top-level code is
+	// running; `use` resolves relative file modules against it.
+	curDir string
+	// fileModules caches file modules by absolute path: a module body
+	// runs once per interpreter, no matter how many times it is used.
+	fileModules map[string]domain.Value
+	// loading tracks in-progress loads to reject circular use chains.
+	// sync.Map because nested loads happen on the same goroutine — a
+	// plain mutex would deadlock on a module that uses another module.
+	loading sync.Map
+	// builtinVals is the frozen builtin name→value map; every file
+	// module scope receives these values as its prelude, so modules
+	// see print/len/... but never the caller's globals.
+	builtinVals map[string]domain.Value
 	// engine renders Blade templates for the http module.
 	engine *template.Engine
 	// File is the name used in diagnostics for the program being run.
@@ -148,6 +164,7 @@ func New(out, errOut io.Writer) *Interp {
 	in.gscope = gs
 	in.globals = &frame{}
 	in.globals.glob = in.globals
+	in.fileModules = map[string]domain.Value{}
 	in.argStack = make([]domain.Value, 0, 64)
 	in.vstack = make([]int64, 0, 256)
 	in.locals = make([]int64, 0, 256)
@@ -160,18 +177,32 @@ func New(out, errOut io.Writer) *Interp {
 }
 
 func (in *Interp) errf(pos domain.Position, format string, args ...interface{}) *Error {
-	return &Error{Msg: fmt.Sprintf(format, args...), Pos: pos, File: in.File, Stack: in.snapshot()}
+	return &Error{Msg: fmt.Sprintf(format, args...), Pos: pos, File: in.curFile(), Stack: in.snapshot()}
 }
 
 // Throw builds a catchable error value.
 func (in *Interp) Throw(msg string, code string, status int, pos domain.Position) *Error {
 	ev := &domain.ErrorValue{Message: msg, Code: code, Status: status}
-	return &Error{Msg: msg, Pos: pos, File: in.File, Value: ev, Stack: in.snapshot()}
+	return &Error{Msg: msg, Pos: pos, File: in.curFile(), Value: ev, Stack: in.snapshot()}
 }
 
 // wrapThrown converts an error value into a catchable runtime error.
 func (in *Interp) wrapThrown(ev *domain.ErrorValue, p domain.Position) error {
-	return &Error{Msg: ev.Message, Pos: p, File: in.File, Value: ev, Stack: in.snapshot()}
+	return &Error{Msg: ev.Message, Pos: p, File: in.curFile(), Value: ev, Stack: in.snapshot()}
+}
+
+// curFile is the source file owning the innermost active function — where a
+// runtime error must be reported. in.File only names the file whose top-level
+// is running; calling into a function defined in another file does not switch
+// it, but the trace does record the callee.
+func (in *Interp) curFile() string {
+	i := in.traceDepth - 1
+	if i >= 0 && i < len(in.traceFn) {
+		if fn := in.traceFn[i]; fn != nil && fn.file != "" {
+			return fn.file
+		}
+	}
+	return in.File
 }
 
 func (in *Interp) snapshot() []StackFrame {
@@ -181,7 +212,15 @@ func (in *Interp) snapshot() []StackFrame {
 	}
 	out := make([]StackFrame, 0, n)
 	for i := 0; i < n; i++ {
-		fr := StackFrame{Pos: in.tracePos[i], File: in.File}
+		// Frame i was entered from frame i-1 (or top level), so the
+		// call-site position belongs to the enclosing function's file.
+		file := in.File
+		if i > 0 && i-1 < len(in.traceFn) {
+			if fn := in.traceFn[i-1]; fn != nil && fn.file != "" {
+				file = fn.file
+			}
+		}
+		fr := StackFrame{Pos: in.tracePos[i], File: file}
 		if in.traceFn[i] != nil {
 			fr.Func = displayName(in.traceFn[i].name)
 		}
@@ -230,7 +269,9 @@ func (in *Interp) Eval(src, file string) (domain.Value, error) {
 func (in *Interp) Run(prog *parse.Program) (domain.Value, error) {
 	prev := in.File
 	in.File = prog.File
-	defer func() { in.File = prev }()
+	prevDir := in.curDir
+	in.curDir = filepath.Dir(prog.File)
+	defer func() { in.File, in.curDir = prev, prevDir }()
 
 	// Extend the global layout with any names this program introduces.
 	c := &compiler{in: in, globalScope: in.gscope, captures: &[]capture{}}

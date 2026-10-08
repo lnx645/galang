@@ -106,7 +106,9 @@ func (in *Interp) callClosure(c *closure, args []domain.Value, pos domain.Positi
 
 	if runErr != nil {
 		if re, ok := runErr.(*Error); ok {
-			return nil, re.Frame(StackFrame{Func: displayName(c.fn.name), File: in.File, Pos: pos})
+			// traceDepth is already popped: curFile is the caller, which
+			// is where this call-site position lives.
+			return nil, re.Frame(StackFrame{Func: displayName(c.fn.name), File: in.curFile(), Pos: pos})
 		}
 		return nil, runErr
 	}

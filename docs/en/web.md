@@ -11,7 +11,7 @@ http.GET("/", fn($req) {
     return "Halo dari Garurda!"
 })
 
-http.listen(8868)
+http.listen(8869)
 ```
 
 ## Table of Contents
@@ -52,7 +52,7 @@ http.DELETE("/users/{id}", fn($req) {
     return "Deleted"
 })
 
-http.listen(8868)
+http.listen(8869)
 ```
 
 - Path parameters are written as `{nama}` and are available at
@@ -100,7 +100,7 @@ http.use(fn($req, $next) {
 
 http.GET("/", fn($req) { return "public" })
 http.GET("/admin", fn($req) { return "secret" })
-http.listen(8868)
+http.listen(8869)
 ```
 
 Rules:
@@ -433,12 +433,12 @@ http.POST("/api/users", fn($req) {
     return http.json({id: 1, name: $data.name}, 201)
 })
 
-http.listen(8868)
+http.listen(8869)
 ```
 
 Run it:
 
 ```bash
 gar run main.ga
-curl http://localhost:8868/health     # {"status":"ok"}
+curl http://localhost:8869/health     # {"status":"ok"}
 ```

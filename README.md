@@ -29,9 +29,15 @@ Halo, Dunia!
 - Kompresi: `[$n * 2 for $n in $xs]`
 - Interpolasi string: `"Halo ${nama}"` dan `"Halo $nama"`
 - Penanganan error: `throw` + `try`/`catch e` dengan `status` HTTP
+- `async`/`await`, `spawn`, Promise (`race`, `any`)
+- Web: server HTTP + routing, middleware `http.use`, sesi, template Blade,
+  file statis, SSE, WebSocket — [dokumentasi web](docs/id/web.md)
+- Database: `database.connect` (SQLite, MySQL, PostgreSQL)
 - Pustaka bawaan: `strings`, `math`, `time`, `json_encode`/`json_decode`, `html_escape`
+- Modul: `use "strings"` memuat pustaka bawaan; `use "db.ga"` memuat file
+  `.ga` lokal menjadi namespace (dieksekusi sekali)
 - CLI: `gar run`, `gar repl`
-- 60+ test, benchmark dengan `-benchmem`
+- 80+ test, benchmark dengan `-benchmem`
 
 Lihat tur lengkap sintaks yang berjalan hari ini:
 
@@ -41,8 +47,9 @@ $ make run
 
 ## Yang belum ada (lihat `docs/SPEC.md`)
 
-Server HTTP + template Blade, `async`/`await`, database, WebSocket, SSE, SMTP.
-Peta jalan lengkap ada di spesifikasi.
+SMTP, unit-test framework (`gar test`), HTTP client, operator compound
+(`+=`) dan `??`, generic `<T>`, class & method, async I/O. Daftar terbaru:
+[Yang Belum Ada](docs/id/language.md).
 
 ## Menjalankan
 

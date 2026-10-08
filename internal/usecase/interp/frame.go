@@ -98,6 +98,10 @@ type compFn struct {
 	retType *domain.TypeExpr
 	// elem is the element type of an `array<T>` return annotation.
 	elem *domain.TypeExpr
+	// file is the source file this function was compiled from, so a
+	// runtime error inside it is reported against the file the code
+	// lives in, not the file whose top-level happens to be running.
+	file string
 	pos  domain.Position
 }
 

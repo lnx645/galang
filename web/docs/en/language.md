@@ -558,6 +558,43 @@ use "database"    // SQLite, MySQL, PostgreSQL
 
 Details: [Standard Library](modules.md).
 
+### Modules from your own files
+
+`use` also loads other `.ga` files — paths are relative to the file that
+issues the `use`. The file becomes a namespace holding all of its
+top-level `fn`s:
+
+```garurda
+// db.ga — same directory as the main program
+$koneksi = database.connect("sqlite:app.db")   // private: not exported
+
+fn ambil_user($id) {
+    return $koneksi.query_first("SELECT * FROM users WHERE id = ?", [$id])
+}
+```
+
+```garurda
+// main.ga
+use "db"              // looks for db.ga next to main.ga
+use "lib/util.ga"     // relative path; the bound namespace: util
+print(db.ambil_user(1).name)
+```
+
+Rules:
+
+- **Built-in modules win first** — `use "http"` always loads the built-in
+  module, whatever `http.ga` sits in the working directory.
+- **Only `fn` is exported** — top-level variables are private: readable
+  by `fn`s in the same file (like `$koneksi` above), but `db.rahasia`
+  reads as `null`.
+- **The file runs exactly once** — a second `use` shares the same object;
+  circular chains (`a.ga` → `b.ga` → `a.ga`) are rejected with a clear
+  message.
+- **`use` inside a module file is fine** — the next path is relative to
+  that module file's own directory.
+- Compile-time and runtime errors inside a module are reported against
+  the module's file name.
+
 ## 15. Not Yet Available
 
 - Generics `<T>` — planned for v1

@@ -13,7 +13,7 @@ http.GET("/", fn($req) {
     return {msg: "Halo dari Garurda!"}
 })
 
-http.listen(8868)
+http.listen(8869)
 ```
 
 ## Daftar Isi

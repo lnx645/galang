@@ -11,7 +11,7 @@ http.GET("/", fn($req) {
     return "Halo dari Garurda!"
 })
 
-http.listen(8868)
+http.listen(8869)
 ```
 
 ## Daftar Isi
@@ -52,7 +52,7 @@ http.DELETE("/users/{id}", fn($req) {
     return "Deleted"
 })
 
-http.listen(8868)
+http.listen(8869)
 ```
 
 - Path parameter ditulis `{nama}` dan tersedia di `$req.params.nama`.
@@ -99,7 +99,7 @@ http.use(fn($req, $next) {
 
 http.GET("/", fn($req) { return "publik" })
 http.GET("/admin", fn($req) { return "rahasia" })
-http.listen(8868)
+http.listen(8869)
 ```
 
 Aturan main:
@@ -426,12 +426,12 @@ http.POST("/api/users", fn($req) {
     return http.json({id: 1, name: $data.name}, 201)
 })
 
-http.listen(8868)
+http.listen(8869)
 ```
 
 Jalankan:
 
 ```bash
 gar run main.ga
-curl http://localhost:8868/health     # {"status":"ok"}
+curl http://localhost:8869/health     # {"status":"ok"}
 ```

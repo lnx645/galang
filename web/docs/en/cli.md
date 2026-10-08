@@ -80,7 +80,7 @@ start experimenting.
 ## Environment
 
 `gar run` does not read special flags; application configuration (port etc.)
-is set inside the script, e.g. `http.listen(8868)`.
+is set inside the script, e.g. `http.listen(8869)`.
 
 ## Systemd Service (deployment)
 

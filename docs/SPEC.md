@@ -342,7 +342,7 @@ unboxed, jadi kode numerik dengan desimal masih melalui jalur umum.
 
 ## 11. Peta jalan
 
-- **v0.2** — HTTP server (port 8868), routing, objek `request`/`response`,
+- **v0.2** — HTTP server (port 8869), routing, objek `request`/`response`,
   template Blade, `async fn`/`await`/`gather`/`spawn`.
 - **v0.3** — database (SQLite/MySQL/PostgreSQL via `database/sql`), WebSocket,
   SSE, SMTP, HTTP client, session, upload, `gar test`.

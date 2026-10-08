@@ -145,7 +145,7 @@ http.GET("/", fn($req) {
     return http.render("home.blade", {title: "Beranda"})
 })
 
-http.listen(8868)
+http.listen(8869)
 ```
 
 `views/home.blade`:
@@ -155,7 +155,7 @@ http.listen(8868)
 <p>Halo dari Garurda.</p>
 ```
 
-Run it, then open `http://localhost:8868`:
+Run it, then open `http://localhost:8869`:
 
 ```bash
 gar run main.ga

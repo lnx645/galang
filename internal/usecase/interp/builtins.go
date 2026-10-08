@@ -43,6 +43,9 @@ func (in *Interp) strictFn(name string, min, max int, fn builtinFn) *domain.Buil
 // installGlobals registers the builtin namespace in the global scope.
 func (in *Interp) installGlobals() {
 	names := in.builtinNames()
+	// Frozen copy for file modules: their scope gets these exact values
+	// as a prelude (see loadFileModule).
+	in.builtinVals = names
 	// Reserve every slot first, then grow once, then fill: growing between
 	// assignments would discard the values already stored.
 	for name := range names {

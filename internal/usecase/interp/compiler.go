@@ -910,14 +910,25 @@ func (c *compiler) compileUse(x *domain.UseStmt) stmtFn {
 	in := c.in
 	path := x.Path
 	pos := x.P
-	slot := c.declare(c.globalScope, path, nil, false)
+	// Modul bawaan menang lebih dulu; selain itu dianggap path file
+	// relatif yang mengikat namespace sesuai nama berkasnya.
+	bind := path
+	_, builtin := in.Modules[path]
+	if !builtin {
+		bind = fileModuleName(path)
+	}
+	slot := c.declare(c.globalScope, bind, nil, false)
 	slot.global = true
 	return func(f *frame) (ctrl, domain.Value, error) {
-		factory, ok := in.Modules[path]
-		if !ok {
-			return ctrlNone, nil, in.errf(pos, "unknown module '%s'", path)
+		if builtin {
+			storeSlot(f, slot, bind, in.Modules[path]())
+			return ctrlNone, nil, nil
 		}
-		storeSlot(f, slot, path, factory())
+		v, err := in.loadFileModule(path, pos)
+		if err != nil {
+			return ctrlNone, nil, err
+		}
+		storeSlot(f, slot, bind, v)
 		return ctrlNone, nil, nil
 	}
 }
@@ -956,7 +967,9 @@ func (c *compiler) compileFnExpr(x *domain.FnExpr, s *cscope) (func(f *frame) do
 	// be shareable, so those slots become boxes up front.
 	body.forceCell = hasFnLiteral(x.Body.Stmts)
 
-	fn := &compFn{name: x.Name, retType: x.Ret, elem: elemOf(x.Ret), async: x.Async, pos: x.P}
+	// c.in.File names the file being compiled right now (Run and
+	// loadFileModule both set it before compiling).
+	fn := &compFn{name: x.Name, retType: x.Ret, elem: elemOf(x.Ret), async: x.Async, file: c.in.File, pos: x.P}
 	for _, p := range x.Params {
 		isInt := p.Type != nil && (p.Type.Name == "int" || p.Type.Name == "number")
 		// Parameters join the function scope so the body resolves them.
@@ -991,19 +1004,26 @@ func (c *compiler) compileFnExpr(x *domain.FnExpr, s *cscope) (func(f *frame) do
 	// call-heavy code because a call is a jump instead of a chain of
 	// closures; the closure backend wins on loops because a loop becomes a
 	// native Go loop. A function with a loop therefore keeps closures.
-	bcc := &bcCompiler{in: c.in}
-	bc := bcc.compileIntCode(x)
+	// File modules are exempt from both: the backends address globals
+	// through the single shared in.globals frame, while a module owns its
+	// own frame and its names were compiled against that frame's layout.
+	// The general path resolves globals through the frame chain, which is
+	// correct for any frame.
 	var specialised *intCompFn
 	var code *intCode
-	if bc != nil && !bcc.hasLoop {
-		code = bc
-		if bc.nlocals > fn.nints {
-			fn.nints = bc.nlocals
-		}
-	} else {
-		specialised = (&intCompiler{in: c.in}).compileIntFn(x)
-		if specialised != nil && specialised.nints > fn.nints {
-			fn.nints = specialised.nints
+	if c.globalScope == c.in.gscope {
+		bcc := &bcCompiler{in: c.in}
+		bc := bcc.compileIntCode(x)
+		if bc != nil && !bcc.hasLoop {
+			code = bc
+			if bc.nlocals > fn.nints {
+				fn.nints = bc.nlocals
+			}
+		} else {
+			specialised = (&intCompiler{in: c.in}).compileIntFn(x)
+			if specialised != nil && specialised.nints > fn.nints {
+				fn.nints = specialised.nints
+			}
 		}
 	}
 

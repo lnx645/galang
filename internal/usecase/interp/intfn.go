@@ -772,13 +772,21 @@ func (in *Interp) callInt(c *closure, args []int64, pos domain.Position) (int64,
 	}
 
 	// The return value is parked in slot 0.
+	// Same trace record as callClosure, so an error raised inside the
+	// integer body is reported against this function's file.
+	if in.traceDepth < len(in.tracePos) {
+		in.tracePos[in.traceDepth] = pos
+		in.traceFn[in.traceDepth] = c.fn
+	}
+	in.traceDepth++
 	k, err := c.int.body(in, f)
 	v := f.ints[c.int.retSlot]
 	f.release(&in.frames)
+	in.traceDepth--
 	in.depth--
 	if err != nil {
 		if re, ok := err.(*Error); ok {
-			return 0, re.Frame(StackFrame{Func: displayName(c.int.name), File: in.File, Pos: pos})
+			return 0, re.Frame(StackFrame{Func: displayName(c.int.name), File: in.curFile(), Pos: pos})
 		}
 		return 0, err
 	}

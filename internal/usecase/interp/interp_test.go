@@ -396,7 +396,7 @@ print "Halo ${nama}, kamu ${1 + 1} tahun"`); got != "Halo Garurda, kamu 2 tahun"
 print strings.split("a,b,c", ",")`); got != "[a, b, c]" {
 		t.Errorf("strings module: got %q", got)
 	}
-	evalFails(t, `use "tidakada"`, "unknown module")
+	evalFails(t, `use "tidakada"`, "not found")
 	// UTF-8 aware length and indexing.
 	if got := evalStr(t, `print len("garuda")`); got != "6" {
 		t.Errorf("len: got %q", got)
