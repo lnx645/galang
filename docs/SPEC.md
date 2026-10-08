@@ -157,13 +157,18 @@ $fn = fn($a, $b) { return $a + $b }                 // first-class
 
 ## 7. Array & objek
 
-**Semantik nilai dengan copy-on-write.** Assignment menyalin; tidak ada bug
-aliasing. `append` selalu mengembalikan array baru.
+**Semantik referensi pada penugasan, salinan pada builtins.** Assignment
+`$b = $a` membagi referensi yang sama: menulis `$b[0] = 99` mengubah `$a`
+juga. Sebaliknya fungsi bawaan **mengembalikan array baru** — `append`,
+`push`, `pop`, `sort`, `slice`, `map`, `filter` tidak mengubah argumennya.
 
 ```ga
 $a = [1, 2]
 $b = $a
-$b = append($b, 3)     // $a tetap [1, 2]
+$b = append($b, 3)     // $a tetap [1, 2] — append mengembalikan salinan
+$c = [1, 2]
+$d = $c
+$d[0] = 99             // $c[0] juga 99 — penugasan = referensi bersama
 
 $a[0]     $a[-1]     $a[1:]     $a[1:3]
 $o.kunci  $o["kunci"]

@@ -1,26 +1,64 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Garurda Dokumentasi</title>
+  <meta name="description" content="Official documentation for the Garurda programming language — bilingual (Indonesian &amp; English).">
+  <title>Garurda — Documentation</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/docsify-themeable/dist/css/theme-simple.css">
 </head>
 <body>
-  <div id="app"></div>
+  <div id="app">Memuat… / Loading…</div>
   <script>
+    // Alih bahasa otomatis: rute root (#/) diarahkan ke bahasa browser.
+    (function () {
+      function prefer() {
+        var lang = ((navigator.language || 'id') + '').toLowerCase();
+        return lang.indexOf('en') === 0 ? 'en' : 'id';
+      }
+      var h = location.hash;
+      if (!h || h === '#' || h === '#/') {
+        location.replace('#/' + prefer() + '/');
+      }
+    })();
+
     window.$docsify = {
       name: 'Garurda',
       repo: 'lnx645/galang',
+      // Sidebar per bahasa: rute /id/* → /docs/id/_sidebar.md, /en/* → /docs/en/_sidebar.md
       loadSidebar: '_sidebar.md',
+      // Tautan relatif (api.md, web.md) diselesaikan terhadap direktori halaman
+      // aktif — wajib untuk struktur rute berbahasa /id/ dan /en/.
+      relativePath: true,
+      basePath: '/docs/',
+      homepage: 'README.md',
       alias: {
-        '/.*/_sidebar.md': '/docs/_sidebar.md'
+        // Jaga-jaga untuk rute root sebelum pengalihan bahasa berjalan.
+        '/_sidebar.md': '/id/_sidebar.md'
       },
       subMaxLevel: 2,
-      search: 'auto',
-      basePath: '/docs/',
-      homepage: 'index.md',
-    }
+      auto2top: true,
+      search: {
+        placeholder: 'Cari / Search',
+        noData: 'Tidak ada hasil / No results',
+        depth: 3,
+        // Indeks pencarian dipisah per bahasa.
+        pathNamespaces: ['/id', '/en']
+      },
+      plugins: [
+        function (hook, vm) {
+          hook.doneEach(function () {
+            var path = (vm.route && vm.route.path) || '/';
+            // Pengalihan pengaman bila rute root sempat termuat.
+            if (path === '/' || path === '/index') {
+              var lang = ((navigator.language || 'id') + '').toLowerCase();
+              lang = lang.indexOf('en') === 0 ? 'en' : 'id';
+              location.replace('#/' + lang + '/');
+            }
+          });
+        }
+      ]
+    };
   </script>
   <script src="https://cdn.jsdelivr.net/npm/docsify/lib/docsify.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/docsify/lib/plugins/search.min.js"></script>

@@ -22,7 +22,10 @@ Halo, Dunia!
 - Bahasa lengkap: variabel bertipe (`int $stok = 72`) maupun dinamis (`$x = 1`)
 - Fungsi, closure, arrow function, rekursi
 - `if`/`else if`/`else`, `while`, `for x in`, rentang `1..10`, `break`/`continue`
-- Array & objek dengan **semantik nilai** (copy-on-write, tanpa bug aliasing)
+- Array & objek: **penugasan membagi referensi** (`$b = $a` lalu `$b[0] = 99`
+  mengubah `$a` juga); fungsi bawaan (`append`, `push`, `sort`, `slice`,
+  `map`, `filter`) selalu **mengembalikan salinan baru** sehingga `$b =
+  append($b, 3)` tidak menyentuh `$a`
 - Kompresi: `[$n * 2 for $n in $xs]`
 - Interpolasi string: `"Halo ${nama}"` dan `"Halo $nama"`
 - Penanganan error: `throw` + `try`/`catch e` dengan `status` HTTP

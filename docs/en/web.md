@@ -1,8 +1,8 @@
 # Web Runtime (HTTP)
 
-Modul `http` menyediakan server HTTP nyata (berbasis `net/http` Go): routing,
-path parameter, request/response, template Blade, file statis, SSE, dan
-WebSocket.
+The `http` module provides a real HTTP server (built on Go's `net/http`):
+routing, path parameters, request/response, Blade templates, static files,
+SSE, and WebSocket.
 
 ```garurda
 use "http"
@@ -14,20 +14,20 @@ http.GET("/", fn($req) {
 http.listen(8868)
 ```
 
-## Daftar Isi
+## Table of Contents
 
 - [Routing](#routing)
-- [Method HTTP](#method-http)
+- [HTTP Methods](#http-methods)
 - [Request Object](#request-object)
-- [Aturan Response](#aturan-response)
-- [json() — kontrol penuh](#json--kontrol-penuh)
+- [Response Rules](#response-rules)
+- [json() — full control](#json--full-control)
 - [Error & Status Code](#error--status-code)
 - [Cookie](#cookie)
 - [Static Files](#static-files)
 - [Template Blade](#template-blade)
 - [SSE (Server-Sent Events)](#sse-server-sent-events)
 - [WebSocket](#websocket)
-- [Contoh Lengkap](#contoh-lengkap)
+- [Full Example](#full-example)
 
 ## Routing
 
@@ -53,21 +53,22 @@ http.DELETE("/users/{id}", fn($req) {
 http.listen(8868)
 ```
 
-- Path parameter ditulis `{nama}` dan tersedia di `$req.params.nama`.
-- Path yang tidak dikenal → **404**.
-- Path dikenal tetapi method tidak cocok → **405** (Method Not Allowed).
+- Path parameters are written as `{nama}` and are available at
+  `$req.params.nama`.
+- Unknown path → **404**.
+- Known path but mismatched method → **405** (Method Not Allowed).
 
-## Method HTTP
+## HTTP Methods
 
-| Fungsi | Method |
+| Function | Method |
 |---|---|
 | `http.GET(path, handler)` | GET |
 | `http.POST(path, handler)` | POST |
 | `http.PUT(path, handler)` | PUT |
 | `http.DELETE(path, handler)` | DELETE |
-| `http.listen(port)` | jalankan server |
+| `http.listen(port)` | start the server |
 
-`handler` adalah fungsi `fn($req)` yang mengembalikan response.
+`handler` is an `fn($req)` function that returns the response.
 
 ## Request Object
 
@@ -78,14 +79,14 @@ http.GET("/cari/{id}", fn($req) {
     $req.url             // "/cari/42?q=1"
     $req.query.q         // query parameter (?q=1)
     $req.params.id       // path parameter {id} → "42"
-    $req.headers.accept  // header (huruf kecil)
+    $req.headers.accept  // header (lowercase)
     $req.cookies.sid     // cookie
-    $req.body            // body mentah sebagai string
+    $req.body            // raw body as a string
     return "ok"
 })
 ```
 
-Untuk body JSON, decode dulu:
+For a JSON body, decode it first:
 
 ```garurda
 http.POST("/api", fn($req) {
@@ -94,41 +95,41 @@ http.POST("/api", fn($req) {
 })
 ```
 
-## Aturan Response
+## Response Rules
 
-Cukup `return` nilai — runtime menentukan status, type, dan body:
+Just `return` a value — the runtime determines the status, type, and body:
 
-| Yang di-return | Response |
+| Returned | Response |
 |---|---|
 | `string` | `200 OK`, `text/html` |
-| `array` / `object` | `200 OK`, `application/json` (JSON otomatis) |
-| object terstruktur dengan `body` | lihat di bawah |
+| `array` / `object` | `200 OK`, `application/json` (JSON automatically) |
+| structured object with `body` | see below |
 
 ```garurda
 // String → HTML 200
 return "Halo"
 
-// Array/Object → JSON 200 otomatis
+// Array/Object → automatic JSON 200
 return ["a", "b"]             // [{"..."}] JSON array
 return {status: "ok"}         // JSON object
 
-// Structured response — kendali penuh atas status/type/body/headers/cookies
+// Structured response — full control over status/type/body/headers/cookies
 return {status: 404, type: "text/html", body: "<h1>Not Found</h1>"}
 return {status: 201, body: "dibuat"}
 return {type: "text/html", body: "OK", cookies: {session: "abc"}}
 ```
 
-Kunci structured response:
+Structured response keys:
 
-| Kunci | Default | Keterangan |
+| Key | Default | Description |
 |---|---|---|
-| `status` | 200 | kode status HTTP |
-| `type` | `text/html` (string) / `application/json` (objek terstruktur) | Content-Type |
-| `body` | — | isi response |
-| `headers` | — | object header tambahan |
-| `cookies` | — | object cookie yang di-set |
+| `status` | 200 | HTTP status code |
+| `type` | `text/html` (string) / `application/json` (structured object) | Content-Type |
+| `body` | — | response body |
+| `headers` | — | additional header object |
+| `cookies` | — | object of cookies to set |
 
-## json() — kontrol penuh
+## json() — full control
 
 ```garurda
 return http.json({id: 1}, 201)
@@ -136,14 +137,14 @@ return http.json({msg: "ok"}, 200, {"X-Custom": "value"})
 ```
 
 Signature: `http.json($data, $status = 200, $headers = {})`.
-Content-Type otomatis `application/json; charset=utf-8`.
+The Content-Type is automatically `application/json; charset=utf-8`.
 
 ## Error & Status Code
 
-### Error dari `throw` → status + JSON
+### Errors from `throw` → status + JSON
 
-Error yang dilempar di dalam handler dijawab server dengan **status sesuai
-error** dan body JSON `{code, message, status}`:
+An error thrown inside a handler is answered by the server with **the matching
+status** and a JSON body `{code, message, status}`:
 
 ```garurda
 http.GET("/users/{id}", fn($req) {
@@ -162,7 +163,7 @@ Content-Type: application/json
 {"code":"http_error","message":"user tidak ada","status":404}
 ```
 
-| Konstruktor | Status respons |
+| Constructor | Response status |
 |---|---|
 | `bad_request(...)` | 400 |
 | `unauthorized(...)` | 401 |
@@ -171,25 +172,25 @@ Content-Type: application/json
 | `conflict(...)` | 409 |
 | `error(...)` / `server_error(...)` | 500 |
 
-### Error internal → 500 polos
+### Internal errors → plain 500
 
-Bug internal (pembagian nol, index di luar batas, variabel undefined)
-menghasilkan **500** dengan body polos. **Detail error dan stack trace hanya
-dicatat ke stderr server** — tidak pernah bocor ke klien.
+Internal bugs (division by zero, out-of-bounds index, undefined variable)
+produce **500** with a plain body. **Error details and the stack trace are only
+logged to the server's stderr** — they never leak to the client.
 
 ```garurda
 http.GET("/rusak", fn($req) {
-    return 1 / 0        // → 500, body polos; detail di stderr
+    return 1 / 0        // → 500, plain body; details go to stderr
 })
 ```
 
 ## Cookie
 
 ```garurda
-// Set cookie lewat structured response
+// Set a cookie via a structured response
 return {type: "text/html", body: "OK", cookies: {session: "abc"}}
 
-// Baca cookie di request
+// Read a cookie from the request
 http.GET("/cek", fn($req) {
     print($req.cookies.session)
     return "ok"
@@ -200,15 +201,16 @@ http.GET("/cek", fn($req) {
 
 ```garurda
 http.static("/public/", "public")
-// GET /public/style.css → menyajikan file public/style.css
+// GET /public/style.css → serves the file public/style.css
 ```
 
-URL prefix `/public/` dipetakan ke direktori `public/` di working directory.
+The `/public/` URL prefix is mapped to the `public/` directory in the working
+directory.
 
 ## Template Blade
 
 ```garurda
-http.views("views")            // direktori template
+http.views("views")            // template directory
 
 http.GET("/", fn($req) {
     $data = {title: "Home", user: {name: "Dadan"}, items: [1, 2, 3]}
@@ -216,16 +218,16 @@ http.GET("/", fn($req) {
 })
 ```
 
-- `http.views($dir)` — set direktori template.
-- `http.render($namaFile, $data)` — render → string HTML (200).
-- Variabel `$data.kunci` tersedia sebagai `$nama` di template.
+- `http.views($dir)` — set the template directory.
+- `http.render($namaFile, $data)` — render → an HTML string (200).
+- Variables from `$data.kunci` are available as `$nama` in the template.
 
-### Sintaks Blade
+### Blade Syntax
 
 ```blade
-{{-- komentar blade --}}
-<h1>{{ $title }}</h1>          {{-- escape HTML otomatis --}}
-{!! $rawHTML !!}              {{-- tanpa escape --}}
+{{-- blade comment --}}
+<h1>{{ $title }}</h1>          {{-- HTML-escaped automatically --}}
+{!! $rawHTML !!}              {{-- no escaping --}}
 
 @if($user)
   <p>Hello, {{ $user.name }}</p>
@@ -247,36 +249,36 @@ http.GET("/", fn($req) {
 @include("partials/header")
 ```
 
-| Directive | Fungsi |
+| Directive | Purpose |
 |---|---|
-| `{{ $x }}` | ekspresi, HTML-escape |
-| `{!! $x !!}` | ekspresi mentah |
-| `@if` `@elseif` `@else` `@endif` | percabangan |
-| `@foreach` `@else` `@endforeach` | perulangan (`@else` saat kosong) |
-| `@extends("layout")` | pewarisan layout |
-| `@section("nama")` `@yield("nama")` | isi & slot layout |
-| `@include("partial")` | sisipkan partial |
-| `{{-- --}}` | komentar |
+| `{{ $x }}` | expression, HTML-escaped |
+| `{!! $x !!}` | raw expression |
+| `@if` `@elseif` `@else` `@endif` | conditionals |
+| `@foreach` `@else` `@endforeach` | loops (`@else` when empty) |
+| `@extends("layout")` | layout inheritance |
+| `@section("nama")` `@yield("nama")` | layout content & slots |
+| `@include("partial")` | insert a partial |
+| `{{-- --}}` | comment |
 
 ## SSE (Server-Sent Events)
 
 ```garurda
 http.stream("/events", fn($req) {
-    return "ping"      // setiap return = satu event
+    return "ping"      // each return = one event
 })
 ```
 
-Klien: `new EventSource("/events")`.
+Client: `new EventSource("/events")`.
 
 ## WebSocket
 
 ```garurda
 http.ws("/chat", fn($msg) {
-    return "echo: " + $msg    // nilai return dikirim balik ke klien
+    return "echo: " + $msg    // the returned value is sent back to the client
 })
 ```
 
-## Contoh Lengkap
+## Full Example
 
 ```garurda
 use "http"
@@ -306,7 +308,7 @@ http.POST("/api/users", fn($req) {
 http.listen(8868)
 ```
 
-Jalankan:
+Run it:
 
 ```bash
 gar run main.ga

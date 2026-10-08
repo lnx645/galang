@@ -1,11 +1,11 @@
-# Memulai Cepat
+# Getting Started
 
-## Instalasi
+## Installation
 
-### Dari Binary
+### From a Binary
 
-Download binary dari [Releases](https://github.com/lnx645/galang/releases)
-atau direktori `dist/`, lalu pindahkan ke PATH:
+Download the binary from [Releases](https://github.com/lnx645/galang/releases)
+or the `dist/` directory, then move it onto your PATH:
 
 ```bash
 # Linux
@@ -16,31 +16,31 @@ sudo chmod +x /usr/local/bin/gar
 sudo cp gar-darwin-arm64 /usr/local/bin/gar
 sudo chmod +x /usr/local/bin/gar
 
-# Windows — pindahkan gar-windows-amd64.exe ke folder di PATH, mis. C:\Windows
+# Windows — move gar-windows-amd64.exe to a folder on your PATH, e.g. C:\Windows
 ```
 
-Pastikan terpasang:
+Verify that it is installed:
 
 ```bash
 gar version
 # gar 0.2.0
 ```
 
-### Dari Source
+### From Source
 
-Prasyarat: Go (dikompilasi dengan Go 1.19+).
+Prerequisites: Go (built with Go 1.19+).
 
 ```bash
 git clone https://github.com/lnx645/galang.git
 cd galang
-export HOME=/root          # bila HOME kosong di environment Anda
+export HOME=/root          # if HOME is empty in your environment
 go build -o bin/gar ./cmd/gar
 ./bin/gar version
 ```
 
 ## Hello World
 
-Simpan sebagai `hello.ga`:
+Save it as `hello.ga`:
 
 ```garurda
 // hello.ga
@@ -48,14 +48,14 @@ $name = "Garurda"
 print("Halo, $name!")
 ```
 
-Jalankan:
+Run it:
 
 ```bash
 gar run hello.ga
 # Halo, Garurda!
 ```
 
-## Variabel dan Tipe
+## Variables and Types
 
 ```garurda
 $umur = 25            // int
@@ -70,18 +70,18 @@ print(type($umur))    // "int"
 print(type($user))    // "object"
 ```
 
-Sigil `$` **opsional** — `nama` dan `$nama` adalah variabel yang sama.
+The `$` sigil is **optional** — `nama` and `$nama` are the same variable.
 
-Konversi eksplisit, tanpa coerciion otomatis:
+Conversion is explicit, with no automatic coercion:
 
 ```garurda
 print(int("42"))      // 42
 print(str(7))         // "7"
 print(float("1.5"))   // 1.5
-// "5" + 5            // ERROR: tidak ada coerciion — pakai int()/str()
+// "5" + 5            // ERROR: no coercion — use int()/str()
 ```
 
-## Fungsi Pertama
+## Your First Function
 
 ```garurda
 fn greet($nama, $sapaan = "Halo") {
@@ -92,7 +92,7 @@ print(greet("Dadan"))            // Halo, Dadan!
 print(greet("Dadan", "Selamat")) // Selamat, Dadan!
 ```
 
-## REPL Interaktif
+## Interactive REPL
 
 ```bash
 gar repl
@@ -107,25 +107,25 @@ ABC
 > .exit
 ```
 
-REPL mendukung beberapa perintah:
+The REPL supports a few commands:
 
-| Perintah | Fungsi |
+| Command | Purpose |
 |---|---|
-| `.help` atau `help` | Tampilkan bantuan |
-| `.exit`, `.quit`, `exit`, `quit` | Keluar |
+| `.help` or `help` | Show help |
+| `.exit`, `.quit`, `exit`, `quit` | Exit |
 
-Blok multi-baris (mis. isi `fn` / `if` / `for`) otomatis dilanjutkan sampai
-kurawal `}` ditutup.
+Multi-line blocks (e.g. the body of `fn` / `if` / `for`) are continued
+automatically until the closing `}` brace.
 
-Preload script saat membuka REPL:
+Preload a script when starting the REPL:
 
 ```bash
-gar repl setup.ga     // setup.ga dieksekusi dulu, lalu REPL siap
+gar repl setup.ga     // setup.ga runs first, then the REPL is ready
 ```
 
-## Proyek Web Pertama
+## Your First Web Project
 
-Struktur minimal:
+Minimal structure:
 
 ```
 myapp/
@@ -155,17 +155,18 @@ http.listen(8868)
 <p>Halo dari Garurda.</p>
 ```
 
-Jalankan lalu buka `http://localhost:8868`:
+Run it, then open `http://localhost:8868`:
 
 ```bash
 gar run main.ga
 ```
 
-Detail lengkap: [Web Runtime](web.md).
+Full details: [Web Runtime](web.md).
 
-## Argumen Program
+## Program Arguments
 
-Argumen setelah `--` tersedia di variabel global `args` (array of string):
+Arguments after `--` are available in the global `args` variable (an array of
+strings):
 
 ```bash
 gar run tugas.ga -- alice 30
@@ -176,10 +177,10 @@ gar run tugas.ga -- alice 30
 print(args)          // [alice, 30]
 ```
 
-## Langkah Berikutnya
+## Next Steps
 
-- [Sintaks Bahasa](language.md) — referensi bahasa lengkap
-- [Referensi API](api.md) — semua fungsi bawaan
-- [Modul Standar](modules.md) — `strings`, `math`, `time`, `file`
+- [Language Reference](language.md) — complete language reference
+- [API Reference](api.md) — all built-in functions
+- [Standard Library](modules.md) — `strings`, `math`, `time`, `file`
 - [Web Runtime](web.md) — HTTP, Blade, SSE, WebSocket
-- [CLI](cli.md) — perintah dan deployment
+- [CLI](cli.md) — commands and deployment
