@@ -458,6 +458,26 @@ func (in *Interp) newHttpModule() *domain.Obj {
 		in.SetViewsDir(string(dir))
 		return domain.Null{}, nil
 	}))
+	m.Set("json", in.typeFn("http.json", 1, func(in *Interp, a []domain.Value, p domain.Position) (domain.Value, error) {
+		data, err := json.Marshal(domainValueToInterface(a[0]))
+		if err != nil {
+			return nil, in.errf(p, "http.json: %s", err.Error())
+		}
+		obj := domain.NewObj()
+		obj.Set("type", domain.Str("application/json; charset=utf-8"))
+		obj.Set("body", domain.Str(string(data)))
+		if len(a) >= 2 {
+			if code, ok := domain.AsInt(a[1]); ok {
+				obj.Set("status", domain.Int(code))
+			}
+		}
+		if len(a) >= 3 {
+			if ho, ok := a[2].(*domain.Obj); ok {
+				obj.Set("headers", ho)
+			}
+		}
+		return obj, nil
+	}))
 	return m
 }
 

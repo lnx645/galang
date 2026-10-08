@@ -1,6 +1,7 @@
 package interp
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -288,34 +289,93 @@ func (in *Interp) buildRequestObj(r *http.Request, params map[string]string) *do
 }
 
 // writeResponse turns a handler's return value into an HTTP response.
-// A plain string (or other scalar) becomes the body. An object may
-// set status, type and body fields for a structured response, e.g.:
 //
-//	return {status: 201, type: "application/json", body: "..."}
+//   - string             → text/html (200)
+//   - object (no "body") → application/json auto-encoded (200)
+//   - object with "body" → structured: status/type/body/headers
+//   - array              → application/json auto-encoded (200)
+//   - int/float/bool     → text/plain (200)
+//
+// Structured object fields: status (int), type (string),
+// body (string), headers (object).
 func (in *Interp) writeResponse(w http.ResponseWriter, result domain.Value) {
-	status := http.StatusOK
-	contentType := "text/html; charset=utf-8"
-	body := result.String()
-
+	// Structured response: explicit "body" field.
 	if obj, ok := result.(*domain.Obj); ok {
+		if _, hasBody := obj.Get("body"); hasBody {
+			status := http.StatusOK
+			contentType := "text/html; charset=utf-8"
+			if s, found := obj.Get("status"); found {
+				if code, ok := domain.AsInt(s); ok {
+					status = int(code)
+				}
+			}
+			if ct, found := obj.Get("type"); found {
+				if ctStr, ok := ct.(domain.Str); ok {
+					contentType = string(ctStr)
+				}
+			}
+			body := ""
+			if b, found := obj.Get("body"); found {
+				body = b.String()
+			}
+			if hdrs, found := obj.Get("headers"); found {
+				if ho, ok := hdrs.(*domain.Obj); ok {
+					for _, k := range ho.Keys() {
+						v, _ := ho.Get(k)
+						w.Header().Set(k, v.String())
+					}
+				}
+			}
+			w.Header().Set("Content-Type", contentType)
+			w.WriteHeader(status)
+			io.WriteString(w, body)
+			return
+		}
+		// Any other object is data — auto-JSON.
+		data, err := json.Marshal(domainValueToInterface(obj))
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		status := http.StatusOK
 		if s, found := obj.Get("status"); found {
 			if code, ok := domain.AsInt(s); ok {
 				status = int(code)
 			}
 		}
-		if ct, found := obj.Get("type"); found {
-			if ctStr, ok := ct.(domain.Str); ok {
-				contentType = string(ctStr)
+		if hdrs, found := obj.Get("headers"); found {
+			if ho, ok := hdrs.(*domain.Obj); ok {
+				for _, k := range ho.Keys() {
+					v, _ := ho.Get(k)
+					w.Header().Set(k, v.String())
+				}
 			}
 		}
-		if b, found := obj.Get("body"); found {
-			body = b.String()
-		}
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(status)
+		w.Write(data)
+		return
 	}
-
-	w.Header().Set("Content-Type", contentType)
-	w.WriteHeader(status)
-	io.WriteString(w, body)
+	// Array auto-JSON.
+	if arr, ok := result.(*domain.Arr); ok {
+		data, err := json.Marshal(domainValueToInterface(arr))
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		w.Write(data)
+		return
+	}
+	switch result.(type) {
+	case domain.Str:
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	default:
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	}
+	w.WriteHeader(http.StatusOK)
+	io.WriteString(w, result.String())
 }
 
 // renderTemplate renders a Blade template by name with the given data.
