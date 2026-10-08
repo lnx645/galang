@@ -391,6 +391,15 @@ func (in *Interp) newHttpModule() *domain.Obj {
 	register("POST", 2)
 	register("PUT", 2)
 	register("DELETE", 2)
+	m.Set("use", in.typeFn("http.use", 1, func(in *Interp, a []domain.Value, p domain.Position) (domain.Value, error) {
+		switch a[0].(type) {
+		case *closure, *domain.Builtin:
+		default:
+			return nil, in.errf(p, "http.use() expects a middleware function")
+		}
+		in.webRoutes.addUse(a[0])
+		return domain.Null{}, nil
+	}))
 	m.Set("listen", in.typeFn("http.listen", 1, func(in *Interp, a []domain.Value, p domain.Position) (domain.Value, error) {
 		port, ok := domain.AsInt(a[0])
 		if !ok {

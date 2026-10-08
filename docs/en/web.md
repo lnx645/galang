@@ -18,6 +18,7 @@ http.listen(8868)
 
 - [Routing](#routing)
 - [HTTP Methods](#http-methods)
+- [Middleware](#middleware)
 - [Request Object](#request-object)
 - [Response Rules](#response-rules)
 - [json() — full control](#json--full-control)
@@ -66,9 +67,62 @@ http.listen(8868)
 | `http.POST(path, handler)` | POST |
 | `http.PUT(path, handler)` | PUT |
 | `http.DELETE(path, handler)` | DELETE |
+| `http.use(fn)` | register global middleware |
 | `http.listen(port)` | start the server |
 
 `handler` is an `fn($req)` function that returns the response.
+
+## Middleware
+
+`http.use(fn)` registers **global** middleware — it runs for every HTTP
+route (GET/POST/PUT/DELETE) before the handler. A middleware receives two
+arguments: `($req, $next)`.
+
+```garurda
+use "http"
+
+// Log every request
+http.use(fn($req, $next) {
+    print($req.method + " " + $req.path)
+    return $next($req)
+})
+
+// Block /admin without the right token
+http.use(fn($req, $next) {
+    if $req.path == "/admin" and $req.headers.authorization != "rahasia" {
+        return http.json({error: "unauthorized"}, 401)
+    }
+    return $next($req)
+})
+
+http.GET("/", fn($req) { return "public" })
+http.GET("/admin", fn($req) { return "secret" })
+http.listen(8868)
+```
+
+Rules:
+
+- Code **before** `$next($req)` runs before the handler (or the next
+  middleware).
+- `$next($req)` runs the rest of the chain and **returns the handler's
+  response**. The result is awaited, so middleware always sees a plain
+  value — `$res.status` or `$res + "text"` can be used directly.
+- **Not calling** `$next` = *short-circuit*: the handler never runs and the
+  middleware's return value becomes the response (e.g. block with
+  401/403).
+- `$req` may be mutated (e.g. `$req.user = $token`) and passed to
+  `$next($req)` — the handler sees the changes, because objects share
+  references.
+- `throw` inside middleware produces an error response with the same
+  status handling as from a handler (e.g. `not_found(...)` → 404 with a
+  `{code, message, status}` body).
+- Order = registration order: the first `http.use` is the outermost.
+- Applies to regular HTTP routes only. Static files, SSE, and WebSocket
+  do **not** go through the middleware chain.
+
+A working example lives in
+[`examples/webapp`](https://github.com/lnx645/galang/tree/master/examples/webapp)
+(middleware logging to the systemd journal).
 
 ## Request Object
 

@@ -1,8 +1,9 @@
 // Contoh aplikasi web publik Garurda — demo di port 5800.
 //
-// Menunjukkan: routing + path parameter, Blade template (@extends,
-// @section, @yield, @include, @foreach, @if), file statis CSS/JS,
-// respons JSON otomatis, structured response, dan error berstatus.
+// Menunjukkan: routing + path parameter, middleware http.use, Blade
+// template (@extends, @section, @yield, @include, @foreach, @if), file
+// statis CSS/JS, respons JSON otomatis, structured response, dan error
+// berstatus.
 //
 // Jalankan dari direktori ini:
 //     cd examples/webapp && gar run main.ga
@@ -12,6 +13,14 @@ use "time"
 
 http.views("views")
 http.static("/public/", "public")
+
+// Middleware global: berjalan untuk semua rute HTTP sebelum handler.
+// Kode sebelum $next = sebelum; nilai kembali dari $next = respons handler.
+// Hasilnya dicatat ke stdout → jurnal systemd (journalctl -u garurda-demo).
+http.use(fn($req, $next) {
+    print($req.method + " " + $req.path)
+    return $next($req)
+})
 
 // Data kartu beranda — diiterasi lewat @foreach di template.
 $kartu = [

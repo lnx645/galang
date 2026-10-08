@@ -1,8 +1,9 @@
 # Contoh Web Publik Garurda
 
-Aplikasi contoh yang menampilkan modul `http`, template **Blade**, file
-statis CSS/JS, dan respons JSON otomatis. Inilah aplikasi yang disajikan
-service `garurda-demo.service` di port **5800**.
+Aplikasi contoh yang menampilkan modul `http` — termasuk **middleware
+`http.use`** — template **Blade**, file statis CSS/JS, dan respons JSON
+otomatis. Inilah aplikasi yang disajikan service `garurda-demo.service` di
+port **5800**.
 
 ## Menjalankan
 
@@ -45,6 +46,18 @@ examples/webapp/
 | GET | `/api/daftar` | array fitur → JSON array |
 | GET | `/public/*` | file statis (CSS/JS) |
 | — | rute tak dikenal | **404**; method salah → **405** |
+
+## Middleware
+
+Satu middleware global mencatat setiap request ke stdout — terbaca di
+jurnal systemd via `journalctl -u garurda-demo`:
+
+```ga
+http.use(fn($req, $next) {
+    print($req.method + " " + $req.path)
+    return $next($req)
+})
+```
 
 ## Deploy sebagai service systemd
 

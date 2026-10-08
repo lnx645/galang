@@ -18,6 +18,7 @@ http.listen(8868)
 
 - [Routing](#routing)
 - [Method HTTP](#method-http)
+- [Middleware](#middleware)
 - [Request Object](#request-object)
 - [Aturan Response](#aturan-response)
 - [json() — kontrol penuh](#json--kontrol-penuh)
@@ -65,9 +66,58 @@ http.listen(8868)
 | `http.POST(path, handler)` | POST |
 | `http.PUT(path, handler)` | PUT |
 | `http.DELETE(path, handler)` | DELETE |
+| `http.use(fn)` | pasang middleware global |
 | `http.listen(port)` | jalankan server |
 
 `handler` adalah fungsi `fn($req)` yang mengembalikan response.
+
+## Middleware
+
+`http.use(fn)` memasang middleware **global** — dijalankan untuk semua rute
+HTTP (GET/POST/PUT/DELETE) sebelum handler. Middleware menerima dua
+argumen: `($req, $next)`.
+
+```garurda
+use "http"
+
+// Catat setiap request
+http.use(fn($req, $next) {
+    print($req.method + " " + $req.path)
+    return $next($req)
+})
+
+// Larang /admin tanpa token yang benar
+http.use(fn($req, $next) {
+    if $req.path == "/admin" and $req.headers.authorization != "rahasia" {
+        return http.json({error: "unauthorized"}, 401)
+    }
+    return $next($req)
+})
+
+http.GET("/", fn($req) { return "publik" })
+http.GET("/admin", fn($req) { return "rahasia" })
+http.listen(8868)
+```
+
+Aturan main:
+
+- Kode **sebelum** `$next($req)` berjalan sebelum handler (atau middleware
+  berikutnya).
+- `$next($req)` menjalankan rantai sisanya dan **mengembalikan respons
+  handler**. Hasilnya sudah di-await, jadi middleware selalu melihat nilai
+  jadi — `$res.status` atau `$res + "teks"` langsung bisa dipakai.
+- **Tidak memanggil** `$next` = *short-circuit*: handler tidak dijalankan,
+  nilai kembali middleware langsung menjadi respons (mis. blokir 401/403).
+- `$req` boleh dimodifikasi (mis. `$req.user = $token`) lalu diteruskan ke
+  `$next($req)` — handler melihat perubahannya, karena objek by referensi.
+- `throw` di middleware menghasilkan respons error berstatus sama seperti
+  dari handler (mis. `not_found(...)` → 404, body `{code, message, status}`).
+- Urutan = urutan pendaftaran: `http.use` pertama berada paling luar.
+- Berlaku untuk rute HTTP biasa. File statis, SSE, dan WebSocket **tidak**
+  melewati rantai middleware.
+
+Contoh nyata ada di [`examples/webapp`](https://github.com/lnx645/galang/tree/master/examples/webapp)
+(middleware logging ke jurnal systemd).
 
 ## Request Object
 

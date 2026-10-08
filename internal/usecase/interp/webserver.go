@@ -28,9 +28,10 @@ type webRoute struct {
 // is shared across the process, so requests are serialized by execMu
 // before any Garurda closure is run.
 type webRoutes struct {
-	mu     sync.RWMutex // protects routes
-	execMu sync.Mutex   // serializes Garurda closure execution
+	mu     sync.RWMutex   // protects routes and uses
+	execMu sync.Mutex     // serializes Garurda closure execution
 	routes []webRoute
+	uses   []domain.Value // middleware via http.use, in registration order
 }
 
 // add registers a route.
@@ -70,10 +71,27 @@ func (wr *webRoutes) snapshot() []webRoute {
 	return out
 }
 
+// addUse registers a middleware function passed to http.use.
+func (wr *webRoutes) addUse(fn domain.Value) {
+	wr.mu.Lock()
+	defer wr.mu.Unlock()
+	wr.uses = append(wr.uses, fn)
+}
+
+// snapshotUses returns a copy of the middleware chain in registration order.
+func (wr *webRoutes) snapshotUses() []domain.Value {
+	wr.mu.RLock()
+	defer wr.mu.RUnlock()
+	out := make([]domain.Value, len(wr.uses))
+	copy(out, wr.uses)
+	return out
+}
+
 // startWebServer runs the HTTP server on the given port, blocking
 // until the server stops. It is invoked by http.listen(port).
 func (in *Interp) startWebServer(port int) error {
 	routes := in.webRoutes.snapshot()
+	uses := in.webRoutes.snapshotUses()
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 		// Check for WebSocket upgrade first
@@ -131,7 +149,7 @@ func (in *Interp) startWebServer(port int) error {
 		case "static":
 			in.serveStatic(matched.dir, matched.pattern, w, r)
 		default:
-			in.serveRequest(matched.handler, params, w, r)
+			in.serveRequest(matched.handler, params, uses, w, r)
 		}
 	})
 	addr := ":" + strconv.Itoa(port)
@@ -163,16 +181,18 @@ func matchPattern(pattern, path string) (map[string]string, bool) {
 }
 
 // serveRequest invokes a Garurda route handler for an incoming HTTP
-// request and writes the result back to the client.
-func (in *Interp) serveRequest(handler domain.Value, params map[string]string, w http.ResponseWriter, r *http.Request) {
+// request and writes the result back to the client. The middleware chain
+// registered via http.use wraps the handler: each entry receives
+// ($req, $next) and its return value becomes the response.
+func (in *Interp) serveRequest(handler domain.Value, params map[string]string, uses []domain.Value, w http.ResponseWriter, r *http.Request) {
 	in.webRoutes.execMu.Lock()
 	defer in.webRoutes.execMu.Unlock()
 
 	reqObj := in.buildRequestObj(r, params)
-	result, err := in.callValue(handler, []domain.Value{reqObj}, domain.Position{})
+	result, err := in.runChain(uses, 0, reqObj, handler)
 	if err == nil {
-		// An async handler returns a promise; resolve it, then run any
-		// fire-and-forget spawns before the response goes out.
+		// An async handler or middleware returns a promise; resolve it,
+		// then run any fire-and-forget spawns before the response goes out.
 		if result, err = in.awaitValue(result, domain.Position{}); err == nil {
 			err = in.drainPending()
 		}
@@ -182,6 +202,40 @@ func (in *Interp) serveRequest(handler domain.Value, params map[string]string, w
 		return
 	}
 	in.writeResponse(w, result)
+}
+
+// runChain runs middleware from index i onwards around handler. The last
+// middleware's $next invokes the handler itself. Each middleware gets
+// ($req, $next): calling $next runs the rest of the chain and returns the
+// final response (awaited, so middleware always sees a plain value);
+// returning without calling $next short-circuits the chain. A middleware
+// may pass a modified request object to $next — objects share references,
+// so mutations are visible downstream.
+func (in *Interp) runChain(uses []domain.Value, i int, req domain.Value, handler domain.Value) (domain.Value, error) {
+	if i >= len(uses) {
+		return in.callValue(handler, []domain.Value{req}, domain.Position{})
+	}
+	next := &domain.Builtin{
+		Name:    "next",
+		MinArgs: 0,
+		VarArgs: true,
+		Fn: func(args []domain.Value, pos domain.Position) (domain.Value, error) {
+			r := req
+			if len(args) > 0 {
+				r = args[0]
+			}
+			res, err := in.runChain(uses, i+1, r, handler)
+			if err != nil {
+				return nil, err
+			}
+			return in.awaitValue(res, pos)
+		},
+	}
+	res, err := in.callValue(uses[i], []domain.Value{req, next}, domain.Position{})
+	if err != nil {
+		return nil, err
+	}
+	return in.awaitValue(res, domain.Position{})
 }
 
 // writeThrown turns an error that escaped a route handler into a response.
