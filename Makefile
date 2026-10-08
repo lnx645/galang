@@ -37,13 +37,34 @@ install: build
 	cp $(BUILD_DIR)/gar $(shell go env GOPATH)/bin/gar 2>/dev/null || sudo cp $(BUILD_DIR)/gar /usr/local/bin/gar
 
 # Build untuk semua platform
+#
+# CGO per platform: linux/amd64 (host, gcc) dan windows/amd64 (butuh
+# gcc-mingw-w64-x86-64) dibangun DENGAN CGO sehingga GNE (dlopen/
+# LoadLibrary) dan SQLite aktif. Platform lain cross-build CGO=0 →
+# binari tetap jalan, tetapi `use` ekstensi native dan database
+# menghasilkan galat "butuh CGO" (terdokumentasi di docs/{id,en}).
+MINGW ?= x86_64-w64-mingw32-gcc
+
 release:
 	@echo "Building for platforms: $(PLATFORMS)"
 	@mkdir -p $(DIST_DIR)
 	@for platform in $(PLATFORMS); do \
-		GOOS=$${platform%/*} GOARCH=$${platform#*/} \
-		$(GO) build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/gar-$${platform%/*}-$${platform#*/}$(if $(filter windows/%,$(platform)),.exe,) ./cmd/gar; \
-		echo "Built: gar-$${platform%/*}-$${platform#*/}"; \
+		goos=$${platform%/*}; \
+		goarch=$${platform#*/}; \
+		cgo=0; \
+		cc=; \
+		case "$$goos/$$goarch" in \
+			linux/amd64|windows/amd64) cgo=1 ;; \
+		esac; \
+		if [ "$$goos/$$goarch" = "windows/amd64" ]; then cc=$(MINGW); fi; \
+		if [ -n "$$cc" ]; then \
+			GOOS=$$goos GOARCH=$$goarch CGO_ENABLED=$$cgo CC="$$cc" \
+				$(GO) build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/gar-$$goos-$$goarch$(if $(filter windows/%,$(platform)),.exe,) ./cmd/gar; \
+		else \
+			GOOS=$$goos GOARCH=$$goarch CGO_ENABLED=$$cgo \
+				$(GO) build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/gar-$$goos-$$goarch$(if $(filter windows/%,$(platform)),.exe,) ./cmd/gar; \
+		fi; \
+		echo "Built: gar-$$goos-$$goarch (CGO=$$cgo)"; \
 	done
 
 # Buat archive zip untuk distribusi

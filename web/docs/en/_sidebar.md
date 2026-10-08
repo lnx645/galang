@@ -5,5 +5,6 @@
 - [Language Reference](language.md)
 - [API Reference](api.md)
 - [Standard Library](modules.md)
+- [Native Extensions (GNE)](gne.md)
 - [Web Runtime](web.md)
 - [CLI](cli.md)

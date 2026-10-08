@@ -161,10 +161,12 @@ $db.close()
   (status 500) catchable with `try/catch` — `e.code` is `"db_error"`.
   Malformed arguments (e.g. parameters that are not an array) are
   ordinary programming errors.
-- **CGO for SQLite**: native binaries (e.g. `gar-linux-amd64`) include
-  SQLite support; cross-compiled binaries (windows/darwin from Linux)
-  are built without CGO — SQLite is inactive there, but MySQL and
-  PostgreSQL (pure Go) still work.
+- **CGO for SQLite**: `gar-linux-amd64` and `gar-windows-amd64` are
+  built with CGO — SQLite is active in both; the other cross builds
+  (linux/arm64, windows/arm64, darwin) are built without CGO — SQLite
+  is inactive there, but MySQL and PostgreSQL (pure Go) still work.
+  CGO also governs [native extensions (GNE)](gne.md): a CGO-less binary
+  rejects extension `use` with a "CGO required" message.
 
 ---
 

@@ -595,6 +595,24 @@ Rules:
 - Compile-time and runtime errors inside a module are reported against
   the module's file name.
 
+### Native extensions (GNE)
+
+Besides `.ga` files, `use` can also load **native C extensions** (GNE —
+Garurda Native Extension) without changing the parser or the compiler.
+When no source file is found, the search order is `./gne` → `$GNE_PATH`
+→ `~/.garurda/gne`:
+
+```garurda
+use "redis"         // looks for redis.so / .dylib / .dll
+use "lib/foo.so"    // explicit paths are fine too
+```
+
+The resolution order remains **builtin → `.ga` file → GNE**. The full
+guide to writing C extensions is at
+[Native Extensions — GNE](gne.md); working examples live in the
+[garurda-gne-examples](https://github.com/lnx645/garurda-gne-examples)
+repo.
+
 ## 15. Not Yet Available
 
 - Generics `<T>` — planned for v1

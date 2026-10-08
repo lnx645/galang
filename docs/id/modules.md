@@ -160,10 +160,13 @@ $db.close()
   (status 500) yang bisa ditangkap `try/catch` — `e.code` = `"db_error"`.
   Salah bentuk argumen (mis. parameter bukan array) adalah galat
   pemrograman seperti biasa.
-- **CGO untuk SQLite**: biner native (mis. `gar-linux-amd64`) sudah
-  mendukung SQLite; biner hasil silang (windows/darwin dari Linux)
-  dibangun tanpa CGO — SQLite tidak aktif di sana, tetapi MySQL dan
-  PostgreSQL (pure Go) tetap berfungsi.
+- **CGO untuk SQLite**: `gar-linux-amd64` dan `gar-windows-amd64`
+  dibangun dengan CGO — SQLite aktif di keduanya; biner cross lain
+  (linux/arm64, windows/arm64, darwin) dibangun tanpa CGO — SQLite
+  tidak aktif di sana, tetapi MySQL dan PostgreSQL (pure Go) tetap
+  berfungsi. CGO juga menentukan ketersediaan [ekstensi native
+  GNE](gne.md): biner tanpa CGO menolak `use` ekstensi dengan pesan
+  "butuh CGO".
 
 ---
 

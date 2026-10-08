@@ -591,6 +591,23 @@ Aturan:
 - Galat kompilasi maupun runtime di dalam modul dilaporkan dengan nama
   file modulnya.
 
+### Ekstensi native (GNE)
+
+Selain file `.ga`, `use` juga bisa memuat **ekstensi native C** (GNE —
+Garurda Native Extension) tanpa mengubah parser maupun compiler. Bila
+berkas sumber tidak ditemukan, urutan pencariannya `./gne` → `$GNE_PATH`
+→ `~/.garurda/gne`:
+
+```garurda
+use "redis"         // mencari redis.so / .dylib / .dll
+use "lib/foo.so"    // path eksplisit juga boleh
+```
+
+Urutan resolusi tetap: **bawaan → file `.ga` → GNE**. Panduan lengkap
+menulis ekstensi C ada di [Ekstensi Native — GNE](gne.md); contoh yang
+sudah jalan ada di repo
+[garurda-gne-examples](https://github.com/lnx645/garurda-gne-examples).
+
 ## 15. Yang Belum Ada
 
 - Generic `<T>` — direncanakan v1

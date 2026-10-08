@@ -36,6 +36,10 @@ Halo, Dunia!
 - Pustaka bawaan: `strings`, `math`, `time`, `json_encode`/`json_decode`, `html_escape`
 - Modul: `use "strings"` memuat pustaka bawaan; `use "db.ga"` memuat file
   `.ga` lokal menjadi namespace (dieksekusi sekali)
+- **Ekstensi native C (GNE)**: `use "redis"` memuat `redis.so`/`.dylib`/`.dll`
+  dari `./gne` → `$GNE_PATH` → `~/.garurda/gne` — menulis ekstensi dalam C
+  tanpa menyentuh compiler/runtime ([panduan GNE](docs/id/gne.md),
+  [contoh](https://github.com/lnx645/garurda-gne-examples))
 - CLI: `gar run`, `gar repl`
 - 80+ test, benchmark dengan `-benchmem`
 

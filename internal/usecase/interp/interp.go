@@ -14,6 +14,7 @@ import (
 	"sync"
 
 	"garurda/internal/domain"
+	"garurda/internal/infra/gne"
 	"garurda/internal/infra/template"
 	"garurda/internal/usecase/parse"
 )
@@ -124,6 +125,9 @@ type Interp struct {
 	// module scope receives these values as its prelude, so modules
 	// see print/len/... but never the caller's globals.
 	builtinVals map[string]domain.Value
+	// gne memuat ekstensi native (Garurda Native Extension); dibuat
+	// lazily pada `use` pertama yang jatuh ke jalur GNE.
+	gne *gne.Registry
 	// engine renders Blade templates for the http module.
 	engine *template.Engine
 	// File is the name used in diagnostics for the program being run.

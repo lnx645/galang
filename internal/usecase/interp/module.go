@@ -21,8 +21,13 @@ import (
 
 // fileModuleName is the namespace a file module binds: its base name
 // without the .ga suffix ("lib/util.ga" → "util", "db" → "db").
+// Ekstensi native GNE ikut dipangkas ("lib/redis.so" → "redis") supaya
+// `use "lib/redis.so"` terikat ke nama yang valid.
 func fileModuleName(path string) string {
 	base := filepath.Base(filepath.ToSlash(path))
+	if gneIsNative(base) {
+		return gneStripSuffix(base)
+	}
 	return strings.TrimSuffix(base, ".ga")
 }
 
@@ -32,6 +37,11 @@ func fileModuleName(path string) string {
 // interpreter; later uses share the object. pos is the `use` statement
 // for error reporting.
 func (in *Interp) loadFileModule(path string, pos domain.Position) (domain.Value, error) {
+	// Path eksplisit berupa pustaka native: langsung jalur GNE, jangan
+	// pernah mencoba membacanya sebagai sumber Garurda.
+	if gneIsNative(path) {
+		return in.loadGNEExplicit(path, pos)
+	}
 	base := path
 	if !filepath.IsAbs(base) {
 		base = filepath.Join(in.curDir, path)
@@ -53,7 +63,23 @@ func (in *Interp) loadFileModule(path string, pos domain.Position) (domain.Value
 		}
 	}
 	if !found {
-		return nil, in.errf(pos, "module '%s' not found (tried %s)", path, strings.Join(cands, ", "))
+		// Fallback GNE: hanya untuk nama telanjang (tanpa direktori);
+		// use "lib/redis" tetap wilayah berkas sumber.
+		bare := !strings.ContainsRune(path, '/') && !strings.ContainsRune(path, '\\')
+		if bare {
+			v, gfound, gerr := in.loadGNEBare(path, pos)
+			if gerr != nil {
+				return nil, gerr
+			}
+			if gfound {
+				return v, nil
+			}
+		}
+		tried := append([]string{}, cands...)
+		if bare {
+			tried = append(tried, in.gneCandidatesList(path)...)
+		}
+		return nil, in.errf(pos, "module '%s' not found (tried %s)", path, strings.Join(tried, ", "))
 	}
 	if v, ok := in.fileModules[abs]; ok {
 		return v, nil
