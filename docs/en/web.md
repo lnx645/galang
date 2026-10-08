@@ -24,6 +24,7 @@ http.listen(8868)
 - [json() — full control](#json--full-control)
 - [Error & Status Code](#error--status-code)
 - [Cookie](#cookie)
+- [Sessions](#sessions)
 - [Static Files](#static-files)
 - [Template Blade](#template-blade)
 - [SSE (Server-Sent Events)](#sse-server-sent-events)
@@ -68,6 +69,8 @@ http.listen(8868)
 | `http.PUT(path, handler)` | PUT |
 | `http.DELETE(path, handler)` | DELETE |
 | `http.use(fn)` | register global middleware |
+| `http.session([$req])` | get the session object |
+| `http.session_destroy([$req])` | destroy session + expiring cookie |
 | `http.listen(port)` | start the server |
 
 `handler` is an `fn($req)` function that returns the response.
@@ -135,6 +138,8 @@ http.GET("/cari/{id}", fn($req) {
     $req.params.id       // path parameter {id} → "42"
     $req.headers.accept  // header (lowercase)
     $req.cookies.sid     // cookie
+    $req.session         // session object (same as http.session($req))
+    $req.session_id      // session id; null before the session exists
     $req.body            // raw body as a string
     return "ok"
 })
@@ -260,6 +265,48 @@ http.GET("/cek", fn($req) {
     return "ok"
 })
 ```
+
+## Sessions
+
+Sessions bind per-visitor data through the `garurda_session` cookie
+(HttpOnly, SameSite=Lax, Path=/) and the in-memory `$req.session`
+object.
+
+```garurda
+http.GET("/cart", fn($req) {
+    $s = http.session($req)   // the same object as $req.session
+    $n = 0
+    if $s.item != null {
+        $n = $s.item + 1
+    }
+    $s.item = $n
+    return {item: $n, fresh: $req.session_id == null}
+})
+```
+
+Rules:
+
+- `$req.session`, `http.session($req)`, and `http.session()` (without
+  arguments, inside a handler only) all refer to the **same session
+  object** — a plain object, read and write fields freely.
+- A cookie is issued only when the session is **written** on a request
+  that has no id yet — anonymous traffic produces no cookie and no store
+  entry.
+- The session id is a random 128-bit value; every later request carrying
+  that cookie uses the same session object.
+- `http.session_destroy($req)` empties the session, deletes it from the
+  store, and sends an expiring cookie (`Max-Age=0`).
+- Calling `http.session()` / `http.session_destroy()` outside a handler
+  is an error with a clear message.
+- The store is **in-memory**: it vanishes when the process ends
+  (restart) and has no automatic expiry — honest for demo/development
+  scale; multi-process production would need an external store.
+- Regular HTTP routes only; static/SSE/WS bypass it (same as
+  middleware).
+
+A working example: `GET /api/kunjungan` in
+[`examples/webapp`](https://github.com/lnx645/galang/tree/master/examples/webapp)
+(per-session counter, `?reset=1` to destroy).
 
 ## Static Files
 

@@ -1,9 +1,9 @@
 # Contoh Web Publik Garurda
 
 Aplikasi contoh yang menampilkan modul `http` — termasuk **middleware
-`http.use`** — template **Blade**, file statis CSS/JS, dan respons JSON
-otomatis. Inilah aplikasi yang disajikan service `garurda-demo.service` di
-port **5800**.
+`http.use`** dan **sesi `http.session`** — template **Blade**, file
+statis CSS/JS, dan respons JSON otomatis. Inilah aplikasi yang disajikan
+service `garurda-demo.service` di port **5800**.
 
 ## Menjalankan
 
@@ -44,6 +44,7 @@ examples/webapp/
 | POST | `/api/echo` | JSON echo; body rusak → **400** `json_error` |
 | GET | `/api/user/{id}` | id `"1"` → user, selain itu → **404** |
 | GET | `/api/daftar` | array fitur → JSON array |
+| GET | `/api/kunjungan` | hitungan per sesi (cookie HttpOnly; `?reset=1` = destroy) |
 | GET | `/public/*` | file statis (CSS/JS) |
 | — | rute tak dikenal | **404**; method salah → **405** |
 
@@ -58,6 +59,14 @@ http.use(fn($req, $next) {
     return $next($req)
 })
 ```
+
+## Sesi
+
+`GET /api/kunjungan` memakai sesi HTTP: cookie `garurda_session`
+(HttpOnly, SameSite=Lax) terbit pada kunjungan pertama yang **menulis**
+sesi; objek `$req.session` (sama dengan `http.session($req)`) hidup di
+store in-memory selama proses. `?reset=1` memanggil
+`http.session_destroy($req)` — sesi dihapus dan cookie dikirim kedaluwarsa.
 
 ## Deploy sebagai service systemd
 

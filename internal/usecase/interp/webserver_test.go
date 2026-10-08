@@ -167,6 +167,13 @@ func evalWeb(t *testing.T, src string) (*Interp, *bytes.Buffer) {
 // middleware chain snapshot).
 func serveReq(t *testing.T, in *Interp, method, path string) *testResponseWriter {
 	t.Helper()
+	return serveReqCookie(t, in, method, path, "")
+}
+
+// serveReqCookie is serveReq with an explicit Cookie header, so a test
+// can replay a Set-Cookie from a previous response.
+func serveReqCookie(t *testing.T, in *Interp, method, path, cookie string) *testResponseWriter {
+	t.Helper()
 	var handler domain.Value
 	params := map[string]string{}
 	for _, rt := range in.webRoutes.snapshot() {
@@ -184,6 +191,9 @@ func serveReq(t *testing.T, in *Interp, method, path string) *testResponseWriter
 		t.Fatalf("tidak ada rute %s %s", method, path)
 	}
 	r := httptest.NewRequest(method, path, nil)
+	if cookie != "" {
+		r.Header.Set("Cookie", cookie)
+	}
 	w := &testResponseWriter{header: make(http.Header)}
 	in.serveRequest(handler, params, in.webRoutes.snapshotUses(), w, r)
 	return w
@@ -297,5 +307,154 @@ http.GET("/", async fn($req) { return "async-ok" })
 	w := serveReq(t, in, "GET", "/")
 	if w.body != "async-ok" {
 		t.Fatalf("body = %q, want async-ok", w.body)
+	}
+}
+
+// sessionSid mengambil nilai garurda_session dari header Set-Cookie.
+func sessionSid(t *testing.T, w *testResponseWriter) string {
+	t.Helper()
+	sc := w.header.Get("Set-Cookie")
+	if sc == "" {
+		t.Fatal("tidak ada header Set-Cookie")
+	}
+	parts := strings.SplitN(strings.Split(sc, ";")[0], "=", 2)
+	if len(parts) != 2 || parts[1] == "" {
+		t.Fatalf("Set-Cookie tak terbaca: %q", sc)
+	}
+	return parts[1]
+}
+
+// Sesi: request pertama yang menulis mendapat cookie HttpOnly + id acak;
+// request berikutnya dengan cookie itu memakai objek sesi yang sama.
+func TestSessionTulisDanBaca(t *testing.T) {
+	in, _ := evalWeb(t, `
+use "http"
+http.GET("/tulis", fn($req) {
+    $s = http.session($req)
+    $s.n = 41
+    return {n: $s.n, baru: $req.session_id == null}
+})
+http.GET("/baca", fn($req) {
+    $s = $req.session
+    $s.n = $s.n + 1
+    return {n: $s.n}
+})
+`)
+	w1 := serveReq(t, in, "GET", "/tulis")
+	if w1.body != `{"baru":true,"n":41}` {
+		t.Fatalf("respons pertama = %q", w1.body)
+	}
+	sc := w1.header.Get("Set-Cookie")
+	if !strings.Contains(sc, "HttpOnly") {
+		t.Fatalf("cookie seharusnya HttpOnly: %q", sc)
+	}
+	if !strings.Contains(sc, "SameSite=Lax") {
+		t.Fatalf("cookie seharusnya SameSite=Lax: %q", sc)
+	}
+	sid := sessionSid(t, w1)
+	w2 := serveReqCookie(t, in, "GET", "/baca", "garurda_session="+sid)
+	if w2.body != `{"n":42}` {
+		t.Fatalf("baca-silang = %q, want {\"n\":42}", w2.body)
+	}
+	if w2.header.Get("Set-Cookie") != "" {
+		t.Fatalf("sesi lama tak perlu cookie baru: %q", w2.header.Get("Set-Cookie"))
+	}
+}
+
+// Sesi yang tidak pernah ditulis tidak mengeluarkan cookie dan tidak
+// masuk store — trafik anonim tak menumpuk.
+func TestSessionAnonimTanpaCookie(t *testing.T) {
+	in, _ := evalWeb(t, `
+use "http"
+http.GET("/", fn($req) { return {n: $req.session.n} })
+`)
+	w := serveReq(t, in, "GET", "/")
+	if w.header.Get("Set-Cookie") != "" {
+		t.Fatalf("sesi kosong seharusnya tak mengeluarkan cookie: %q", w.header.Get("Set-Cookie"))
+	}
+	if w.body != `{"n":null}` {
+		t.Fatalf("body = %q, want {\"n\":null}", w.body)
+	}
+}
+
+// http.session_destroy mengosongkan sesi, menghapus entri store, dan
+// mengirim cookie kedaluwarsa; cookie lama tidak berlaku lagi.
+func TestSessionDestroy(t *testing.T) {
+	in, _ := evalWeb(t, `
+use "http"
+http.GET("/isi", fn($req) {
+    $s = http.session($req)
+    $s.n = 7
+    return {n: $s.n}
+})
+http.GET("/keluar", fn($req) {
+    http.session_destroy($req)
+    return "selesai"
+})
+http.GET("/baca", fn($req) {
+    return {n: $req.session.n}
+})
+`)
+	w1 := serveReq(t, in, "GET", "/isi")
+	sid := sessionSid(t, w1)
+	w2 := serveReqCookie(t, in, "GET", "/keluar", "garurda_session="+sid)
+	if sc := w2.header.Get("Set-Cookie"); !strings.Contains(sc, "Max-Age=0") {
+		t.Fatalf("destroy seharusnya mengirim cookie kedaluwarsa: %q", sc)
+	}
+	w3 := serveReqCookie(t, in, "GET", "/baca", "garurda_session="+sid)
+	if w3.body != `{"n":null}` {
+		t.Fatalf("sesi lama harus sudah mati, body = %q", w3.body)
+	}
+}
+
+// http.session() tanpa argumen memakai request yang sedang dilayani.
+func TestSessionTanpaArgumen(t *testing.T) {
+	in, _ := evalWeb(t, `
+use "http"
+http.GET("/", fn($req) {
+    $s = http.session()
+    $n = 1
+    if $s.langkah != null {
+        $n = $s.langkah + 1
+    }
+    $s.langkah = $n
+    return {langkah: $n}
+})
+`)
+	w1 := serveReq(t, in, "GET", "/")
+	if w1.body != `{"langkah":1}` {
+		t.Fatalf("langkah pertama = %q", w1.body)
+	}
+	sid := sessionSid(t, w1)
+	w2 := serveReqCookie(t, in, "GET", "/", "garurda_session="+sid)
+	if w2.body != `{"langkah":2}` {
+		t.Fatalf("langkah kedua = %q, want {\"langkah\":2}", w2.body)
+	}
+}
+
+// http.session() di luar handler adalah galat, bukan keheningan.
+func TestSessionDiLuarHandler(t *testing.T) {
+	var out bytes.Buffer
+	in := New(&out, &out)
+	_, err := in.Eval("use \"http\"\nhttp.session()\n", "test.ga")
+	if err == nil {
+		t.Fatal("http.session() di luar handler seharusnya error")
+	}
+	if !strings.Contains(err.Error(), "handler") {
+		t.Fatalf("pesan error tak menjelaskan konteks: %v", err)
+	}
+}
+
+// Respons object harus memuat null JSON sungguhan, bukan string "null"
+// (konsisten dengan json_encode).
+func TestWriteResponseNullJSON(t *testing.T) {
+	in := New(nil, nil)
+	rec := &testResponseWriter{header: make(http.Header)}
+	obj := domain.NewObj()
+	obj.Set("n", domain.Null{})
+	obj.Set("s", domain.Str("x"))
+	in.writeResponse(rec, obj)
+	if rec.body != `{"n":null,"s":"x"}` {
+		t.Fatalf("body = %q, want {\"n\":null,\"s\":\"x\"}", rec.body)
 	}
 }

@@ -400,6 +400,57 @@ func (in *Interp) newHttpModule() *domain.Obj {
 		in.webRoutes.addUse(a[0])
 		return domain.Null{}, nil
 	}))
+	// http.session() tanpa argumen memakai request yang sedang dilayani;
+	// http.session($req) memakai objek request eksplisit. Medan
+	// $req.session menunjuk ke objek yang sama.
+	m.Set("session", in.strictFn("http.session", 0, 1, func(in *Interp, a []domain.Value, p domain.Position) (domain.Value, error) {
+		if len(a) == 1 {
+			o, ok := a[0].(*domain.Obj)
+			if !ok {
+				return nil, in.errf(p, "http.session() expects a request object")
+			}
+			v, has := o.Get("session")
+			if !has {
+				return nil, in.errf(p, "http.session() expects a request object")
+			}
+			return v, nil
+		}
+		if in.curReq == nil {
+			return nil, in.errf(p, "http.session() can only be called inside an HTTP handler")
+		}
+		v, _ := in.curReq.Get("session")
+		return v, nil
+	}))
+	m.Set("session_destroy", in.strictFn("http.session_destroy", 0, 1, func(in *Interp, a []domain.Value, p domain.Position) (domain.Value, error) {
+		req := in.curReq
+		if len(a) == 1 {
+			o, ok := a[0].(*domain.Obj)
+			if !ok {
+				return nil, in.errf(p, "http.session_destroy() expects a request object")
+			}
+			req = o
+		}
+		if req == nil {
+			return nil, in.errf(p, "http.session_destroy() can only be called inside an HTTP handler")
+		}
+		if v, has := req.Get("session"); has {
+			if sess, ok := v.(*domain.Obj); ok {
+				for _, k := range sess.Keys() {
+					sess.Delete(k)
+				}
+			}
+		}
+		if v, has := req.Get("session_id"); has {
+			if sid, ok := v.(domain.Str); ok && sid != "" {
+				in.sessions.delete(string(sid))
+			}
+		}
+		req.Set("session_id", domain.Null{})
+		// Penanda: finalizeSession mengirim cookie kedaluwarsa bila
+		// sesi tidak ditulis ulang sebelum respons keluar.
+		req.Set("_session_expired", domain.Null{})
+		return domain.Null{}, nil
+	}))
 	m.Set("listen", in.typeFn("http.listen", 1, func(in *Interp, a []domain.Value, p domain.Position) (domain.Value, error) {
 		port, ok := domain.AsInt(a[0])
 		if !ok {

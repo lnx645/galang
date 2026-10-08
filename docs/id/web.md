@@ -24,6 +24,7 @@ http.listen(8868)
 - [json() — kontrol penuh](#json--kontrol-penuh)
 - [Error & Status Code](#error--status-code)
 - [Cookie](#cookie)
+- [Sesi (Session)](#sesi-session)
 - [Static Files](#static-files)
 - [Template Blade](#template-blade)
 - [SSE (Server-Sent Events)](#sse-server-sent-events)
@@ -67,6 +68,8 @@ http.listen(8868)
 | `http.PUT(path, handler)` | PUT |
 | `http.DELETE(path, handler)` | DELETE |
 | `http.use(fn)` | pasang middleware global |
+| `http.session([$req])` | ambil objek sesi |
+| `http.session_destroy([$req])` | hapus sesi + cookie kedaluwarsa |
 | `http.listen(port)` | jalankan server |
 
 `handler` adalah fungsi `fn($req)` yang mengembalikan response.
@@ -130,6 +133,8 @@ http.GET("/cari/{id}", fn($req) {
     $req.params.id       // path parameter {id} → "42"
     $req.headers.accept  // header (huruf kecil)
     $req.cookies.sid     // cookie
+    $req.session         // objek sesi (sama dengan http.session($req))
+    $req.session_id      // id sesi; null bila sesi belum ada
     $req.body            // body mentah sebagai string
     return "ok"
 })
@@ -255,6 +260,47 @@ http.GET("/cek", fn($req) {
     return "ok"
 })
 ```
+
+## Sesi (Session)
+
+Sesi mengikat data per pengunjung lewat cookie `garurda_session`
+(HttpOnly, SameSite=Lax, Path=/) dan objek `$req.session` yang disimpan
+di memori.
+
+```garurda
+http.GET("/keranjang", fn($req) {
+    $s = http.session($req)   // objek yang sama dengan $req.session
+    $n = 0
+    if $s.item != null {
+        $n = $s.item + 1
+    }
+    $s.item = $n
+    return {item: $n, baru: $req.session_id == null}
+})
+```
+
+Aturan:
+
+- `$req.session`, `http.session($req)`, dan `http.session()` (tanpa
+  argumen, hanya di dalam handler) menunjuk ke **objek sesi yang sama** —
+  obyek biasa, baca/tulis medan bebas.
+- Cookie hanya terbit bila sesi **ditulis** pada request yang belum punya
+  id — trafik anonim tidak menghasilkan cookie dan tidak masuk store.
+- Id sesi acak 128-bit; semua request berikutnya yang membawa cookie itu
+  memakai objek sesi yang sama.
+- `http.session_destroy($req)` mengosongkan sesi, menghapusnya dari
+  store, dan mengirim cookie kedaluwarsa (`Max-Age=0`).
+- `http.session()` / `http.session_destroy()` di luar handler adalah
+  galat dengan pesan jelas.
+- Store **in-memory**: hilang saat proses berakhir (restart) dan tanpa
+  kadaluwarsa otomatis — jujur untuk skala demo/pengembangan; untuk
+  produksi multi-proses diperlukan store eksternal.
+- Berlaku untuk rute HTTP biasa; static/SSE/WS tidak melewatinya
+  (sama seperti middleware).
+
+Contoh nyata: `GET /api/kunjungan` di
+[`examples/webapp`](https://github.com/lnx645/galang/tree/master/examples/webapp)
+(hitungan per sesi + `?reset=1` untuk destroy).
 
 ## Static Files
 

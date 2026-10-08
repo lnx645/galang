@@ -1,9 +1,9 @@
 // Contoh aplikasi web publik Garurda — demo di port 5800.
 //
-// Menunjukkan: routing + path parameter, middleware http.use, Blade
-// template (@extends, @section, @yield, @include, @foreach, @if), file
-// statis CSS/JS, respons JSON otomatis, structured response, dan error
-// berstatus.
+// Menunjukkan: routing + path parameter, middleware http.use, sesi
+// http.session (cookie HttpOnly), Blade template (@extends, @section,
+// @yield, @include, @foreach, @if), file statis CSS/JS, respons JSON
+// otomatis, structured response, dan error berstatus.
 //
 // Jalankan dari direktori ini:
 //     cd examples/webapp && gar run main.ga
@@ -107,6 +107,24 @@ http.GET("/api/user/{id}", fn($req) {
 // Respons array → JSON array otomatis.
 http.GET("/api/daftar", fn($req) {
     return $fitur
+})
+
+// Sesi HTTP: hitungan kunjungan per sesi. Server mengirim cookie
+// HttpOnly (garurda_session) pada kunjungan pertama yang menulis sesi;
+// penyimpanan in-memory — reset saat service restart. Tambahkan ?reset=1
+// untuk menghancurkan sesi (cookie kedaluwarsa).
+http.GET("/api/kunjungan", fn($req) {
+    if $req.query.reset != null {
+        http.session_destroy($req)
+        return {kunjungan: 0, sesi_dihancurkan: true}
+    }
+    $s = http.session($req)
+    $n = 1
+    if $s.kunjungan != null {
+        $n = $s.kunjungan + 1
+    }
+    $s.kunjungan = $n
+    return {kunjungan: $n, sesi_baru: $req.session_id == null}
 })
 
 http.listen(5800)

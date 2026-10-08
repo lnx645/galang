@@ -86,6 +86,25 @@
         }
     }
 
+    // ── GET /api/kunjungan + reset sesi ─────────────────────
+    var btnKunjungan = document.getElementById("btn-kunjungan");
+    var hasilKunjungan = document.getElementById("hasil-kunjungan");
+    if (btnKunjungan && hasilKunjungan) {
+        var hitung = function (tambahan) {
+            show(hasilKunjungan, "// GET /api/kunjungan" + tambahan + " …");
+            hit("/api/kunjungan" + tambahan).then(function (r) {
+                show(hasilKunjungan, r.body, r.status >= 400);
+            }).catch(function (err) {
+                show(hasilKunjungan, "gagal: " + err, true);
+            });
+        };
+        btnKunjungan.addEventListener("click", function () { hitung(""); });
+        var btnResetSesi = document.getElementById("btn-reset-sesi");
+        if (btnResetSesi) {
+            btnResetSesi.addEventListener("click", function () { hitung("?reset=1"); });
+        }
+    }
+
     // ── Jam lokal ───────────────────────────────────────────
     var jam = document.getElementById("jam");
     if (jam) {

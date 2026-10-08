@@ -102,6 +102,12 @@ type Interp struct {
 	// webRoutes holds HTTP routes registered from Garurda code via the
 	// http module. It is nil until the http module is first loaded.
 	webRoutes *webRoutes
+	// sessions is the in-memory store behind http.session / $req.session.
+	sessions *sessionStore
+	// curReq is the request being served while a handler runs, letting
+	// http.session() work without an explicit argument. Guarded by
+	// webRoutes.execMu: only one handler runs at a time.
+	curReq *domain.Obj
 	// engine renders Blade templates for the http module.
 	engine *template.Engine
 	// File is the name used in diagnostics for the program being run.
@@ -147,6 +153,7 @@ func New(out, errOut io.Writer) *Interp {
 	in.locals = make([]int64, 0, 256)
 	in.vframes = make([]vmFrame, 0, 64)
 	in.webRoutes = &webRoutes{}
+	in.sessions = newSessionStore()
 	in.engine = template.NewEngine("views")
 	in.installGlobals()
 	return in

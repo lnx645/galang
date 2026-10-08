@@ -189,13 +189,28 @@ func (in *Interp) serveRequest(handler domain.Value, params map[string]string, u
 	defer in.webRoutes.execMu.Unlock()
 
 	reqObj := in.buildRequestObj(r, params)
-	result, err := in.runChain(uses, 0, reqObj, handler)
+	in.curReq = reqObj
+	defer func() { in.curReq = nil }()
+	result, hreq, err := in.runChain(uses, 0, reqObj, handler)
 	if err == nil {
 		// An async handler or middleware returns a promise; resolve it,
 		// then run any fire-and-forget spawns before the response goes out.
 		if result, err = in.awaitValue(result, domain.Position{}); err == nil {
 			err = in.drainPending()
 		}
+	}
+	// Sesi yang baru ditulis perlu id + Set-Cookie — bahkan bila handler
+	// melempar, supaya data yang sudah masuk store tidak yatim.
+	target := reqObj
+	if o, ok := hreq.(*domain.Obj); ok {
+		target = o
+	}
+	if ck, serr := in.finalizeSession(target); serr != nil {
+		if err == nil {
+			err = serr
+		}
+	} else if ck != "" {
+		w.Header().Add("Set-Cookie", ck)
 	}
 	if err != nil {
 		in.writeThrown(w, err)
@@ -210,10 +225,13 @@ func (in *Interp) serveRequest(handler domain.Value, params map[string]string, u
 // final response (awaited, so middleware always sees a plain value);
 // returning without calling $next short-circuits the chain. A middleware
 // may pass a modified request object to $next — objects share references,
-// so mutations are visible downstream.
-func (in *Interp) runChain(uses []domain.Value, i int, req domain.Value, handler domain.Value) (domain.Value, error) {
+// so mutations are visible downstream. The request object that reached
+// the handler is returned alongside the response so serveRequest can
+// finalize the session against it.
+func (in *Interp) runChain(uses []domain.Value, i int, req domain.Value, handler domain.Value) (domain.Value, domain.Value, error) {
 	if i >= len(uses) {
-		return in.callValue(handler, []domain.Value{req}, domain.Position{})
+		res, err := in.callValue(handler, []domain.Value{req}, domain.Position{})
+		return res, req, err
 	}
 	next := &domain.Builtin{
 		Name:    "next",
@@ -224,7 +242,7 @@ func (in *Interp) runChain(uses []domain.Value, i int, req domain.Value, handler
 			if len(args) > 0 {
 				r = args[0]
 			}
-			res, err := in.runChain(uses, i+1, r, handler)
+			res, _, err := in.runChain(uses, i+1, r, handler)
 			if err != nil {
 				return nil, err
 			}
@@ -233,9 +251,10 @@ func (in *Interp) runChain(uses []domain.Value, i int, req domain.Value, handler
 	}
 	res, err := in.callValue(uses[i], []domain.Value{req, next}, domain.Position{})
 	if err != nil {
-		return nil, err
+		return nil, req, err
 	}
-	return in.awaitValue(res, domain.Position{})
+	v, aerr := in.awaitValue(res, domain.Position{})
+	return v, req, aerr
 }
 
 // writeThrown turns an error that escaped a route handler into a response.
@@ -380,6 +399,26 @@ func (in *Interp) buildRequestObj(r *http.Request, params map[string]string) *do
 	}
 	obj.Set("cookies", cookies)
 
+	// Sesi: ambil objek sesi dari store bila cookie valid, kalau tidak
+	// sediakan objek kosong — baru disimpan saat benar-benar ditulis
+	// (lihat finalizeSession).
+	if in.sessions == nil {
+		in.sessions = newSessionStore()
+	}
+	sess := domain.NewObj()
+	sid := ""
+	if c, err := r.Cookie(sessionCookieName); err == nil && c.Value != "" {
+		if s := in.sessions.get(c.Value); s != nil {
+			sess, sid = s, c.Value
+		}
+	}
+	obj.Set("session", sess)
+	if sid != "" {
+		obj.Set("session_id", domain.Str(sid))
+	} else {
+		obj.Set("session_id", domain.Null{})
+	}
+
 	body := ""
 	if r.Body != nil {
 		data, err := io.ReadAll(r.Body)
@@ -517,6 +556,10 @@ func domainValueToInterface(v domain.Value) interface{} {
 		return float64(v.(domain.Float))
 	case domain.Bool:
 		return bool(v.(domain.Bool))
+	case domain.Null:
+		// JSON harus memuat null sungguhan, bukan string "null"
+		// (json_encode sudah menulis null; respons HTTP harus sama).
+		return nil
 	case *domain.Arr:
 		arr := v.(*domain.Arr)
 		items := make([]interface{}, len(arr.Items))
