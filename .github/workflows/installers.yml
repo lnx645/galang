@@ -74,7 +74,9 @@ jobs:
         run: |
           $ver = $env:TAG -replace '^v',''
           $env:CGO_ENABLED = "1"
+          $env:CC = "gcc"
           go build -ldflags "-s -w -X galang/internal/delivery/cli.Version=$ver" -o packaging/windows/gar.exe ./cmd/gar
+          if ($LASTEXITCODE -ne 0) { throw "go build failed" }
           & packaging/windows/gar.exe version
 
       - name: Compile installer
