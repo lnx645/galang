@@ -47,8 +47,11 @@ func bangunFakeExt(t *testing.T, name, versi string, binari map[string]string) s
 // lokal) → list → remove, plus verifikasi isi file terpasang.
 func TestPackInstallListRemove(t *testing.T) {
 	plat := CurrentPlatform()
+	// darwin-amd64 sengaja disertakan: platform terurut pertama di manifest,
+	// padahal bukan milik mesin uji — ukuran list wajib tetap terbaca.
 	ext := bangunFakeExt(t, "redis", "0.6.0", map[string]string{
 		plat:            "ELF-palsu-redis",
+		"darwin-amd64":  "Mach-palsu",
 		"windows-amd64": "PE-palsu",
 	})
 	zipPath := filepath.Join(t.TempDir(), "redis.zip")
@@ -112,6 +115,10 @@ func TestPackInstallListRemove(t *testing.T) {
 	}
 	if items[0].ABI != gne.ABI {
 		t.Errorf("list ABI = %d", items[0].ABI)
+	}
+	if items[0].Size != int64(len("ELF-palsu-redis")) {
+		t.Errorf("list Size = %d, mau %d (binari terpasang harus terbaca)",
+			items[0].Size, len("ELF-palsu-redis"))
 	}
 
 	// Remove membersihkan file + sidecar.

@@ -290,21 +290,19 @@ func List(dir string) ([]Installed, error) {
 			t.Platform = append(t.Platform, p)
 		}
 		sort.Strings(t.Platform)
-		if st, err := os.Stat(filepath.Join(dir, m.Name+libExtFor(firstPlatformGOOS(&m)))); err == nil {
-			t.Size = st.Size()
+		// Ukuran binari terpasang: cari varian ekstensi yang benar-benar
+		// ada di disk. Jangan pakai platform pertama manifest — bisa saja
+		// platform itu bukan milik mesin ini (mis. darwin saat host linux).
+		for _, ext := range []string{".so", ".dylib", ".dll"} {
+			if st, err := os.Stat(filepath.Join(dir, m.Name+ext)); err == nil {
+				t.Size = st.Size()
+				break
+			}
 		}
 		out = append(out, t)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
-}
-
-// firstPlatformGOOS memilih GOOS platform pertama untuk membaca ukuran
-// berkas terpasang (hanya kosmetik untuk list).
-func firstPlatformGOOS(m *Manifest) string {
-	p := firstPlatform(m)
-	goos, _, _ := splitPlatform(p)
-	return goos
 }
 
 // Remove melepas ekstensi beserta sidecar-nya.
