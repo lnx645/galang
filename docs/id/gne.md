@@ -9,26 +9,29 @@ memanggilnya lewat `dlopen` (Linux/macOS) atau `LoadLibrary` (Windows).
 > [galang-gne-examples](https://github.com/lnx645/galang-gne-examples)
 > (`hello` dan `kv`). Syarat: `gar` **0.5.0+** dan gcc.
 
-## Ekstensi resmi — `redis` dan `smtp`
+## Ekstensi resmi — `redis`, `smtp`, `uuid`, `jwt`, dan `httpclient`
 
-Dua ekstensi resmi dikompilasi dari sumber di repo ini (`ext/redis/`,
-`ext/smtp/`) dan dirilis sebagai aset zip multi-platform. Pasang dari
-kanal resmi (butuh `gar` **0.6.0+**):
+Lima ekstensi resmi dikompilasi dari sumber di repo ini (`ext/redis/`,
+`ext/smtp/`, `ext/uuid/`, `ext/jwt/`, `ext/httpclient/`) dan dirilis
+sebagai aset zip multi-platform. Pasang dari kanal resmi (butuh `gar`
+**0.6.0+**; ketiga ekstensi baru membutuhkan `gar` **0.7.1+** untuk
+shortcut nama):
 
 ```bash
 gar gne install redis          # rilis terbaru
 gar gne install smtp@0.6.0     # kunci versi
+gar gne install uuid           # shortcut nama — unduh dari rilis terbaru
 gar gne list                   # nama, versi, ABI, platform
 gar gne remove redis           # lepas binari + sidecar
 ```
 
 Spesifikasi lain: `gar gne install ./redis.zip` (berkas lokal) atau
 `gar gne install https://.../redis.zip` (wajib HTTPS). Pemasangan FLAT ke
-`~/.galang/gne` sehingga langsung dicari `use "redis"` / `use "smtp"` —
+`~/.galang/gne` sehingga langsung dicari `use` dengan nama ekstensinya —
 detail perintah di [CLI — Pengelola Ekstensi](cli.md#pengelola-ekstensi--gar-gne),
 API lengkap di [Modul Standar](modules.md).
 
-Keduanya butuh binari `gar` dengan CGO (tabel [Platform](#platform)):
+Kelima ekstensi butuh binari `gar` dengan CGO (tabel [Platform](#platform)):
 
 - **`redis`** — klien RESP2 dengan `connect`, `ping`, `get`, `set`, `del`,
   `exists`, `incr`, `expire`, `hset`, `hget`, `lpush`, `lrange`, `keys`,
@@ -36,6 +39,13 @@ Keduanya butuh binari `gar` dengan CGO (tabel [Platform](#platform)):
 - **`smtp`** — kirim surel lewat AUTH LOGIN: `connect`, `auth`, `from`,
   `to`, `subject`, `send`, `send_html`, `close`. STARTTLS/SSL **belum**
   ada — baca batasannya di [Modul Standar — smtp](modules.md#smtp--ekstensi-resmi).
+- **`uuid`** — UUID RFC 9562: `v4` (acak), `v7` (berstempel waktu),
+  `is_valid`.
+- **`jwt`** — JWT HS256/HS384/HS512: `sign`, `verify` (signature +
+  klaim `exp`/`nbf`), `decode` tanpa verifikasi.
+- **`httpclient`** — klien HTTP/1.1: `get`, `post`, `request` plus
+  objek respons (`status`, `ok`, `body`, `header()`). https **ditolak**
+  (tanpa TLS bawaan, sama seperti smtp).
 
 ### Bangun sendiri
 
@@ -45,7 +55,7 @@ di bawah, lalu taruh hasilnya di `./gne/` atau `~/.galang/gne` (tanpa
 
 ```bash
 make ext                    # linux/amd64, linux/arm64, windows/amd64
-make pack-ext               # dist/redis.zip dan dist/smtp.zip
+make pack-ext               # dist/<nama>.zip per ekstensi
 ```
 
 macOS memang tidak bisa di-cross-compile dari Linux (CGO), jadi `.dylib`

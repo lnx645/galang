@@ -1,0 +1,5 @@
+{
+  "name": "uuid",
+  "version": "0.7.1",
+  "description": "UUID v4 (acak) dan v7 (berstempel waktu) dengan validasi kanonik 8-4-4-4-12, versi 0-8, dan varian RFC."
+}

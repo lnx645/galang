@@ -96,12 +96,14 @@ gar gne remove <nama> [--dir D]                   # lepas ekstensi
 | `https://.../redis.zip` | URL HTTPS — HTTP polos ditolak |
 | `./redis.zip` | berkas paket lokal |
 
-Ekstensi resmi yang tersedia sebagai aset rilis: **`redis`** dan **`smtp`**
-(lihat [Modul Standar](modules.md)).
+Ekstensi resmi yang tersedia sebagai aset rilis: **`redis`**, **`smtp`**,
+**`uuid`**, **`jwt`**, dan **`httpclient`** (lihat
+[Modul Standar](modules.md)).
 
 ```bash
 gar gne install redis         # rilis terbaru
 gar gne install smtp@0.6.0    # kunci versi
+gar gne install uuid          # dari rilis terbaru
 gar gne install ./redis.zip   # dari berkas
 gar gne list
 gar gne remove smtp

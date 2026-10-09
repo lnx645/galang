@@ -10,27 +10,30 @@ loaded when `use` reaches them via `dlopen` (Linux/macOS) or `LoadLibrary`
 > [galang-gne-examples](https://github.com/lnx645/galang-gne-examples)
 > repo (`hello` and `kv`). Requirements: `gar` **0.5.0+** and gcc.
 
-## Official extensions — `redis` and `smtp`
+## Official extensions — `redis`, `smtp`, `uuid`, `jwt`, and `httpclient`
 
-Two official extensions are compiled from the sources in this repo
-(`ext/redis/`, `ext/smtp/`) and released as multi-platform zip assets.
-Install them from the official channel (requires `gar` **0.6.0+**):
+Five official extensions are compiled from the sources in this repo
+(`ext/redis/`, `ext/smtp/`, `ext/uuid/`, `ext/jwt/`, `ext/httpclient/`)
+and released as multi-platform zip assets. Install them from the official
+channel (requires `gar` **0.6.0+**; the three newer extensions need `gar`
+**0.7.1+** for the name shortcut):
 
 ```bash
 gar gne install redis          # latest release
 gar gne install smtp@0.6.0     # pin a version
+gar gne install uuid           # name shortcut — download from the latest release
 gar gne list                   # name, version, ABI, platforms
 gar gne remove redis           # remove binary + sidecar
 ```
 
 Other specs: `gar gne install ./redis.zip` (local file) or
 `gar gne install https://.../redis.zip` (HTTPS required). Packages install
-flat into `~/.galang/gne`, so `use "redis"` / `use "smtp"` finds them
-right away — command details in
+flat into `~/.galang/gne`, so `use` finds them right away under the
+extension name — command details in
 [CLI — Extension Manager](cli.md#extension-manager--gar-gne), full API in
 [Standard Modules](modules.md).
 
-Both require a CGO-enabled `gar` binary (see the [Platforms](#platforms)
+All five require a CGO-enabled `gar` binary (see the [Platforms](#platforms)
 table):
 
 - **`redis`** — a RESP2 client with `connect`, `ping`, `get`, `set`, `del`,
@@ -40,6 +43,13 @@ table):
   `subject`, `send`, `send_html`, `close`. STARTTLS/SSL are **not**
   included — read the limitations in
   [Standard Modules — smtp](modules.md#smtp--official-extension).
+- **`uuid`** — RFC 9562 UUIDs: `v4` (random), `v7` (time-stamped),
+  `is_valid`.
+- **`jwt`** — JWT with HS256/HS384/HS512: `sign`, `verify` (signature
+  plus `exp`/`nbf` claims), and unverified `decode`.
+- **`httpclient`** — an HTTP/1.1 client: `get`, `post`, `request` plus a
+  response object (`status`, `ok`, `body`, `header()`). https is
+  **rejected** (no built-in TLS, same as smtp).
 
 ### Build them yourself
 
@@ -50,7 +60,7 @@ a proper zip:
 
 ```bash
 make ext                    # linux/amd64, linux/arm64, windows/amd64
-make pack-ext               # dist/redis.zip and dist/smtp.zip
+make pack-ext               # dist/<name>.zip per extension
 ```
 
 macOS cannot be cross-compiled from Linux (CGO), so darwin `.dylib`

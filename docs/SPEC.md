@@ -43,9 +43,9 @@ perubahan harus lewat revisi dokumen ini dulu — bukan diam-diam di kode.
 | Async (`async fn`, `await`, `gather`, `spawn`) | ✅ selesai |
 | Database (SQLite/MySQL/PostgreSQL) | ✅ selesai |
 | WebSocket + SSE | ✅ selesai |
-| HTTP client | ⬜*v0.3* |
+| Klien HTTP (`httpclient`, ekstensi GNE v0.7.1, tanpa TLS) | ✅ selesai |
 | GNE — ekstensi native C + `gar gne` (v0.5/v0.6) | ✅ selesai |
-| Ekstensi resmi `redis`, `smtp` (v0.6.0, tanpa TLS) | ✅ selesai |
+| Ekstensi resmi `redis`, `smtp` (v0.6.0) + `uuid`, `jwt`, `httpclient` (v0.7.1; smtp/httpclient tanpa TLS) | ✅ selesai |
 | Generic `<T>` | ⬜*v1* (anotasi `array<T>` sudah ada di v0.1) |
 
 ---
@@ -350,6 +350,8 @@ unboxed, jadi kode numerik dengan desimal masih melalui jalur umum.
   SSE, HTTP client, session, upload, `gar test`.
 - **v0.6** — pengelola ekstensi `gar gne` (pack/install/list/remove) dan
   ekstensi resmi `redis` serta `smtp` (GNE; SMTP masih tanpa TLS).
+- **v0.7.1** — ekstensi resmi `uuid` (RFC 9562 v4/v7), `jwt`
+  (HS256/384/512, tanpa OpenSSL), dan `httpclient` (HTTP/1.1, tanpa TLS).
 - **v1** — generic `<T>` + analyzer tipe statis, bytecode VM + cache opcode
   (padanan `opcache` PHP), perluasan konvensi unboxed ke float dan string.
 - **v2** — class & method, generic pada struct, batasan tipe (`<T: int|string>`),

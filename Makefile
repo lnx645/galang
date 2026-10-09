@@ -5,7 +5,7 @@
 #   make release     - Build binari rilis (Linux, Windows, ARM64)
 #   make release-zip - Buat archive zip untuk distribusi
 #   make ext         - Kompilasi ekstensi resmi (ext/*) lintas platform
-#   make pack-ext    - Kemas ekstensi jadi dist/redis.zip & dist/smtp.zip
+#   make pack-ext    - Kemas tiap ekstensi jadi dist/<nama>.zip
 #   make test        - Jalankan semua test
 #   make bench       - Jalankan benchmark
 #   make ref         - Jalankan perbandingan vs PHP
@@ -94,7 +94,7 @@ release-zip: release
 # sini — cross-CGO ke darwin mustahil dari Linux. .dylib dibangun oleh
 # release.yml di runner macOS dan ditaruh ke build/ lewat unduhan
 # aset ext-darwin-builds.zip sebelum pack-ext dijalankan.
-EXTS      ?= redis smtp
+EXTS      ?= redis smtp uuid jwt httpclient
 EXTPLAT   ?= linux/amd64 linux/arm64 windows/amd64
 AARCH64CC ?= aarch64-linux-gnu-gcc
 
@@ -107,6 +107,9 @@ ext:
 	      linux-arm64) cc=$(AARCH64CC) ;; \
 	      windows-amd64) cc=$(MINGW); libs="-lws2_32"; ext=.dll ;; \
 	    esac; \
+	    if [ "$$name" = uuid ] && [ "$$goos" = windows ]; then \
+	      libs="$$libs -lbcrypt"; \
+	    fi; \
 	    out=ext/$$name/build/$$goos-$$goarch; \
 	    mkdir -p $$out; \
 	    $$cc -shared -fPIC -Wall -Wextra -I include -o $$out/$$name$$ext \

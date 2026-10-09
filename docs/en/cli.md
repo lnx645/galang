@@ -99,12 +99,14 @@ gar gne remove <name> [--dir D]                  # remove an extension
 | `https://.../redis.zip` | HTTPS URL — plain HTTP is rejected |
 | `./redis.zip` | local package file |
 
-The official extensions shipped as release assets are **`redis`** and
-**`smtp`** (see [Standard Modules](modules.md)).
+The official extensions shipped as release assets are **`redis`**,
+**`smtp`**, **`uuid`**, **`jwt`**, and **`httpclient`** (see
+[Standard Modules](modules.md)).
 
 ```bash
 gar gne install redis         # latest release
 gar gne install smtp@0.6.0    # pin a version
+gar gne install uuid          # from the latest release
 gar gne install ./redis.zip   # from a file
 gar gne list
 gar gne remove smtp

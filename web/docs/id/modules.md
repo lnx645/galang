@@ -384,3 +384,141 @@ Hasil tes nyata 2026-10-09: kiriman langsung ke MX Gmail (port 25)
 diterima sampai `RCPT`/`DATA` lalu ditolak kebijakan Google; jalur di
 atas diterima `250` dan masuk inbox. Langkah yang sama berlaku di Linux —
 bedanya hanya pemasangan stunnel.
+
+---
+
+## uuid — ekstensi resmi
+
+Pembuat dan pemeriksa **UUID** (RFC 9562) berbasis [GNE](gne.md): v4
+acak statis dan v7 berstempel waktu. Pasang dulu:
+
+```bash
+gar gne install uuid
+```
+
+```galang
+use "uuid"
+
+uuid.v4()                 // "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+uuid.v7()                 // "018f1a2b-3c4d-7ef0-..." — awalan stempel waktu
+uuid.is_valid(uuid.v4())  // true
+uuid.is_valid("buku")     // false
+```
+
+| Fungsi | Argumen | Hasil |
+|---|---|---|
+| `uuid.v4()` | 0 | string kanonik 8-4-4-4-12 (huruf kecil), versi 4, varian RFC |
+| `uuid.v7()` | 0 | idem dengan versi 7 — 48 bit pertama adalah stempel waktu milidetik (epoch Unix), sisanya acak |
+| `uuid.is_valid(s)` | 1 | bool — format kanonik + heksadesimal + versi 0–8 + varian RFC (8/9/a/b); huruf besar dan kecil keduanya diterima |
+
+- Angka acak diambil dari `/dev/urandom` (Linux/macOS) atau
+  `BCryptGenRandom` (Windows) — CSPRAN, bukan `rand()`.
+- Galat: argumen selain string → `type_error`. `is_valid` tidak pernah
+  melempar galat untuk string apa pun (kembali `false`).
+- **Butuh CGO** (tabel platform di [GNE](gne.md#platform)).
+
+---
+
+## jwt — ekstensi resmi
+
+**JWT** (RFC 7519) berbasis [GNE](gne.md) dengan tanda tangan HMAC-SHA2:
+HS256/HS384/HS512. Pasang dulu:
+
+```bash
+gar gne install jwt
+```
+
+```galang
+use "jwt"
+
+$t = jwt.sign("{\"sub\":\"budi\"}", "rahasia")   // HS256 (bawaan)
+$t = jwt.sign("{\"sub\":\"budi\"}", "rahasia", "HS512")
+jwt.verify($t, "rahasia")  // string klaim JSON — signature + exp/nbf lolos
+jwt.decode($t)             // string klaim JSON tanpa verifikasi
+```
+
+| Fungsi | Argumen | Hasil |
+|---|---|---|
+| `jwt.sign(claims, secret[, alg])` | 2–3 | string token; `claims` berupa string JSON objek; `alg` salah satu `HS256` (bawaan), `HS384`, `HS512` |
+| `jwt.verify(token, secret)` | 2 | string klaim JSON — signature dicocokkan constant-time, lalu klaim `exp`/`nbf` (bila ada) wajib angka dan terpenuhi |
+| `jwt.decode(token)` | 1 | string klaim JSON tanpa verifikasi — untuk membaca token yang sudah diverifikasi terpisah |
+
+- Galat — kode `jwt_error`: **400** struktur rusak (bukan tiga segmen
+  `header.payload.signature`, segmen bukan base64url, header/payload
+  bukan JSON objek, klaim `exp`/`nbf` bukan angka), **401** signature
+  tidak cocok, `alg` di luar allowlist (mis. `none`, `RS256` — tahan
+  alg-confusion), token kedaluwarsa (`exp`) atau belum berlaku (`nbf`).
+  Argumen salah tipe → `type_error`.
+- Urutan pemeriksaan `verify`: format → header → allowlist `alg` →
+  payload sebagai JSON → signature (constant-time) → `exp`/`nbf`.
+  Payload dinilai sebelum signature agar pesan "payload bukan JSON"
+  terbedakan dari "signature tidak valid" — klaim tidak pernah
+  dikembalikan sebelum seluruh pemeriksaan lolos.
+- **Tanpa OpenSSL**: RSA/ECDSA sengaja tidak didukung — menambah
+  OpenSSL mematahkan matriks build (cross mingw + CI macOS). Token
+  dibatasi 2 MiB; `secret` kosong ditolak.
+- **Butuh CGO** (tabel platform di [GNE](gne.md#platform)).
+
+---
+
+## httpclient — ekstensi resmi
+
+Klien **HTTP/1.1** berbasis [GNE](gne.md) — tanpa TLS, sama seperti
+`smtp`. Nama modul `http` sudah dipakai server web bawaan, karena itu
+ekstensi ini bernama `httpclient`. Pasang dulu:
+
+```bash
+gar gne install httpclient
+```
+
+```galang
+use "httpclient"
+
+$r = httpclient.get("http://127.0.0.1:8868/status")
+print($r.status)                // 200
+print($r.ok)                    // true — status 2xx
+print($r.body)                  // isi respons
+print($r.header("content-type")) // case-insensitive; absen → null
+
+$p = httpclient.post("http://api.contoh.id/masuk", "a=1&b=2",
+                     "application/x-www-form-urlencoded")
+
+$q = httpclient.request("PUT", "http://api.contoh.id/item/1", "{\"nama\":\"x\"}",
+                        ["X-Api-Key: rahasia"])
+```
+
+| Fungsi | Argumen | Hasil |
+|---|---|---|
+| `httpclient.get(url[, timeout_ms])` | 1–2 | objek respons |
+| `httpclient.post(url, body[, content_type[, timeout_ms]])` | 2–4 | objek respons; `content_type` bawaan `application/octet-stream` |
+| `httpclient.request(method, url[, body[, headers[, timeout_ms]]])` | 2–5 | objek respons; `headers` berupa array `"Nama: nilai"` |
+| `$r.header(nama)` | 1 | string nilai pertama (case-insensitive) atau `null` |
+
+Objek respons: `$r.status` (number), `$r.ok` (bool — status 2xx),
+`$r.body` (string), `$r.url` (URL final sesudah pengalihan),
+`$r.redirects` (number), `$r.headers` (array `"Nama: nilai"`).
+
+- Timeout bawaan 5000 ms (`0` = tanpa batas) menutupi seluruh siklus:
+  resolusi nama, koneksi, kirim, dan baca.
+- Pengalihan 301/302/303/307/308 diikuti otomatis (maksimal 5); pada
+  301/302/303 metode selain GET/HEAD diubah jadi GET tanpa body
+  (perilaku peramban), sedangkan 307/308 mempertahankan metode dan
+  body. `Connection: close` — satu permintaan = satu koneksi.
+- Respons 4xx/5xx **tidak** dilempar sebagai galat — periksa
+  `$r.status` atau `$r.ok`. Galat — kode `httpclient_error`: **500**
+  respons tidak sah / batas terlampaui (pengalihan, ukuran, header),
+  **502** koneksi ditolak/putus, **504** waktu tunggu habis. Argumen
+  tidak sah → `type_error`: url bukan `http://`, header tambahan
+  berisi CR/LF (injeksi), penimpaan header terkelola (`Host`,
+  `Content-Length`, `Connection`, `Transfer-Encoding`), timeout
+  negatif atau terlalu besar.
+- **https ditolak** — tanpa TLS bawaan (OpenSSL mematahkan matriks
+  build, alasannya sama dengan smtp): gunakan proksi TLS lokal
+  (caddy/stunnel) bila target hanya melayani https. Hanya `http://`
+  yang diterima; url tanpa skema ditolak.
+- Dikirim otomatis: `User-Agent: galang-httpclient`, `Accept: */*`,
+  `Accept-Encoding: identity`, `Connection: close`.
+- Batas: url 4096 karakter, host 255, port 1–65535, body respons
+  maksimal 64 MiB (Content-Length, chunked, maupun EOF), baris header
+  respons maksimal 64 KiB/512 baris, header permintaan 16 KiB.
+- **Butuh CGO** (tabel platform di [GNE](gne.md#platform)).

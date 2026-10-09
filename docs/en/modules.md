@@ -390,3 +390,142 @@ Real test of 2026-10-09: direct delivery to the Gmail MX (port 25) was
 accepted through `RCPT`/`DATA` and then rejected by Google's policy; the
 path above was accepted with `250` and reached the inbox. The same steps
 apply on Linux — only the stunnel installation differs.
+
+---
+
+## uuid — official extension
+
+A **UUID** (RFC 9562) generator and checker built on [GNE](gne.md): v4
+random and v7 time-stamped. Install first:
+
+```bash
+gar gne install uuid
+```
+
+```galang
+use "uuid"
+
+uuid.v4()                 // "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+uuid.v7()                 // "018f1a2b-3c4d-7ef0-..." — time-stamped prefix
+uuid.is_valid(uuid.v4())  // true
+uuid.is_valid("book")     // false
+```
+
+| Function | Args | Result |
+|---|---|---|
+| `uuid.v4()` | 0 | canonical 8-4-4-4-12 string (lowercase), version 4, RFC variant |
+| `uuid.v7()` | 0 | same shape with version 7 — the first 48 bits are the millisecond timestamp (Unix epoch), the rest random |
+| `uuid.is_valid(s)` | 1 | bool — canonical format + hexadecimal + version 0–8 + RFC variant (8/9/a/b); both upper and lower case are accepted |
+
+- Randomness comes from `/dev/urandom` (Linux/macOS) or
+  `BCryptGenRandom` (Windows) — a CSPRAN, not `rand()`.
+- Errors: non-string argument → `type_error`. `is_valid` never throws
+  for any string (returns `false`).
+- **Requires CGO** (platform table in [GNE](gne.md#platforms)).
+
+---
+
+## jwt — official extension
+
+**JWT** (RFC 7519) built on [GNE](gne.md) with HMAC-SHA2 signatures:
+HS256/HS384/HS512. Install first:
+
+```bash
+gar gne install jwt
+```
+
+```galang
+use "jwt"
+
+$t = jwt.sign("{\"sub\":\"budi\"}", "secret")   // HS256 (default)
+$t = jwt.sign("{\"sub\":\"budi\"}", "secret", "HS512")
+jwt.verify($t, "secret")  // claims JSON string — signature + exp/nbf pass
+jwt.decode($t)            // claims JSON string, unverified
+```
+
+| Function | Args | Result |
+|---|---|---|
+| `jwt.sign(claims, secret[, alg])` | 2–3 | token string; `claims` is a JSON object string; `alg` is `HS256` (default), `HS384`, or `HS512` |
+| `jwt.verify(token, secret)` | 2 | claims JSON string — the signature is compared in constant time, then `exp`/`nbf` claims (if present) must be numbers and hold |
+| `jwt.decode(token)` | 1 | claims JSON string without verification — for reading tokens verified elsewhere |
+
+- Errors — `jwt_error` code: **400** for broken structure (not three
+  `header.payload.signature` segments, a segment that is not base64url,
+  header/payload that are not JSON objects, non-numeric `exp`/`nbf`),
+  **401** for a mismatched signature, an `alg` outside the allowlist
+  (e.g. `none`, `RS256` — alg-confusion resistant), an expired token
+  (`exp`) or one not yet valid (`nbf`). Wrong argument types →
+  `type_error`.
+- `verify` checks in this order: format → header → `alg` allowlist →
+  payload as JSON → signature (constant time) → `exp`/`nbf`. The payload
+  is parsed before the signature check so "payload is not JSON" is
+  distinguishable from "signature invalid" — claims are never returned
+  before every check passes.
+- **No OpenSSL**: RSA/ECDSA are intentionally unsupported — adding
+  OpenSSL would break the build matrix (mingw cross + macOS CI). Tokens
+  are capped at 2 MiB; an empty `secret` is rejected.
+- **Requires CGO** (platform table in [GNE](gne.md#platforms)).
+
+---
+
+## httpclient — official extension
+
+An **HTTP/1.1** client built on [GNE](gne.md) — without TLS, like
+`smtp`. The module name `http` is taken by the built-in web server,
+hence the name `httpclient`. Install first:
+
+```bash
+gar gne install httpclient
+```
+
+```galang
+use "httpclient"
+
+$r = httpclient.get("http://127.0.0.1:8868/status")
+print($r.status)                // 200
+print($r.ok)                    // true — 2xx status
+print($r.body)                  // response body
+print($r.header("content-type")) // case-insensitive; missing → null
+
+$p = httpclient.post("http://api.example.com/ingest", "a=1&b=2",
+                     "application/x-www-form-urlencoded")
+
+$q = httpclient.request("PUT", "http://api.example.com/item/1", "{\"name\":\"x\"}",
+                        ["X-Api-Key: secret"])
+```
+
+| Function | Args | Result |
+|---|---|---|
+| `httpclient.get(url[, timeout_ms])` | 1–2 | response object |
+| `httpclient.post(url, body[, content_type[, timeout_ms]])` | 2–4 | response object; default `content_type` is `application/octet-stream` |
+| `httpclient.request(method, url[, body[, headers[, timeout_ms]]])` | 2–5 | response object; `headers` is an array of `"Name: value"` strings |
+| `$r.header(name)` | 1 | first-value string (case-insensitive) or `null` |
+
+Response object: `$r.status` (number), `$r.ok` (bool — 2xx status),
+`$r.body` (string), `$r.url` (final URL after redirects),
+`$r.redirects` (number), `$r.headers` (array of `"Name: value"`).
+
+- The default timeout is 5000 ms (`0` = unlimited) and covers the whole
+  cycle: name resolution, connect, send, and read.
+- Redirects 301/302/303/307/308 are followed automatically (at most 5);
+  on 301/302/303 a method other than GET/HEAD becomes GET without a body
+  (browser behavior), while 307/308 keep the method and body.
+  `Connection: close` — one request = one connection.
+- 4xx/5xx responses are **not** thrown — check `$r.status` or `$r.ok`.
+  Errors — `httpclient_error` code: **500** for an invalid response or
+  an exceeded limit (redirects, size, headers), **502** for a
+  refused/broken connection, **504** for a timeout. Invalid arguments →
+  `type_error`: a url that is not `http://`, extra headers containing
+  CR/LF (injection), overwriting a transport-managed header (`Host`,
+  `Content-Length`, `Connection`, `Transfer-Encoding`), a negative or
+  too-large timeout.
+- **https is rejected** — no built-in TLS (OpenSSL would break the build
+  matrix, same reasoning as smtp): use a local TLS proxy (caddy/stunnel)
+  when the target only serves https. Only `http://` is accepted; a url
+  without a scheme is rejected.
+- Sent automatically: `User-Agent: galang-httpclient`, `Accept: */*`,
+  `Accept-Encoding: identity`, `Connection: close`.
+- Limits: url 4096 characters, host 255, port 1–65535, response body up
+  to 64 MiB (Content-Length, chunked, or EOF), response header lines up
+  to 64 KiB/512 lines, request headers 16 KiB.
+- **Requires CGO** (platform table in [GNE](gne.md#platforms)).

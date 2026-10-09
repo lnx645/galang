@@ -30,6 +30,9 @@ jobs:
           - runner: macos-latest # arm64 (Apple Silicon)
             arch: arm64
     runs-on: ${{ matrix.runner }}
+    env:
+      # Keep in sync with EXTS in the Makefile.
+      EXTS: redis smtp uuid jwt httpclient
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -44,7 +47,7 @@ jobs:
       - name: Build extension .dylibs
         run: |
           set -e
-          for name in redis smtp; do
+          for name in $EXTS; do
             out=ext/$name/build/darwin-${{ matrix.arch }}
             mkdir -p "$out"
             clang -dynamiclib -Wall -Wextra -I include \
@@ -55,15 +58,18 @@ jobs:
         run: |
           set -e
           GAR="$PWD/gar-darwin-${{ matrix.arch }}"
-          "$GAR" gne pack ext/redis -o /tmp/redis.zip
-          "$GAR" gne pack ext/smtp -o /tmp/smtp.zip
-          "$GAR" gne install /tmp/redis.zip
-          "$GAR" gne install /tmp/smtp.zip
+          for name in $EXTS; do
+            "$GAR" gne pack "ext/$name" -o "/tmp/$name.zip"
+            "$GAR" gne install "/tmp/$name.zip"
+          done
           "$GAR" gne list
           mkdir -p /tmp/smoke
           printf '%s\n' \
             'use "redis"' \
             'use "smtp"' \
+            'use "uuid"' \
+            'use "jwt"' \
+            'use "httpclient"' \
             'try {' \
             '  $r = redis.connect("127.0.0.1", 65530, 300)' \
             '  print("unexpected")' \
@@ -76,19 +82,47 @@ jobs:
             '} catch e {' \
             '  print("smoke-smtp " + e.code)' \
             '}' \
+            'try {' \
+            '  $u = uuid.v7()' \
+            '  if uuid.is_valid($u) {' \
+            '    print("smoke-uuid ok")' \
+            '  } else {' \
+            '    print("smoke-uuid gagal")' \
+            '  }' \
+            '} catch e {' \
+            '  print("smoke-uuid " + e.code)' \
+            '}' \
+            'try {' \
+            '  $t = jwt.sign("{\"sub\":\"smoke\"}", "rahasia", "HS256")' \
+            '  $c = jwt.verify($t, "rahasia")' \
+            '  print("smoke-jwt ok")' \
+            '} catch e {' \
+            '  print("smoke-jwt " + e.code)' \
+            '}' \
+            'try {' \
+            '  $h = httpclient.get("http://127.0.0.1:65530/")' \
+            '  print("unexpected")' \
+            '} catch e {' \
+            '  print("smoke-httpclient " + e.code)' \
+            '}' \
             > /tmp/smoke/main.ga
           cd /tmp/smoke
           out=$("$GAR" run main.ga)
           echo "$out"
           echo "$out" | grep -q 'smoke-redis redis_error'
           echo "$out" | grep -q 'smoke-smtp smtp_error'
+          echo "$out" | grep -q 'smoke-uuid ok'
+          echo "$out" | grep -q 'smoke-jwt ok'
+          echo "$out" | grep -q 'smoke-httpclient httpclient_error'
           echo "smoke test passed on darwin/${{ matrix.arch }}"
       - name: Prepare zip assets
         run: |
           set -e
           cp include/gne.h .
           zip -q gar-darwin-${{ matrix.arch }}.zip gar-darwin-${{ matrix.arch }} gne.h
-          zip -qr ext-dylib-${{ matrix.arch }}.zip ext/redis/build ext/smtp/build
+          paths=""
+          for name in $EXTS; do paths="$paths ext/$name/build"; done
+          zip -qr ext-dylib-${{ matrix.arch }}.zip $paths
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -101,6 +135,9 @@ jobs:
   upload:
     needs: macos
     runs-on: ubuntu-latest
+    env:
+      # Keep in sync with EXTS in the Makefile.
+      EXTS: redis smtp uuid jwt httpclient
     steps:
       - name: Download macOS build artifacts
         uses: actions/download-artifact@v4
@@ -111,7 +148,9 @@ jobs:
           set -e
           unzip -q ext-dylib-amd64.zip
           unzip -q ext-dylib-arm64.zip
-          zip -qr ext-darwin-builds.zip ext/redis/build ext/smtp/build
+          paths=""
+          for name in $EXTS; do paths="$paths ext/$name/build"; done
+          zip -qr ext-darwin-builds.zip $paths
           unzip -l ext-darwin-builds.zip
       - name: Wait for release then upload assets
         env:

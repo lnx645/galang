@@ -40,8 +40,8 @@ Halo, Dunia!
   dari `./gne` → `$GNE_PATH` → `~/.galang/gne` — menulis ekstensi dalam C
   tanpa menyentuh compiler/runtime ([panduan GNE](docs/id/gne.md),
   [contoh](https://github.com/lnx645/galang-gne-examples))
-- **Ekstensi resmi `redis` & `smtp`** dipasang dari aset rilis lewat
-  `gar gne install redis` / `gar gne install smtp` (pasang, daftar, lepas;
+- **Ekstensi resmi `redis`, `smtp`, `uuid`, `jwt`, `httpclient`** dipasang
+  dari aset rilis lewat `gar gne install <nama>` (pasang, daftar, lepas;
   juga URL HTTPS atau berkas zip) — API-nya ada di
   [Modul Standar](docs/id/modules.md)
 - CLI: `gar run`, `gar repl`, `gar gne`
@@ -55,7 +55,7 @@ $ make run
 
 ## Yang belum ada (lihat `docs/SPEC.md`)
 
-Unit-test framework (`gar test`), HTTP client, operator compound
+Unit-test framework (`gar test`), operator compound
 (`+=`) dan `??`, generic `<T>`, class & method, async I/O. Daftar terbaru:
 [Yang Belum Ada](docs/id/language.md).
 
