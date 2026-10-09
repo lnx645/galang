@@ -2,6 +2,25 @@
 
 ## Instalasi
 
+### Pemasang Resmi
+
+Setiap [rilis](https://github.com/lnx645/galang/releases) menyertakan
+pemasang siap pakai:
+
+| Platform | Aset | Cara pakai |
+|---|---|---|
+| Windows x64 & ARM | `Garurda-Setup-<v>.exe` (Inno Setup) | jalankan wizard (izin admin); `gar` masuk PATH otomatis; cabut lewat "Tambah atau hapus program" |
+| Debian / Ubuntu | `garurda_<v>_amd64.deb` / `garurda_<v>_arm64.deb` | `sudo dpkg -i garurda_<v>_amd64.deb` — terpasang di `/usr/bin/gar` |
+| macOS (Intel + Apple Silicon) | `Garurda-<v>-macos.pkg` (universal) | `sudo installer -pkg Garurda-<v>-macos.pkg -target /` — terpasang di `/usr/local/bin/gar` |
+
+Catatan:
+
+- Paket `.deb` khusus Debian/Ubuntu; distro lain pakai binari manual di
+  bawah.
+- Paket macOS belum ditandatangani/notarized Developer ID — bila macOS
+  menolak membukanya, jalankan perintah `installer` di atas dari terminal
+  (atau klik kanan → Buka).
+
 ### Dari Binary
 
 Download binary dari [Releases](https://github.com/lnx645/galang/releases)

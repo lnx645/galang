@@ -1,0 +1,245 @@
+# Pemasang platform — dibuat dari aset rilis yang sudah terbit:
+#
+#   Windows : Garurda-Setup-<v>.exe   Inno Setup 6; x64 + Windows on ARM
+#                                     (emulasi x64); menambah {app} ke
+#                                     PATH; diuji hening: pasang →
+#                                     gar version → lepas.
+#   Linux   : garurda_<v>_<arch>.deb  amd64 + arm64 → /usr/bin/gar;
+#             diuji dpkg -i → gar version → dpkg -r di runner.
+#   macOS   : Garurda-<v>-macos.pkg   universal2 (lipo) → /usr/local/bin/gar;
+#             diuji sudo installer → gar version.
+#
+# Pemicu: release terbit (otomatis untuk rilis berikutnya — aset binari
+# bisa diunggah bersamaan, jadi ada tungguan unduh maks 20 menit) dan
+# workflow_dispatch(tag) untuk memasangi rilis lama.
+name: Pemasang Platform
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag rilis yang dipasangi aset (mis. v0.6.1)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    env:
+      TAG: ${{ inputs.tag || github.event.release.tag_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Ambil binari rilis gar-windows-amd64
+        shell: pwsh
+        run: |
+          $url = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:TAG/gar-windows-amd64.zip"
+          $ok = $false
+          for ($i = 1; $i -le 40; $i++) {
+            & curl.exe -fsSL -o gar-windows-amd64.zip $url
+            if ($LASTEXITCODE -eq 0) { $ok = $true; break }
+            Write-Host "percobaan $i gagal; ulang dalam 30 detik"
+            Start-Sleep -Seconds 30
+          }
+          if (-not $ok) { throw "aset gar-windows-amd64.zip tidak muncul dalam 20 menit" }
+          Expand-Archive gar-windows-amd64.zip -DestinationPath bin
+          Copy-Item bin/gar-windows-amd64.exe packaging/windows/gar.exe
+
+      - name: Siapkan Inno Setup 6
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { throw "ISCC tidak ditemukan: $iscc" }
+
+      - name: Kompilasi pemasang
+        shell: pwsh
+        run: |
+          $ver = $env:TAG -replace '^v',''
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          Push-Location packaging/windows
+          & $iscc "/DMyAppVersion=$ver" garurda.iss
+          $rc = $LASTEXITCODE
+          Pop-Location
+          if ($rc -ne 0) { throw "ISCC gagal (kode $rc)" }
+          Get-Item "packaging/windows/out/Garurda-Setup-$ver.exe" |
+            Format-List Name, Length
+
+      - name: Uji hening — pasang, jalankan, lepas
+        shell: pwsh
+        run: |
+          $ver = $env:TAG -replace '^v',''
+          $setup = "$PWD\packaging\windows\out\Garurda-Setup-$ver.exe"
+          Start-Process -Wait -FilePath $setup `
+            -ArgumentList '/SP-','/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART'
+          $gar = "${env:ProgramFiles}\Garurda\gar.exe"
+          if (-not (Test-Path $gar)) { throw "gar.exe tidak terpasang di $gar" }
+          $out = & $gar version
+          Write-Host "terpasang: $out"
+          if ("$out" -notmatch [regex]::Escape($ver)) {
+            throw "versi tak cocok: '$out' vs '$ver'"
+          }
+          $mPath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+          if ($mPath -notlike "*\Garurda*") { throw "PATH mesin tak berisi folder Garurda" }
+          Start-Process -Wait -FilePath "${env:ProgramFiles}\Garurda\unins000.exe" `
+            -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART'
+          if (Test-Path $gar) { throw "uninstall tak membersihkan gar.exe" }
+          $mPath2 = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+          if ($mPath2 -like "*\Garurda*") { throw "PATH masih menyimpan entri Garurda" }
+          Write-Host "uji hening lulus (pasang + PATH + lepas)"
+
+      - name: Unggah artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pemasang-windows
+          path: packaging/windows/out/Garurda-Setup-*.exe
+          if-no-files-found: error
+
+  linux:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag || github.event.release.tag_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Ambil binari rilis (amd64 + arm64)
+        run: |
+          set -e
+          for p in gar-linux-amd64.zip gar-linux-arm64.zip; do
+            ok=0
+            for i in $(seq 1 40); do
+              if curl -fsSL -o "$p" \
+                "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$p"; then
+                ok=1; break
+              fi
+              echo "percobaan $i ($p) gagal; ulang dalam 30 detik"
+              sleep 30
+            done
+            if [ "$ok" != 1 ]; then
+              echo "aset $p tidak muncul dalam 20 menit" >&2; exit 1
+            fi
+          done
+
+      - name: Susun .deb dua arsitektur
+        run: |
+          set -e
+          VER="${TAG#v}"
+          unzip -q gar-linux-amd64.zip -d bin-amd64
+          unzip -q gar-linux-arm64.zip -d bin-arm64
+          ./packaging/linux/build-deb.sh "$VER" amd64 bin-amd64/gar-linux-amd64 deb
+          ./packaging/linux/build-deb.sh "$VER" arm64 bin-arm64/gar-linux-arm64 deb
+          ls -l deb/
+
+      - name: Uji pasang paket (amd64)
+        run: |
+          set -e
+          VER="${TAG#v}"
+          sudo dpkg -i "deb/garurda_${VER}_amd64.deb"
+          out=$(/usr/bin/gar version)
+          echo "$out"
+          case "$out" in
+            *"$VER"*) ;;
+            *) echo "versi tak cocok: '$out' vs '$VER'" >&2; exit 1 ;;
+          esac
+          sudo dpkg -r garurda
+          test ! -f /usr/bin/gar
+          echo "uji dpkg lulus (pasang + jalankan + lepas)"
+
+      - name: Unggah artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pemasang-linux
+          path: deb/*.deb
+          if-no-files-found: error
+
+  macos:
+    runs-on: macos-latest
+    env:
+      TAG: ${{ inputs.tag || github.event.release.tag_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Ambil binari rilis darwin (amd64 + arm64)
+        run: |
+          set -e
+          for p in gar-darwin-amd64.zip gar-darwin-arm64.zip; do
+            ok=0
+            for i in $(seq 1 40); do
+              if curl -fsSL -o "$p" \
+                "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$p"; then
+                ok=1; break
+              fi
+              echo "percobaan $i ($p) gagal; ulang dalam 30 detik"
+              sleep 30
+            done
+            if [ "$ok" != 1 ]; then
+              echo "aset $p tidak muncul dalam 20 menit" >&2; exit 1
+            fi
+          done
+
+      - name: Rakit .pkg universal2
+        run: |
+          set -e
+          VER="${TAG#v}"
+          unzip -q gar-darwin-amd64.zip -d bin-amd64
+          unzip -q gar-darwin-arm64.zip -d bin-arm64
+          ./packaging/macos/build-pkg.sh "$VER" \
+            bin-amd64/gar-darwin-amd64 bin-arm64/gar-darwin-arm64 \
+            "pkg/Garurda-$VER-macos.pkg"
+
+      - name: Uji pasang pkg
+        run: |
+          set -e
+          VER="${TAG#v}"
+          sudo installer -pkg "pkg/Garurda-$VER-macos.pkg" -target /
+          out=$(/usr/local/bin/gar version)
+          echo "$out"
+          case "$out" in
+            *"$VER"*) ;;
+            *) echo "versi tak cocok: '$out' vs '$VER'" >&2; exit 1 ;;
+          esac
+          echo "uji pkg lulus"
+
+      - name: Unggah artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pemasang-macos
+          path: pkg/*.pkg
+          if-no-files-found: error
+
+  unggah:
+    needs: [windows, linux, macos]
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag || github.event.release.tag_name }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Job tanpa checkout — GH_REPO wajib agar gh tahu repository tujuan
+      # (pelajaran dari job unggah release.yml yang pernah timeout).
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: Unggah pemasang ke rilis
+        run: |
+          set -e
+          VER="${TAG#v}"
+          ls -la
+          gh release upload "$TAG" \
+            "Garurda-Setup-$VER.exe" \
+            "garurda_${VER}_amd64.deb" \
+            "garurda_${VER}_arm64.deb" \
+            "Garurda-$VER-macos.pkg" \
+            --clobber

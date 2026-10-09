@@ -2,6 +2,25 @@
 
 ## Installation
 
+### Official Installers
+
+Every [release](https://github.com/lnx645/galang/releases) ships
+ready-made installers:
+
+| Platform | Asset | Usage |
+|---|---|---|
+| Windows x64 & ARM | `Garurda-Setup-<v>.exe` (Inno Setup) | run the wizard (admin rights); `gar` is added to PATH automatically; remove via "Add or remove programs" |
+| Debian / Ubuntu | `garurda_<v>_amd64.deb` / `garurda_<v>_arm64.deb` | `sudo dpkg -i garurda_<v>_amd64.deb` — installs `/usr/bin/gar` |
+| macOS (Intel + Apple Silicon) | `Garurda-<v>-macos.pkg` (universal) | `sudo installer -pkg Garurda-<v>-macos.pkg -target /` — installs `/usr/local/bin/gar` |
+
+Notes:
+
+- The `.deb` packages target Debian/Ubuntu only; other distributions can
+  use the manual binaries below.
+- The macOS package is not yet Developer ID signed/notarized — if macOS
+  refuses to open it, run the `installer` command above from a terminal
+  (or right-click → Open).
+
 ### From a Binary
 
 Download the binary from [Releases](https://github.com/lnx645/galang/releases)
