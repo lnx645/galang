@@ -13,6 +13,10 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: write
+  security-events: write
+
 jobs:
   test:
     timeout-minutes: 15
@@ -44,9 +48,9 @@ jobs:
         run: go vet ./...
 
       - name: Run Gosec security scanner
-        uses: securego/gosec@master
-        with:
-          args: '-no-fail -fmt sarif -out results.sarif ./...'
+        run: |
+          go install github.com/securego/gosec/v2/cmd/gosec@latest
+          $(go env GOPATH)/bin/gosec -no-fail -fmt sarif -out results.sarif ./...
 
       - name: Upload SARIF results
         if: always()
