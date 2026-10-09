@@ -24,9 +24,9 @@ func SHA256Hex(b []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// validNamaEntri menolak path berbahaya sebelum disentuh: absolut,
+// validateEntryName menolak path berbahaya sebelum disentuh: absolut,
 // melewati induk (..), pemisah Windows di zip, atau bidang drive.
-func validNamaEntri(name string) error {
+func validateEntryName(name string) error {
 	if name == "" {
 		return fmt.Errorf("entri zip tanpa nama")
 	}
@@ -43,17 +43,17 @@ func validNamaEntri(name string) error {
 	return nil
 }
 
-// BacaZip memecah isi zip menjadi peta nama → data. Seluruh entri divalidasi
+// ReadZip memecah isi zip menjadi peta nama → data. Seluruh entri divalidasi
 // lebih dulu (zip-slip, tautan simbolik, duplikat) sehingga alur install
 // tidak pernah mengekstrak berkas yang path-nya tidak aman.
-func BacaZip(data []byte) (map[string][]byte, error) {
+func ReadZip(data []byte) (map[string][]byte, error) {
 	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
 		return nil, fmt.Errorf("bukan zip yang valid: %v", err)
 	}
 	out := make(map[string][]byte, len(zr.File))
 	for _, f := range zr.File {
-		if err := validNamaEntri(f.Name); err != nil {
+		if err := validateEntryName(f.Name); err != nil {
 			return nil, err
 		}
 		// Tautan simbolik/pipa dilarang: paket resmi hanya berisi berkas biasa.
@@ -68,41 +68,41 @@ func BacaZip(data []byte) (map[string][]byte, error) {
 			return nil, fmt.Errorf("buka entri %q: %v", f.Name, err)
 		}
 		// Batas per entri mencegah zip-bom; paket ekstensi jauh di bawah ini.
-		b, err := io.ReadAll(io.LimitReader(rc, maksEntri+1))
+		b, err := io.ReadAll(io.LimitReader(rc, maxEntrySize+1))
 		rc.Close()
 		if err != nil {
 			return nil, fmt.Errorf("baca entri %q: %v", f.Name, err)
 		}
-		if int64(len(b)) > maksEntri {
-			return nil, fmt.Errorf("entri %q melebihi batas %d byte", f.Name, maksEntri)
+		if int64(len(b)) > maxEntrySize {
+			return nil, fmt.Errorf("entri %q melebihi batas %d byte", f.Name, maxEntrySize)
 		}
 		out[f.Name] = b
 	}
 	return out, nil
 }
 
-// maksEntri membatasi ukuran satu entri zip (anti zip-bom).
-const maksEntri = 256 << 20 // 256 MiB
+// maxEntrySize membatasi ukuran satu entri zip (anti zip-bom).
+const maxEntrySize = 256 << 20 // 256 MiB
 
-// stempelWaktu adalah timestamp tetap untuk semua entri hasil pack:
+// packTimestamp adalah timestamp tetap untuk semua entri hasil pack:
 // zip yang sama dihasilkan dari sumber yang sama (reproducible).
-var stempelWaktu = time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+var packTimestamp = time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 
-// TulisZip menulis daftar berkas ke zip pada path, dengan timestamp tetap
+// WriteZip menulis daftar berkas ke zip pada path, dengan timestamp tetap
 // supaya hasil pack reproducible (sidik jari paket stabil antar build).
-func TulisZip(dst string, files []File) error {
+func WriteZip(dst string, files []File) error {
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return fmt.Errorf("buat direktori output: %v", err)
 	}
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
 	for _, f := range files {
-		if err := validNamaEntri(f.Name); err != nil {
+		if err := validateEntryName(f.Name); err != nil {
 			zw.Close()
 			return err
 		}
 		hdr := &zip.FileHeader{Name: f.Name, Method: zip.Deflate}
-		hdr.Modified = stempelWaktu // waktu tetap → zip reproducible
+		hdr.Modified = packTimestamp // waktu tetap → zip reproducible
 		w, err := zw.CreateHeader(hdr)
 		if err != nil {
 			zw.Close()
@@ -116,7 +116,7 @@ func TulisZip(dst string, files []File) error {
 	if err := zw.Close(); err != nil {
 		return fmt.Errorf("tutup zip: %v", err)
 	}
-	return TulisBerkas(dst, buf.Bytes())
+	return WriteFile(dst, buf.Bytes())
 }
 
 // File adalah satu entri zip yang akan ditulis.
@@ -125,9 +125,9 @@ type File struct {
 	Data []byte
 }
 
-// TulisBerkas menulis data ke path secara atomik (file sementara + rename)
+// WriteFile menulis data ke path secara atomik (file sementara + rename)
 // supaya kegagalan di tengah tidak meninggak setengah berkas.
-func TulisBerkas(path string, data []byte) error {
+func WriteFile(path string, data []byte) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("buat direktori %s: %v", dir, err)
@@ -157,8 +157,8 @@ func TulisBerkas(path string, data []byte) error {
 	return nil
 }
 
-// BacaBerkas memuat berkas berukuran wajar ke memori.
-func BacaBerkas(path string, limit int64) ([]byte, error) {
+// ReadFile memuat berkas berukuran wajar ke memori.
+func ReadFile(path string, limit int64) ([]byte, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err

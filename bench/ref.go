@@ -27,13 +27,13 @@ func main() {
 	}
 	if len(os.Args) > 1 && os.Args[1] == "call" {
 		n, _ := strconv.Atoi(os.Args[2])
-		fmt.Println(kerja(n))
+		fmt.Println(sumTo(n))
 		return
 	}
 	fmt.Println(fib(25))
 }
 
-func kerja(n int) int {
+func sumTo(n int) int {
 	acc := 0
 	for i := 0; i <= n; i++ {
 		acc = acc + i

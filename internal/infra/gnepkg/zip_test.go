@@ -15,27 +15,27 @@ func TestAmbilURLTolakNonHTTPS(t *testing.T) {
 		"ftp://contoh.com/x.zip",
 		"file:///etc/passwd",
 	} {
-		if _, err := AmbilURL(context.Background(), u); err == nil || !strings.Contains(err.Error(), "HTTPS") {
-			t.Errorf("AmbilURL(%q) harus ditolak dengan pesan HTTPS, dapat: %v", u, err)
+		if _, err := FetchURL(context.Background(), u); err == nil || !strings.Contains(err.Error(), "HTTPS") {
+			t.Errorf("FetchURL(%q) harus ditolak dengan pesan HTTPS, dapat: %v", u, err)
 		}
 	}
 }
 
 // TestAmbilURLTolakTanpaHost — URL kosong/host kosong ditolak.
 func TestAmbilURLTolakTanpaHost(t *testing.T) {
-	if _, err := AmbilURL(context.Background(), "https:///tanpa-host.zip"); err == nil {
+	if _, err := FetchURL(context.Background(), "https:///tanpa-host.zip"); err == nil {
 		t.Error("URL tanpa host harus ditolak")
 	}
 }
 
-// TestBacaTulisBerkasRoundtrip — TulisBerkas atomik + BacaBerkas cap.
+// TestBacaTulisBerkasRoundtrip — WriteFile atomik + ReadFile cap.
 func TestBacaTulisBerkasRoundtrip(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "sub", "f.bin")
 	data := []byte("isi-berkas")
-	if err := TulisBerkas(p, data); err != nil {
+	if err := WriteFile(p, data); err != nil {
 		t.Fatalf("tulis: %v", err)
 	}
-	got, err := BacaBerkas(p, 1024)
+	got, err := ReadFile(p, 1024)
 	if err != nil {
 		t.Fatalf("baca: %v", err)
 	}
@@ -43,7 +43,7 @@ func TestBacaTulisBerkasRoundtrip(t *testing.T) {
 		t.Errorf("isi = %q", got)
 	}
 	// Cap: 3 byte tapi isi 10 → ditolak.
-	if _, err := BacaBerkas(p, 3); err == nil {
+	if _, err := ReadFile(p, 3); err == nil {
 		t.Error("melebihi cap harus ditolak")
 	}
 	// File sementara tidak boleh tertinggal.
@@ -64,10 +64,10 @@ func TestTulisZipBacaZipRoundtrip(t *testing.T) {
 	}
 	p1 := filepath.Join(t.TempDir(), "a.zip")
 	p2 := filepath.Join(t.TempDir(), "b.zip")
-	if err := TulisZip(p1, files); err != nil {
+	if err := WriteZip(p1, files); err != nil {
 		t.Fatalf("tulis zip 1: %v", err)
 	}
-	if err := TulisZip(p2, files); err != nil {
+	if err := WriteZip(p2, files); err != nil {
 		t.Fatalf("tulis zip 2: %v", err)
 	}
 	b1, _ := os.ReadFile(p1)
@@ -76,7 +76,7 @@ func TestTulisZipBacaZipRoundtrip(t *testing.T) {
 		t.Error("zip harus reproducible (byte identik untuk isi sama)")
 	}
 
-	entries, err := BacaZip(b1)
+	entries, err := ReadZip(b1)
 	if err != nil {
 		t.Fatalf("baca zip: %v", err)
 	}
@@ -92,7 +92,7 @@ func TestTulisZipBacaZipRoundtrip(t *testing.T) {
 func TestTulisZipTolakNamaBerbahaya(t *testing.T) {
 	bahaya := []string{"../evil.so", "/abs/evil.so", `win\evil.so`, ""}
 	for _, n := range bahaya {
-		err := TulisZip(filepath.Join(t.TempDir(), "x.zip"), []File{{Name: n, Data: []byte("x")}})
+		err := WriteZip(filepath.Join(t.TempDir(), "x.zip"), []File{{Name: n, Data: []byte("x")}})
 		if err == nil {
 			t.Errorf("nama %q harus ditolak", n)
 		}
@@ -101,25 +101,25 @@ func TestTulisZipTolakNamaBerbahaya(t *testing.T) {
 
 // TestBacaZipRusak — data bukan zip → galat jelas.
 func TestBacaZipRusak(t *testing.T) {
-	if _, err := BacaZip([]byte("bukan-zip")); err == nil {
+	if _, err := ReadZip([]byte("bukan-zip")); err == nil {
 		t.Error("data bukan zip harus ditolak")
 	}
 }
 
 // TestURLResmi — kanal resmi latest & versi.
 func TestURLResmi(t *testing.T) {
-	got, err := URLResmi("https://github.com/lnx645/galang", "redis")
+	got, err := OfficialURL("https://github.com/lnx645/galang", "redis")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got != "https://github.com/lnx645/galang/releases/latest/download/redis.zip" {
 		t.Errorf("latest = %q", got)
 	}
-	got, _ = URLResmi("https://github.com/lnx645/galang", "redis@1.2.3")
+	got, _ = OfficialURL("https://github.com/lnx645/galang", "redis@1.2.3")
 	if got != "https://github.com/lnx645/galang/releases/download/v1.2.3/redis.zip" {
 		t.Errorf("versi = %q", got)
 	}
-	got, _ = URLResmi("https://github.com/lnx645/galang/", "redis@v9.9.9")
+	got, _ = OfficialURL("https://github.com/lnx645/galang/", "redis@v9.9.9")
 	if got != "https://github.com/lnx645/galang/releases/download/v9.9.9/redis.zip" {
 		t.Errorf("prefix v ganda harus dihilangkan: %q", got)
 	}

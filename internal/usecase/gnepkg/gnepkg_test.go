@@ -20,7 +20,7 @@ import (
 func bangunFakeExt(t *testing.T, name, versi string, binari map[string]string) string {
 	t.Helper()
 	dir := t.TempDir()
-	src, err := json.Marshal(Sumber{Name: name, Version: versi, Description: "uji"})
+	src, err := json.Marshal(Source{Name: name, Version: versi, Description: "uji"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,7 +28,7 @@ func bangunFakeExt(t *testing.T, name, versi string, binari map[string]string) s
 		t.Fatal(err)
 	}
 	for plat, isi := range binari {
-		goos, _, ok := pisahPlatform(plat)
+		goos, _, ok := splitPlatform(plat)
 		if !ok {
 			t.Fatalf("platform tiruan tidak sah: %s", plat)
 		}
@@ -36,7 +36,7 @@ func bangunFakeExt(t *testing.T, name, versi string, binari map[string]string) s
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(d, name+ekstensiUntuk(goos)), []byte(isi), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(d, name+libExtFor(goos)), []byte(isi), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -46,7 +46,7 @@ func bangunFakeExt(t *testing.T, name, versi string, binari map[string]string) s
 // TestPackInstallListRemove — round-trip penuh: pack → install (file
 // lokal) → list → remove, plus verifikasi isi file terpasang.
 func TestPackInstallListRemove(t *testing.T) {
-	plat := PlatformBerjalan()
+	plat := CurrentPlatform()
 	ext := bangunFakeExt(t, "redis", "0.6.0", map[string]string{
 		plat:            "ELF-palsu-redis",
 		"windows-amd64": "PE-palsu",
@@ -67,7 +67,7 @@ func TestPackInstallListRemove(t *testing.T) {
 	}
 
 	dir := filepath.Join(t.TempDir(), "gne")
-	res, err := Install(context.Background(), zipPath, Opsi{Dir: dir})
+	res, err := Install(context.Background(), zipPath, Options{Dir: dir})
 	if err != nil {
 		t.Fatalf("install: %v", err)
 	}
@@ -82,7 +82,7 @@ func TestPackInstallListRemove(t *testing.T) {
 	if string(isi) != "ELF-palsu-redis" {
 		t.Errorf("isi file = %q", isi)
 	}
-	if filepath.Base(res.Path) != "redis"+ekstensiUntuk(runtime.GOOS) {
+	if filepath.Base(res.Path) != "redis"+libExtFor(runtime.GOOS) {
 		t.Errorf("nama file terpasang %q tidak sesuai pola discovery", filepath.Base(res.Path))
 	}
 	if _, err := os.Stat(filepath.Join(dir, "redis.gne.json")); err != nil {
@@ -90,16 +90,16 @@ func TestPackInstallListRemove(t *testing.T) {
 	}
 
 	// Install ulang tanpa --force harus ditolak.
-	if _, err := Install(context.Background(), zipPath, Opsi{Dir: dir}); err == nil {
+	if _, err := Install(context.Background(), zipPath, Options{Dir: dir}); err == nil {
 		t.Error("install ulang tanpa --force harus ditolak")
 	}
 	// Dengan --force ditimpa.
-	res2, err := Install(context.Background(), zipPath, Opsi{Dir: dir, Force: true})
+	res2, err := Install(context.Background(), zipPath, Options{Dir: dir, Force: true})
 	if err != nil {
 		t.Fatalf("install --force: %v", err)
 	}
-	if !res2.Sebelumnya {
-		t.Error("Hasil.Sebelumnya harus true saat menimpa")
+	if !res2.Previous {
+		t.Error("Result.Previous harus true saat menimpa")
 	}
 
 	// List menampilkan satu entri.
@@ -107,7 +107,7 @@ func TestPackInstallListRemove(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
-	if len(items) != 1 || items[0].Nama != "redis" || items[0].Versi != "0.6.0" {
+	if len(items) != 1 || items[0].Name != "redis" || items[0].Version != "0.6.0" {
 		t.Errorf("list = %+v", items)
 	}
 	if items[0].ABI != gne.ABI {
@@ -156,7 +156,7 @@ func bacaZipBalik(t *testing.T, files map[string][]byte) []byte {
 }
 
 // instalDariZip memasang byte paket mentah lewat jalur file sementara.
-func instalDariZip(t *testing.T, data []byte, o Opsi) error {
+func instalDariZip(t *testing.T, data []byte, o Options) error {
 	t.Helper()
 	if o.Dir == "" {
 		o.Dir = filepath.Join(t.TempDir(), "gne")
@@ -172,13 +172,13 @@ func instalDariZip(t *testing.T, data []byte, o Opsi) error {
 // manifestNakal membangun manifest.json dengan entri untuk platform uji.
 func manifestNakal(t *testing.T, mutasi func(m *Manifest)) []byte {
 	t.Helper()
-	plat := PlatformBerjalan()
+	plat := CurrentPlatform()
 	m := Manifest{
 		Name:    "redis",
 		Version: "0.6.0",
 		GNEABI:  gne.ABI,
 		Entry: map[string]Entry{
-			plat: {File: plat + "/redis" + ekstensiUntuk(runtime.GOOS), SHA256: strings.Repeat("a", 64), Size: 3},
+			plat: {File: plat + "/redis" + libExtFor(runtime.GOOS), SHA256: strings.Repeat("a", 64), Size: 3},
 		},
 	}
 	if mutasi != nil {
@@ -194,14 +194,14 @@ func manifestNakal(t *testing.T, mutasi func(m *Manifest)) []byte {
 // TestInstallTolakZipSlip — entri `..` di dalam zip ditolak saat pembacaan,
 // bahkan bila manifest-nya sendiri tampak sah (pertahanan berlapis).
 func TestInstallTolakZipSlip(t *testing.T) {
-	plat := PlatformBerjalan()
+	plat := CurrentPlatform()
 	man := manifestNakal(t, nil) // manifest valid — entri jahat jadi ekstra
 	paket := bacaZipBalik(t, map[string][]byte{
-		NamaManifest: man,
-		plat + "/redis" + ekstensiUntuk(runtime.GOOS): []byte("ELF"),
-		"../redis" + ekstensiUntuk(runtime.GOOS):      []byte("jahat"),
+		ManifestFile: man,
+		plat + "/redis" + libExtFor(runtime.GOOS): []byte("ELF"),
+		"../redis" + libExtFor(runtime.GOOS):      []byte("jahat"),
 	})
-	err := instalDariZip(t, paket, Opsi{})
+	err := instalDariZip(t, paket, Options{})
 	if err == nil || !strings.Contains(err.Error(), "zip-slip") {
 		t.Errorf("zip-slip harus ditolak, dapat: %v", err)
 	}
@@ -211,10 +211,10 @@ func TestInstallTolakZipSlip(t *testing.T) {
 func TestInstallTolakPathAbsolut(t *testing.T) {
 	man := manifestNakal(t, nil)
 	paket := bacaZipBalik(t, map[string][]byte{
-		NamaManifest: man,
+		ManifestFile: man,
 		"/etc/evil":  []byte("x"),
 	})
-	err := instalDariZip(t, paket, Opsi{})
+	err := instalDariZip(t, paket, Options{})
 	if err == nil || !strings.Contains(err.Error(), "absolut") {
 		t.Errorf("path absolut harus ditolak, dapat: %v", err)
 	}
@@ -223,14 +223,14 @@ func TestInstallTolakPathAbsolut(t *testing.T) {
 // TestInstallTolakShaTidakCocok — binari yang tidak cocok manifest
 // ditolak sebelum menulis apa pun ke disk.
 func TestInstallTolakShaTidakCocok(t *testing.T) {
-	plat := PlatformBerjalan()
+	plat := CurrentPlatform()
 	man := manifestNakal(t, nil) // sha = aaaa... (bukan sha "ELF")
 	paket := bacaZipBalik(t, map[string][]byte{
-		NamaManifest: man,
-		plat + "/redis" + ekstensiUntuk(runtime.GOOS): []byte("ELF"),
+		ManifestFile: man,
+		plat + "/redis" + libExtFor(runtime.GOOS): []byte("ELF"),
 	})
 	dir := filepath.Join(t.TempDir(), "gne")
-	err := instalDariZip(t, paket, Opsi{Dir: dir})
+	err := instalDariZip(t, paket, Options{Dir: dir})
 	if err == nil || !strings.Contains(err.Error(), "sha256") {
 		t.Fatalf("sha tidak cocok harus ditolak, dapat: %v", err)
 	}
@@ -242,13 +242,13 @@ func TestInstallTolakShaTidakCocok(t *testing.T) {
 
 // TestInstallTolakABIBeda — paket untuk ABI lain ditolak.
 func TestInstallTolakABIBeda(t *testing.T) {
-	plat := PlatformBerjalan()
+	plat := CurrentPlatform()
 	man := manifestNakal(t, func(m *Manifest) { m.GNEABI = gne.ABI + 1 })
 	paket := bacaZipBalik(t, map[string][]byte{
-		NamaManifest: man,
-		plat + "/redis" + ekstensiUntuk(runtime.GOOS): []byte("ELF"),
+		ManifestFile: man,
+		plat + "/redis" + libExtFor(runtime.GOOS): []byte("ELF"),
 	})
-	err := instalDariZip(t, paket, Opsi{})
+	err := instalDariZip(t, paket, Options{})
 	if err == nil || !strings.Contains(err.Error(), "ABI") {
 		t.Errorf("ABI beda harus ditolak, dapat: %v", err)
 	}
@@ -259,7 +259,7 @@ func TestInstallTolakABIBeda(t *testing.T) {
 func TestInstallTolakPlatformKurang(t *testing.T) {
 	// Paket khusus platform lain.
 	other := "linux-arm64"
-	if other == PlatformBerjalan() {
+	if other == CurrentPlatform() {
 		other = "windows-amd64"
 	}
 	ext := bangunFakeExt(t, "smtp", "0.6.0", map[string]string{other: "BINARI"})
@@ -269,12 +269,12 @@ func TestInstallTolakPlatformKurang(t *testing.T) {
 	}
 	dir := filepath.Join(t.TempDir(), "gne")
 
-	_, err := Install(context.Background(), zipPath, Opsi{Dir: dir})
+	_, err := Install(context.Background(), zipPath, Options{Dir: dir})
 	if err == nil || !strings.Contains(err.Error(), "tidak menyediakan binari") {
 		t.Errorf("platform kurang harus ditolak, dapat: %v", err)
 	}
 
-	res, err := Install(context.Background(), zipPath, Opsi{Dir: dir, Force: true})
+	res, err := Install(context.Background(), zipPath, Options{Dir: dir, Force: true})
 	if err != nil {
 		t.Errorf("install --force lintas-platform: %v", err)
 	} else if res.Platform != other {
@@ -284,7 +284,7 @@ func TestInstallTolakPlatformKurang(t *testing.T) {
 
 // TestInstallTolakTanpaCGO — binari stub menolak pemasangan tanpa --force.
 func TestInstallTolakTanpaCGO(t *testing.T) {
-	plat := PlatformBerjalan()
+	plat := CurrentPlatform()
 	ext := bangunFakeExt(t, "redis", "0.6.0", map[string]string{plat: "ELF"})
 	zipPath := filepath.Join(t.TempDir(), "redis.zip")
 	if _, _, err := Pack(ext, zipPath); err != nil {
@@ -292,11 +292,11 @@ func TestInstallTolakTanpaCGO(t *testing.T) {
 	}
 	dir := filepath.Join(t.TempDir(), "gne")
 
-	_, err := Install(context.Background(), zipPath, Opsi{Dir: dir, Available: func() bool { return false }})
+	_, err := Install(context.Background(), zipPath, Options{Dir: dir, Available: func() bool { return false }})
 	if err == nil || !strings.Contains(err.Error(), "CGO") {
 		t.Errorf("non-CGO harus ditolak, dapat: %v", err)
 	}
-	if _, err := Install(context.Background(), zipPath, Opsi{
+	if _, err := Install(context.Background(), zipPath, Options{
 		Dir: dir, Force: true, Available: func() bool { return false },
 	}); err != nil {
 		t.Errorf("non-CGO + --force harus lolos, dapat: %v", err)
@@ -306,8 +306,8 @@ func TestInstallTolakTanpaCGO(t *testing.T) {
 // TestInstallTolakHTTP — URL http:// ditolak tanpa menyentuh jaringan.
 func TestInstallTolakHTTP(t *testing.T) {
 	dipanggil := false
-	_, err := Install(context.Background(), "http://contoh.com/redis.zip", Opsi{
-		Ambil: func(ctx context.Context, url string) ([]byte, error) {
+	_, err := Install(context.Background(), "http://contoh.com/redis.zip", Options{
+		Fetch: func(ctx context.Context, url string) ([]byte, error) {
 			dipanggil = true
 			return nil, fmt.Errorf("tidak boleh tercapai")
 		},
@@ -316,21 +316,21 @@ func TestInstallTolakHTTP(t *testing.T) {
 		t.Errorf("http:// harus ditolak, dapat: %v", err)
 	}
 	if dipanggil {
-		t.Error("Ambil tidak boleh dipanggil untuk http://")
+		t.Error("Fetch tidak boleh dipanggil untuk http://")
 	}
 }
 
 // TestInstallURLResmi — shortcut diselesaikan ke aset rilis GitHub.
 func TestInstallURLResmi(t *testing.T) {
 	var urlDipakai string
-	_, err := Install(context.Background(), "redis@0.6.0", Opsi{
-		Ambil: func(ctx context.Context, url string) ([]byte, error) {
+	_, err := Install(context.Background(), "redis@0.6.0", Options{
+		Fetch: func(ctx context.Context, url string) ([]byte, error) {
 			urlDipakai = url
 			return nil, fmt.Errorf("dummy")
 		},
 	})
 	if err == nil {
-		t.Fatal("harus gagal (dummy Ambil), tapi bukan itu yang diuji")
+		t.Fatal("harus gagal (dummy Fetch), tapi bukan itu yang diuji")
 	}
 	want := "https://github.com/lnx645/galang/releases/download/v0.6.0/redis.zip"
 	if urlDipakai != want {
@@ -338,8 +338,8 @@ func TestInstallURLResmi(t *testing.T) {
 	}
 
 	// Tanpa versi → rilis terbaru.
-	_, _ = Install(context.Background(), "redis", Opsi{
-		Ambil: func(ctx context.Context, url string) ([]byte, error) {
+	_, _ = Install(context.Background(), "redis", Options{
+		Fetch: func(ctx context.Context, url string) ([]byte, error) {
 			urlDipakai = url
 			return nil, fmt.Errorf("dummy")
 		},
@@ -379,9 +379,9 @@ func TestPackTolakNamaSampah(t *testing.T) {
 	}
 	for _, c := range cases {
 		dir := t.TempDir()
-		b, _ := json.Marshal(Sumber{Name: c.nama, Version: c.versi})
+		b, _ := json.Marshal(Source{Name: c.nama, Version: c.versi})
 		os.WriteFile(filepath.Join(dir, "gne.json"), b, 0o644)
-		d := filepath.Join(dir, "build", PlatformBerjalan())
+		d := filepath.Join(dir, "build", CurrentPlatform())
 		os.MkdirAll(d, 0o755)
 		os.WriteFile(filepath.Join(d, "x"), []byte("y"), 0o644)
 		if _, _, err := Pack(dir, filepath.Join(t.TempDir(), "x.zip")); err == nil {
@@ -403,20 +403,20 @@ func TestBacaZipTolakTautanSimbolik(t *testing.T) {
 	w.Write([]byte("/etc/passwd"))
 	zw.Close()
 
-	if _, err := gnepkg.BacaZip(buf.Bytes()); err == nil {
+	if _, err := gnepkg.ReadZip(buf.Bytes()); err == nil {
 		t.Error("tautan simbolik harus ditolak")
 	}
 }
 
 // TestURLResmi — bentuk URL kanal resmi.
 func TestURLResmi(t *testing.T) {
-	got, err := URLResmi("redis")
+	got, err := OfficialURL("redis")
 	if err != nil || got != "https://github.com/lnx645/galang/releases/latest/download/redis.zip" {
-		t.Errorf("URLResmi(redis) = %q, %v", got, err)
+		t.Errorf("OfficialURL(redis) = %q, %v", got, err)
 	}
-	got, err = URLResmi("smtp@v1.2.3")
+	got, err = OfficialURL("smtp@v1.2.3")
 	if err != nil || got != "https://github.com/lnx645/galang/releases/download/v1.2.3/smtp.zip" {
-		t.Errorf("URLResmi(smtp@v1.2.3) = %q, %v", got, err)
+		t.Errorf("OfficialURL(smtp@v1.2.3) = %q, %v", got, err)
 	}
 }
 

@@ -140,19 +140,8 @@ func gnePack(ops gneOps, pos []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	fmt.Fprintf(stdout, "✓ paket %s %s (ABI %d) → %s\n", m.Name, m.Version, m.GNEABI, zipPath)
-	fmt.Fprintf(stdout, "  platform: %s\n", daftar(m))
+	fmt.Fprintf(stdout, "  platform: %s\n", joinComma(sortedKeys(m)))
 	return 0
-}
-
-func daftar(m *gnepkg.Manifest) string {
-	s := ""
-	for _, p := range sortedKeys(m) {
-		if s != "" {
-			s += ", "
-		}
-		s += p
-	}
-	return s
 }
 
 func sortedKeys(m *gnepkg.Manifest) []string {
@@ -174,18 +163,18 @@ func gneInstall(ops gneOps, pos []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	ctx := context.Background()
-	res, err := gnepkg.Install(ctx, pos[0], gnepkg.Opsi{Dir: ops.dir, Force: ops.force})
+	res, err := gnepkg.Install(ctx, pos[0], gnepkg.Options{Dir: ops.dir, Force: ops.force})
 	if err != nil {
 		fmt.Fprintf(stderr, "gar gne install: %v\n", err)
 		return 1
 	}
-	ket := "baru"
-	if res.Sebelumnya {
-		ket = "ditimpa"
+	status := "baru"
+	if res.Previous {
+		status = "ditimpa"
 	}
-	fmt.Fprintf(stdout, "✓ %s %s terpasang (%s, %s)\n", res.Nama, res.Versi, res.Platform, ket)
+	fmt.Fprintf(stdout, "✓ %s %s terpasang (%s, %s)\n", res.Name, res.Version, res.Platform, status)
 	fmt.Fprintf(stdout, "  %s\n", res.Path)
-	fmt.Fprintf(stdout, `  gunakan: use "%s"`, res.Nama)
+	fmt.Fprintf(stdout, `  gunakan: use "%s"`, res.Name)
 	if os.Getenv("GNE_PATH") != "" {
 		fmt.Fprintf(stdout, ` (perhatikan: GNE_PATH menang sebelum direktori instalasi)`)
 	}
@@ -207,7 +196,7 @@ func gneList(ops gneOps, stdout, stderr io.Writer) int {
 	fmt.Fprintln(tw, "NAMA\tVERSI\tABI\tPLATFORM\tUKURAN")
 	for _, it := range items {
 		fmt.Fprintf(tw, "%s\t%s\t%d\t%s\t%d\n",
-			it.Nama, it.Versi, it.ABI, joinComma(it.Platform), it.Ukuran)
+			it.Name, it.Version, it.ABI, joinComma(it.Platform), it.Size)
 	}
 	tw.Flush()
 	return 0
@@ -229,11 +218,11 @@ func gneRemove(ops gneOps, pos []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "gar gne remove: butuh tepat satu nama ekstensi")
 		return 2
 	}
-	dihapus, err := gnepkg.Remove(ops.dir, pos[0])
+	removed, err := gnepkg.Remove(ops.dir, pos[0])
 	if err != nil {
 		fmt.Fprintf(stderr, "gar gne remove: %v\n", err)
 		return 1
 	}
-	fmt.Fprintf(stdout, "✓ %s dilepas: %s\n", pos[0], dihapus)
+	fmt.Fprintf(stdout, "✓ %s dilepas: %s\n", pos[0], removed)
 	return 0
 }

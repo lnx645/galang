@@ -498,25 +498,25 @@ static int send_cmd(conn *c, const char *name, const argvec *av)
 
 	snprintf(hdr, sizeof hdr, "*%d\r\n", nargs);
 	if (sb_add(&s, hdr, strlen(hdr)) != 0)
-		goto gagal;
+		goto fail;
 	snprintf(hdr, sizeof hdr, "$%zu\r\n", strlen(name));
 	if (sb_add(&s, hdr, strlen(hdr)) != 0 ||
 	    sb_add(&s, name, strlen(name)) != 0 ||
 	    sb_add(&s, "\r\n", 2) != 0)
-		goto gagal;
+		goto fail;
 	for (i = 0; i < av->n; i++) {
 		snprintf(hdr, sizeof hdr, "$%zu\r\n", av->len[i]);
 		if (sb_add(&s, hdr, strlen(hdr)) != 0 ||
 		    sb_add(&s, av->v[i], av->len[i]) != 0 ||
 		    sb_add(&s, "\r\n", 2) != 0)
-			goto gagal;
+			goto fail;
 	}
 	{
 		int rc = send_all(c, s.b, s.len);
 		free(s.b);
 		return rc;
 	}
-gagal:
+fail:
 	free(s.b);
 	return -1;
 }
