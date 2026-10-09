@@ -113,6 +113,10 @@ jobs:
       - name: Tunggu rilis lalu unggah aset
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Job ini tanpa checkout, jadi gh tidak punya git remote untuk
+          # memutus repository — GH_REPO wajib agar gh release view/upload
+          # bisa jalan (tanpa ini, wait loop selalu gagal 20 menit).
+          GH_REPO: ${{ github.repository }}
         run: |
           set -e
           # Rilis dibuat manual dari mesin rilis (make release-zip &&
