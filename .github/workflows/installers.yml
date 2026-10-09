@@ -63,6 +63,11 @@ jobs:
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           if (-not (Test-Path $iscc)) { throw "ISCC not found: $iscc" }
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
       - name: Rebuild gar.exe from source (prevents stale zip mismatch)
         shell: pwsh
         run: |
@@ -141,6 +146,11 @@ jobs:
             fi
           done
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
       - name: Rebuild gar from source (prevents stale zip mismatch)
         run: |
           set -e
@@ -214,6 +224,11 @@ jobs:
               echo "asset $p did not appear within 20 minutes" >&2; exit 1
             fi
           done
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
 
       - name: Rebuild darwin binaries from source (prevents stale zip mismatch)
         run: |
