@@ -14,8 +14,8 @@ import (
 	"garurda/internal/usecase/interp"
 )
 
-// Version is the interpreter release.
-const Version = "0.6.0"
+// Version adalah versi interpreter.
+const Version = "0.6.1"
 
 // Run executes the CLI and returns a process exit code.
 func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
