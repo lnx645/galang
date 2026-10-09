@@ -252,7 +252,7 @@ $r.close()                        // true; called again → false
   (bulk up to 64 MiB, array depth of 32 levels, element-count limits) so
   a misbehaving server cannot exhaust memory.
 - **Requires CGO**: a `gar` binary built without CGO rejects `use` with a
-  clear message (platform table in [GNE](gne.md#platform)).
+  clear message (platform table in [GNE](gne.md#platforms)).
 
 ---
 
