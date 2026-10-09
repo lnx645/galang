@@ -118,9 +118,19 @@ ext:
 	  done; \
 	done
 
-# Pack each extension into a release zip. Requires at least one binary
-# in build/ (linux/windows from make ext; darwin from CI results).
-pack-ext: build
+# Pack each extension into a release zip.
+#
+# Depends on `ext` so the binaries are ALWAYS rebuilt from the current
+# source before packing — packing stale build/ artifacts (compiled
+# against an older gne.h) would ship extensions whose compiled-in
+# GNE_ABI disagrees with the manifest's gne_abi, causing an
+# "ABI mismatch" error at load time.
+#
+# Darwin binaries are NOT built here (cross-CGO for darwin is
+# impossible from Linux); they come from release.yml's
+# ext-darwin-builds.zip asset, which must be extracted into
+# ext/<name>/build/darwin-*/ before running this target.
+pack-ext: build ext
 	@set -e; for name in $(EXTS); do \
 	  $(BUILD_DIR)/gar gne pack ext/$$name -o $(DIST_DIR)/$$name.zip; \
 	done
