@@ -118,6 +118,7 @@ jobs:
         with:
           name: installer-windows
           path: packaging/windows/out/GaLang-Setup-*.exe
+          retention-days: 30
           if-no-files-found: error
 
   linux:
@@ -198,6 +199,7 @@ jobs:
         with:
           name: installer-linux
           path: deb/*.deb
+          retention-days: 30
           if-no-files-found: error
 
   macos:
@@ -267,6 +269,7 @@ jobs:
         with:
           name: installer-macos
           path: pkg/*.pkg
+          retention-days: 30
           if-no-files-found: error
 
   upload:

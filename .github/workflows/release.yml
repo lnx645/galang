@@ -131,6 +131,7 @@ jobs:
           path: |
             gar-darwin-${{ matrix.arch }}.zip
             ext-dylib-${{ matrix.arch }}.zip
+          retention-days: 30
           if-no-files-found: error
 
   upload:

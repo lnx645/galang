@@ -29,7 +29,41 @@ jobs:
           # uses the stable release because Go 1.19 is EOL and is no
           # longer tested against the newest Xcode/clang on macOS runners.
           go-version: stable
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: go mod verify
+        run: go mod verify
+
       - name: go vet
         run: go vet ./...
+
+      - name: Run Gosec security scanner
+        uses: securego/gosec@master
+        with:
+          args: '-no-fail -fmt sarif -out results.sarif ./...'
+
+      - name: Upload SARIF results
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif
+
       - name: go test
         run: go test ./...
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.os }}
+          path: |
+            **/coverage.out
+            **/test-report.xml
+          retention-days: 7
+          if-no-files-found: ignore
