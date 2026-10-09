@@ -40,7 +40,7 @@ jobs:
           # toolchain the runners are tested against.
           go-version: stable
       - name: Build gar (CGO=1)
-        run: CGO_ENABLED=1 go build -ldflags "-s -w" -o gar-darwin-${{ matrix.arch }} ./cmd/gar
+        run: CGO_ENABLED=1 go build -ldflags "-s -w -X galang/internal/delivery/cli.Version=${GITHUB_REF_NAME#v}" -o gar-darwin-${{ matrix.arch }} ./cmd/gar
       - name: Build extension .dylibs
         run: |
           set -e

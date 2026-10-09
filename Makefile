@@ -13,7 +13,9 @@
 
 GO      ?= go
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
-LDFLAGS := -s -w -X main.version=$(VERSION)
+# -X menyuntikkan versi ke symbol cli.Version (main.version TIDAK ada —
+# linker diam-diam mengabaikan -X ke simbol tak dikenal).
+LDFLAGS := -s -w -X galang/internal/delivery/cli.Version=$(patsubst v%,%,$(VERSION))
 BUILD_DIR := bin
 DIST_DIR := dist
 

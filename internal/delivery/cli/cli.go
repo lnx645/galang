@@ -14,8 +14,13 @@ import (
 	"galang/internal/usecase/interp"
 )
 
-// Version adalah versi interpreter.
-const Version = "0.6.1"
+// Version adalah versi interpreter. Build resmi menyuntikkan nilai ini
+// lewat -ldflags "-X galang/internal/delivery/cli.Version=<versi>"
+// (Makefile dan release.yml) sehingga versi selalu mengikuti tag yang
+// dibangun — jangan dikembalikan jadi konstanta hard-code (v0.7.0 nyaris
+// merilis binari bercetak 0.6.1 karenanya). Build tanpa ldflags
+// (go build langsung) memakai nilai default ini.
+var Version = "dev"
 
 // Run executes the CLI and returns a process exit code.
 func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {

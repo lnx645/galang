@@ -42,7 +42,7 @@ Pastikan terpasang:
 
 ```bash
 gar version
-# gar 0.2.0
+# gar 0.7.0
 ```
 
 ### Dari Source

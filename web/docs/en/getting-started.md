@@ -42,7 +42,7 @@ Verify that it is installed:
 
 ```bash
 gar version
-# gar 0.2.0
+# gar 0.7.0
 ```
 
 ### From Source
