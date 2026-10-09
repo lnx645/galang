@@ -1,34 +1,46 @@
-// smtp-gmail.ga — contoh kiriman surel lewat ekstensi resmi smtp ke
-// dadanhidyt@gmail.com, diarahkan ke MX Gmail (port 25).
+// smtp-gmail.ga — contoh kirim surel sungguhan ke dadanhidyt@gmail.com
+// lewat ekstensi resmi smtp, dengan TLS dipegang terowongan lokal stunnel
+// (ekstensi kita plain + AUTH LOGIN ke localhost; stunnel mengenkripsi ke
+// smtp.gmail.com:465 dengan verifikasi sertifikat).
 //
-// Pakai:
-//   gar gne install smtp
-//   gar run examples/smtp-gmail.ga
+// ── Persiapan (sekali) ──────────────────────────────────────────────
+// 1. App password: Akun Google → Keamanan → Verifikasi 2 langkah →
+//    Sandi aplikasi (2FA harus aktif dahulu).
+// 2. Terowongan TLS — tulis /etc/stunnel/gmail.conf:
 //
-// Hasil tes nyata (2026-10-09, IP host tes):
-//   seluruh dialog diterima MTA Google — EHLO ✓, MAIL FROM ✓,
-//   RCPT TO dadanhidyt@gmail.com ✓, DATA ✓ — lalu ditolak di lapis
-//   kebijakan Google, bukan oleh ekstensi:
+//      foreground = yes
 //
-//     550 5.7.26 Your email has been blocked because the sender is
-//     unauthenticated. Gmail requires all senders to authenticate with
-//     either SPF or DKIM.
+//      [gmail-smtps]
+//      client = yes
+//      accept = 127.0.0.1:2526
+//      connect = smtp.gmail.com:465
+//      verify = 2
+//      checkHost = smtp.gmail.com
+//      CAfile = /etc/ssl/certs/ca-certificates.crt
+//      setuid = stunnel4
+//      setgid = stunnel4
 //
-// Artinya: ekstensi ini (plain + AUTH, tanpa TLS) sudah terbukti
-// berdialog benar dengan MTA produksi. Agar surel benar-benar masuk
-// inbox, salah satu dari:
-//   1. relay/TLS — lewati msmtp atau tunggu fase STARTTLS ekstensi
-//      lalu pakai smtp.gmail.com:587 + app password;
-//   2. domain dengan TXT SPF/DKIM untuk IP pengirim, kirim langsung
-//      port 25 tanpa kredensial.
+//    lalu: apt install stunnel4 && systemctl enable --now stunnel@gmail
+// 3. Ekstensi: gar gne install smtp
+// 4. Ganti <APP_PASSWORD> di bawah, lalu: gar run examples/smtp-gmail.ga
+//
+// ── Hasil tes nyata (2026-10-09) ───────────────────────────────────
+// • Kiriman langsung ke MX Gmail (port 25, tanpa TLS/otentikasi):
+//   dialog diterima sampai RCPT + DATA, lalu DITOLAK kebijakan Google:
+//   550 5.7.26 "Gmail requires all senders to authenticate with either
+//   SPF or DKIM."
+// • Jalur submission terautentikasi di atas (TLS via stunnel + AUTH
+//   LOGIN): diterima, 250 — surel masuk inbox.
 use "smtp"
 
-$mx = smtp.connect("gmail-smtp-in.l.google.com", 25, 20000)
-$mx.from("dadanhidyt@gmail.com")
-$mx.to("dadanhidyt@gmail.com")
-$mx.subject("Tes ekstensi smtp Garurda")
-print("kirim : " + str($mx.send(
-  "Halo!\n\nIni surel tes dari ekstensi resmi smtp Garurda.\n" +
-  "Alur: connect → from → to → send.\n"
+$s = smtp.connect("127.0.0.1", 2526, 20000)
+$s.auth("dadanhidyt@gmail.com", "<APP_PASSWORD>")
+$s.from("dadanhidyt@gmail.com")
+$s.to("dadanhidyt@gmail.com")
+$s.subject("Tes ekstensi smtp Garurda")
+print("kirim : " + str($s.send(
+  "Halo!\n\n" +
+  "Surel tes dari ekstensi resmi smtp Garurda.\n" +
+  "Alur: use \"smtp\" → stunnel → smtp.gmail.com:465 (TLS).\n"
 )))
-print("tutup : " + str($mx.close()))
+print("tutup : " + str($s.close()))
