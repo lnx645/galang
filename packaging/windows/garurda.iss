@@ -51,18 +51,59 @@ Root: HKLM; Subkey: "SYSTEM\CurrentControlSet\Control\Session Manager\Environmen
   Check: NeedsAddPath(ExpandConstant('{app}'))
 
 [Code]
+const
+  EnvPathKey = 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment';
+
 { Cek keberadaan entri PATH (case-insensitive, dipisah titik koma). }
 function NeedsAddPath(Param: string): Boolean;
 var
   OrigPath: string;
 begin
-  if not RegQueryStringValue(HKLM,
-    'SYSTEM\CurrentControlSet\Control\Session Manager\Environment',
-    'Path', OrigPath) then
+  if not RegQueryStringValue(HKLM, EnvPathKey, 'Path', OrigPath) then
   begin
     Result := True;
     exit;
   end;
   Result := Pos(';' + Uppercase(Param) + ';',
                 ';' + Uppercase(OrigPath) + ';') = 0;
+end;
+
+{ Uninstall: buang entri {app} dari PATH mesin. Inno TIDAK memulihkan
+  nilai registry yang ia modifikasi, jadi tanpa langkah ini PATH
+  menyimpan entri mati — terbukti pada uji hening di CI. }
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  Path, NewPath, Token, Rest, App: string;
+  P: Integer;
+begin
+  if CurUninstallStep <> usUninstall then
+    exit;
+  if not RegQueryStringValue(HKLM, EnvPathKey, 'Path', Path) then
+    exit;
+  App := Uppercase(ExpandConstant('{app}'));
+  NewPath := '';
+  Rest := Path;
+  while Rest <> '' do
+  begin
+    P := Pos(';', Rest);
+    if P = 0 then
+    begin
+      Token := Rest;
+      Rest := '';
+    end
+    else
+    begin
+      Token := Copy(Rest, 1, P - 1);
+      Rest := Copy(Rest, P + 1, Length(Rest));
+    end;
+    if (Token <> '') and (Uppercase(Token) <> App) then
+    begin
+      if NewPath <> '' then
+        NewPath := NewPath + ';';
+      NewPath := NewPath + Token;
+    end;
+  end;
+  { Jangan pernah menulis PATH kosong. }
+  if NewPath <> '' then
+    RegWriteStringValue(HKLM, EnvPathKey, 'Path', NewPath);
 end;
