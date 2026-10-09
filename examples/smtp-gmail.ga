@@ -1,0 +1,34 @@
+// smtp-gmail.ga — contoh kiriman surel lewat ekstensi resmi smtp ke
+// dadanhidyt@gmail.com, diarahkan ke MX Gmail (port 25).
+//
+// Pakai:
+//   gar gne install smtp
+//   gar run examples/smtp-gmail.ga
+//
+// Hasil tes nyata (2026-10-09, IP host tes):
+//   seluruh dialog diterima MTA Google — EHLO ✓, MAIL FROM ✓,
+//   RCPT TO dadanhidyt@gmail.com ✓, DATA ✓ — lalu ditolak di lapis
+//   kebijakan Google, bukan oleh ekstensi:
+//
+//     550 5.7.26 Your email has been blocked because the sender is
+//     unauthenticated. Gmail requires all senders to authenticate with
+//     either SPF or DKIM.
+//
+// Artinya: ekstensi ini (plain + AUTH, tanpa TLS) sudah terbukti
+// berdialog benar dengan MTA produksi. Agar surel benar-benar masuk
+// inbox, salah satu dari:
+//   1. relay/TLS — lewati msmtp atau tunggu fase STARTTLS ekstensi
+//      lalu pakai smtp.gmail.com:587 + app password;
+//   2. domain dengan TXT SPF/DKIM untuk IP pengirim, kirim langsung
+//      port 25 tanpa kredensial.
+use "smtp"
+
+$mx = smtp.connect("gmail-smtp-in.l.google.com", 25, 20000)
+$mx.from("dadanhidyt@gmail.com")
+$mx.to("dadanhidyt@gmail.com")
+$mx.subject("Tes ekstensi smtp Garurda")
+print("kirim : " + str($mx.send(
+  "Halo!\n\nIni surel tes dari ekstensi resmi smtp Garurda.\n" +
+  "Alur: connect → from → to → send.\n"
+)))
+print("tutup : " + str($mx.close()))
