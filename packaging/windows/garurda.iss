@@ -68,9 +68,11 @@ begin
                 ';' + Uppercase(OrigPath) + ';') = 0;
 end;
 
-{ Uninstall: buang entri {app} dari PATH mesin. Inno TIDAK memulihkan
-  nilai registry yang ia modifikasi, jadi tanpa langkah ini PATH
-  menyimpan entri mati — terbukti pada uji hening di CI. }
+{ Uninstall: buang entri direktori instal dari PATH mesin. Inno TIDAK
+  memulihkan nilai registry yang ia modifikasi, jadi tanpa langkah ini
+  PATH menyimpan entri mati — terbukti pada uji hening di CI.
+  (Hindari tanda kurung kurawal di dalam komentar Pascal: komentar
+  tidak bersarang sehingga koma kurawal bisa menutupnya lebih awal.) }
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   Path, NewPath, Token, Rest, App: string;
