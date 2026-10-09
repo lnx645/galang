@@ -1,14 +1,15 @@
 //go:build cgo
 
-/* shim.h — deklarasi internal host GNE (bukan kontrak publik; kontrak
- * publik ada di include/gne.h). Satu sumber kebenaran untuk signature
- * ekspor Go ↔ pemanggilan C, supaya tidak ada drift. */
+/* shim.h — internal declarations of the GNE host (not the public
+ * contract; the public contract lives in include/gne.h). Single source
+ * of truth for the Go export signatures ↔ C call sites, so the two
+ * cannot drift. */
 #ifndef GNE_SHIM_H
 #define GNE_SHIM_H
 
 #include "gne.h"
 
-/* Diekspor oleh Go (exports.go) — dijadikan fungsi pada tabel host API. */
+/* Exported by Go (exports.go) — installed into the host API table. */
 extern gne_handle gne_host_null(gne_ctx *ctx);
 extern gne_handle gne_host_bool_new(gne_ctx *ctx, int v);
 extern gne_handle gne_host_int_new(gne_ctx *ctx, int64_t v);
@@ -50,6 +51,19 @@ extern void gne_host_set_data(gne_ctx *ctx, void *data);
 extern void *gne_host_get_data(gne_ctx *ctx);
 extern void gne_host_retain(gne_ctx *ctx, uint64_t h);
 extern void gne_host_release(gne_ctx *ctx, uint64_t h);
+
+/* ABI 3: client TLS (exports.go + tlsconn_*.go). The public const-ness
+ * lives in include/gne.h; the GNE_API_BODY casts in shim.c bridge the
+ * two (same pattern as .string/.throw). */
+extern int gne_host_tls_wrap(gne_ctx *ctx, uintptr_t fd,
+			     char *server_name, char *ca_file,
+			     int32_t flags, int32_t timeout_ms, char *errbuf,
+			     size_t errcap, uint64_t *out);
+extern int gne_host_tls_read(gne_ctx *ctx, uint64_t tls, char *buf,
+			     size_t cap, size_t *n, int32_t timeout_ms);
+extern int gne_host_tls_write(gne_ctx *ctx, uint64_t tls, char *buf,
+			      size_t n, int32_t timeout_ms);
+extern int gne_host_tls_close(gne_ctx *ctx, uint64_t tls);
 
 /* Trampolines & helpers invoked from Go. */
 int gne_invoke_fn(void *fn, gne_ctx *ctx, int argc, uint64_t *argv,

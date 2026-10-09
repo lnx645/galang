@@ -20,7 +20,7 @@ import (
 // LOADS packages built for an older ABI through a legacy table view
 // (the struct is append-only); only newer-than-host packages are
 // rejected.
-const ABI = 2
+const ABI = 3
 
 // Hooks is the semantic bridge from the interpreter. All functions are
 // called on the interpreter's goroutine (single-goroutine machine

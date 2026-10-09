@@ -69,7 +69,7 @@ extern "C" {
 /* ABI version. The host rejects extensions with a different number
  * (legacy numbers are served via the compatibility view described
  * above). */
-#define GNE_ABI 2
+#define GNE_ABI 3
 
 /* Call context — HOST INTERNAL FIELDS, do not access them directly from
  * an extension (they may change without notice in the next ABI version).
@@ -106,6 +106,12 @@ enum {
  * self. Return 0 with *ret set = success. */
 typedef int (*gne_cfunc)(gne_ctx *ctx, int argc, const gne_handle *argv,
 			 gne_handle *ret);
+
+/* TLS return codes (api->tls_wrap/tls_read/tls_write) and flags. */
+#define GNE_TLS_ERR (-1)   /* handshake or I/O failure */
+#define GNE_TLS_TIMEOUT (-2) /* deadline exceeded */
+
+#define GNE_TLS_INSECURE 0x01 /* skip certificate verification */
 
 /* Host API table — filled in by the GaLang runtime, used for the life of
  * the process. Extensions store this pointer in a static variable from
@@ -183,6 +189,37 @@ typedef struct gne_host_api {
 	 * released by the host after the cfunc returns). Returns 0 on
 	 * success, -1 when the handle is not an object; it never throws. */
 	int (*obj_keys)(gne_ctx *ctx, gne_handle obj, gne_handle *out);
+
+	/* --- ABI 3: client-side TLS over an already-connected TCP
+	 * socket (APPEND-ONLY). The host uses crypto/tls with the
+	 * platform's own certificate store (plus an optional extra CA
+	 * bundle), so extensions need no TLS library of their own.
+	 *
+	 * tls_wrap dups the connected socket and performs the handshake;
+	 * server_name is used both as SNI and as the verification host.
+	 * On success the caller must stop using its own fd (close it —
+	 * the host owns an independent dup) and do all further I/O
+	 * through tls_read/tls_write. ca_file: extra CA bundle in PEM
+	 * format, or NULL/"" for the system roots only. flags: OR of
+	 * GNE_TLS_INSECURE (skip verification — tests only).
+	 *
+	 * timeout_ms <= 0 selects the 30 s default on every function.
+	 * Return codes: 0 = success; for tls_read that includes *n == 0,
+	 * which means the peer closed the connection cleanly; otherwise
+	 * GNE_TLS_TIMEOUT or GNE_TLS_ERR. On a failed wrap, errbuf
+	 * (when errcap > 0) receives a short English reason,
+	 * NUL-terminated, and *out is set to 0. These functions never
+	 * throw. The handle is an ordinary object handle: retain() it
+	 * before storing it past the call, and release() it after
+	 * tls_close. */
+	int (*tls_wrap)(gne_ctx *ctx, uintptr_t fd, const char *server_name,
+			const char *ca_file, int32_t flags, int32_t timeout_ms,
+			char *errbuf, size_t errcap, gne_handle *out);
+	int (*tls_read)(gne_ctx *ctx, gne_handle tls, char *buf, size_t cap,
+			size_t *n, int32_t timeout_ms);
+	int (*tls_write)(gne_ctx *ctx, gne_handle tls, const char *buf,
+			 size_t n, int32_t timeout_ms);
+	int (*tls_close)(gne_ctx *ctx, gne_handle tls);
 } gne_host_api;
 
 /* Mandatory entry point exported by every extension.

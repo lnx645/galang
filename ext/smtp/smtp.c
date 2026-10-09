@@ -120,6 +120,7 @@ typedef struct {
 	char *rcpt[SMTP_MAX_RCPT];
 	int nrcpt;
 	unsigned seq; /* sequence number for Message-ID & boundary */
+	gne_handle tls; /* TLS handle from api->tls_wrap; 0 = plain mode */
 } smtp_sess;
 
 typedef struct {
@@ -424,9 +425,24 @@ static int sb_puts(sbuf *s, const char *p)
 	return sb_add(s, p, strlen(p));
 }
 
-static int send_all(smtp_sess *s, const char *p, size_t n)
+static int send_all(gne_ctx *ctx, smtp_sess *s, const char *p, size_t n)
 {
 	while (n > 0) {
+		if (s->tls) {
+			int rc = api->tls_write(ctx, s->tls, p, n, s->timeout_ms);
+			if (rc != 0) {
+				api->tls_close(ctx, s->tls);
+				api->release(ctx, s->tls);
+				s->tls = 0;
+				sfd_close(s->fd);
+				s->fd = SFD_INVALID;
+				char msg[256];
+				snprintf(msg, sizeof msg, "TLS write failed");
+				api->throw(ctx, "smtp_error", 502, msg);
+				return -1;
+			}
+			return 0;
+		}
 #ifdef _WIN32
 		int chunk = n > 0x7fffffffu ? 0x7fffffff : (int)n;
 		int k = send(s->fd, p, chunk, 0);
@@ -502,6 +518,7 @@ static void sess_clear(smtp_sess *s)
 	s->in_txn = 0;
 	s->caps[0] = 0;
 	s->seq = 0;
+	s->tls = 0;
 }
 
 /* Force-close the session (used after an I/O error): the connection is
@@ -663,7 +680,7 @@ static int cmd_line(gne_ctx *ctx, smtp_sess *s, const char *line)
 		api->throw(ctx, "smtp_oom", 500, "failed to allocate memory");
 		return -1;
 	}
-	ok = send_all(s, out.b, out.len) == 0;
+	ok = send_all(ctx, s, out.b, out.len) == 0;
 	free(out.b);
 	if (!ok) {
 		int e = SOCK_ERRNO;
@@ -1120,7 +1137,7 @@ static int put_std_headers(sbuf *content, smtp_sess *s,
 /* Send a data chunk as-is. Failure → close session + throw. */
 static int send_blob(gne_ctx *ctx, smtp_sess *s, const char *p, size_t n, const char *what)
 {
-	if (send_all(s, p, n) == 0)
+	if (send_all(ctx, s, p, n) == 0)
 		return 0;
 	{
 		int e = SOCK_ERRNO;
@@ -1542,9 +1559,9 @@ static int m_close(gne_ctx *ctx, int argc, const gne_handle *argv, gne_handle *r
 	{
 		smtp_sess *s = &st->ss[id];
 		int saved = s->timeout_ms;
-		if (send_all(s, "QUIT\r\n", 6) == 0) {
+		if (send_all(ctx, s, "QUIT\r\n", 6) == 0) {
 			int code;
-			char msg[256];
+			char msg[512];
 			if (saved <= 0 || saved > SMTP_QUIT_WAIT_MS)
 				s->timeout_ms = SMTP_QUIT_WAIT_MS;
 			set_timeouts(s->fd, s->timeout_ms);
@@ -1632,6 +1649,26 @@ static int smtp_connect(gne_ctx *ctx, int argc, const gne_handle *argv, gne_hand
 		if (e == 0) {
 			s->fd = (int)fd;
 			s->timeout_ms = (int)timeout;
+			/* ---- automatic TLS wrap on SMTPS port 465 ---- */
+			if (port == 465) {
+				char errbuf[256];
+				int rc = api->tls_wrap(ctx, (uintptr_t)s->fd, host,
+						       NULL, 0, (int32_t)timeout,
+						       errbuf, sizeof errbuf, &s->tls);
+				if (rc == 0) {
+					api->retain(ctx, s->tls);
+					sfd_close(s->fd);
+					s->fd = SFD_INVALID;
+				} else {
+					char msg[512];
+					snprintf(msg, sizeof msg, "TLS handshake failed: %s", errbuf);
+					api->throw(ctx, "smtp_error", 502, msg);
+					sfd_close(fd);
+					freeaddrinfo(res);
+					res = NULL;
+					return -1;
+				}
+			}
 			s->gen++; /* new lifecycle — invalidate old objects */
 			freeaddrinfo(res);
 			res = NULL;

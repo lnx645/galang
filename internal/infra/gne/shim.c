@@ -122,7 +122,14 @@ const char *gne_dl_error(void)
 	.get_data = gne_host_get_data,                                     \
 	.retain = gne_host_retain,                                         \
 	.release = gne_host_release,                                       \
-	.obj_keys = (int (*)(gne_ctx *, gne_handle, uint64_t *))gne_host_obj_keys,
+	.obj_keys = (int (*)(gne_ctx *, gne_handle, uint64_t *))gne_host_obj_keys, \
+	.tls_wrap = (int (*)(gne_ctx *, uintptr_t, const char *,          \
+			     const char *, int32_t, int32_t, char *,      \
+			     size_t, gne_handle *))gne_host_tls_wrap,     \
+	.tls_read = gne_host_tls_read,                                    \
+	.tls_write = (int (*)(gne_ctx *, gne_handle, const char *,        \
+			      size_t, int32_t))gne_host_tls_write,        \
+	.tls_close = gne_host_tls_close,
 
 /* One entry per served ABI: index = abi-1, counting up to GNE_ABI. The
  * struct is append-only, so every view is layout-identical — only the
@@ -132,6 +139,7 @@ const char *gne_dl_error(void)
  * extensions loading after a `gar` upgrade. */
 static const gne_host_api gne_api_by_abi[] = {
 	{ .abi = 1, GNE_API_BODY },
+	{ .abi = 2, GNE_API_BODY },
 	{ .abi = GNE_ABI, GNE_API_BODY },
 };
 
