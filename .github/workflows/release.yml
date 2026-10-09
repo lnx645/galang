@@ -21,6 +21,7 @@ permissions:
 
 jobs:
   macos:
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -135,6 +136,8 @@ jobs:
   upload:
     needs: macos
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
     env:
       # Keep in sync with EXTS in the Makefile.
       EXTS: redis smtp uuid jwt httpclient

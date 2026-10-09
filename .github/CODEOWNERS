@@ -1,0 +1,44 @@
+# CODEOWNERS — review wajib untuk area ini.
+# Format: <file/path> @<owner1> @<owner2>
+# Minimal 1 owner per area; untuk perubahan penting minta 2 approval.
+
+# Default owner untuk seluruh repo
+*                           @lnx645
+
+# Core interpreter & domain logic
+/internal/domain/           @lnx645
+/internal/usecase/          @lnx645
+/internal/usecase/interp/   @lnx645
+/internal/usecase/parse/     @lnx645
+/internal/usecase/lex/       @lnx645
+
+# Infrastructure (GNE, database, cache, template)
+/internal/infra/            @lnx645
+/internal/infra/gne/        @lnx645
+/internal/infra/gnepkg/     @lnx645
+/internal/infra/db/         @lnx645
+/internal/infra/dbsql/      @lnx645
+/internal/infra/cache/      @lnx645
+/internal/infra/template/   @lnx645
+
+# Official extensions (GNE C code)
+/ext/                       @lnx645
+/ext/smtp/                  @lnx645
+/ext/redis/                 @lnx645
+/ext/uuid/                  @lnx645
+/ext/jwt/                   @lnx645
+/ext/httpclient/            @lnx645
+
+# CLI & delivery
+/internal/delivery/         @lnx645
+/cmd/                       @lnx645
+
+# CI/CD & packaging
+/.github/                   @lnx645
+/.github/workflows/         @lnx645
+/packaging/                 @lnx645
+/Makefile                   @lnx645
+
+# Documentation
+/docs/                      @lnx645
+/web/docs/                  @lnx645
