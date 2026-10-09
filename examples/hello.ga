@@ -1,5 +1,5 @@
 // hello — the smallest GaLang program.
-print "Halo dari GaLang!"
+print "Hello from GaLang!"
 
 $nama = "Dunia"
-print "Halo, ${nama}!"
+print "Hello, ${nama}!"

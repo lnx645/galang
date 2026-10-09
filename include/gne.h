@@ -1,39 +1,54 @@
-/* gne.h — ABI GaLang Native Extension (GNE) versi 1.
+/* gne.h — GaLang Native Extension (GNE) host ABI, version 2.
  *
- * Kontrak singkat untuk penulis ekstensi:
+ * Quick contract for extension authors:
  *
- *   1. Nilai GaLang disebut lewat handle (uint64_t). 0 SELALU tidak valid;
- *      null GaLang punya handle sendiri (api->null()).
- *   2. Semua fungsi host hanya boleh dipanggil dari satu goroutine yang
- *      memanggil ekstensi; ctx hanya berlaku selama satu panggilan —
- *      JANGAN disimpan atau dikirim ke thread lain.
- *   3. Jangan longjmp/abort/exit dari dalam ekstensi (mematikan runtime Go).
- *      Laporkan error dengan api->throw lalu return kode non-zero.
- *   4. Simpan api (valid selama proses) dan state per-instance lewat
- *      set_data/get_data — jangan gunakan variabel global sembarangan bila
- *      satu .so dipakai beberapa interpreter.
- *   5. String lewat batas Go↔C disalin (str_copy / konstruktor) — tidak ada
- *      pointer milik host yang boleh disimpan.
+ *   1. GaLang values are passed as handles (uint64_t). 0 is ALWAYS
+ *      invalid; GaLang null has its own handle (api->null()).
+ *   2. Host functions may only be called from the single goroutine that
+ *      invoked the extension; ctx is valid for one call only — do NOT
+ *      store it or pass it to another thread.
+ *   3. Never longjmp/abort/exit from inside an extension (it kills the
+ *      Go runtime). Report errors with api->throw and return a
+ *      non-zero code instead.
+ *   4. Keep api (valid for the process lifetime) and per-instance state
+ *      via set_data/get_data — avoid bare global variables when one
+ *      .so is used by several interpreters.
+ *   5. Strings crossing the Go↔C boundary are copied (str_copy /
+ *      constructors) — no host pointer may be retained.
  *
- * Kepemilikan handle (reference count):
- *   - SEMUA handle yang dibuat selama satu call — argumen, konstruktor,
- *     hasil get_*, hasil call — adalah SEMENTARA milik host: host
- *     me-release semuanya begitu cfunc selesai. JANGAN release() sendiri
- *     (bisa memutus pinning yang belum selesai); cukup retain() bila
- *     sebuah handle harus bertahan setelah call (mis. disimpan di state).
- *   - Nilai yang dikembalikan lewat *ret: kepemilikan BERPINDAH ke host.
- *     Jangan release() sesudah mengembalikannya; kalau C juga menyimpannya,
- *     retain() dulu SEBELUM mengembalikan.
- *   - release() hanya untuk membuang handle yang Anda retain() sendiri;
- *     sampai rc=0 entri dihapus, dan handle basi yang dipakai lagi
- *     menghasilkan galat jelas (bukan membaca nilai orang lain).
- *   - define_method() mem-pin self miliknya (host sudah retain), jadi
- *     method thunks tetap valid selama modul hidup.
+ * Handle ownership (reference counting):
+ *   - EVERY handle created during one call — arguments, constructors,
+ *     get_* results, call results — is TEMPORARILY owned by the host:
+ *     the host releases them all when the cfunc returns. Do NOT release
+ *     them yourself (that could break pinning before it finishes);
+ *     just retain() when a handle must survive the call (e.g. stored
+ *     in state).
+ *   - A handle returned through *ret: ownership TRANSFERS to the host.
+ *     Do not release() it afterwards; if C also keeps a copy,
+ *     retain() it BEFORE returning.
+ *   - release() is only for handles you retained yourself; the entry
+ *     is dropped once rc reaches 0, so a stale handle reused later
+ *     yields a clear error (instead of reading someone else's value).
+ *   - define_method() pins its own self (the host already retained
+ *     it), so method thunks stay valid for the module's lifetime.
  *
- * Cara membangun:
- *   gcc -shared -fPIC -I<path ke gne.h> -o redis.so redis.c
+ * How to build:
+ *   gcc -shared -fPIC -I<path to gne.h> -o redis.so redis.c
  *   (macOS: -dynamiclib; Windows mingw: -shared)
- *   Taruh hasilnya di ./gne/ atau ~/.galang/gne, lalu: use "redis".
+ *   Put the result in ./gne/ or ~/.galang/gne, then: use "redis".
+ *
+ * ABI evolution rules (why extensions keep working across upgrades):
+ *   - The gne_host_api struct is APPEND-ONLY: fields are only ever
+ *     added at the end — never reordered, removed, or retyped.
+ *   - An extension declares the ABI it was compiled with through
+ *     GNE_ABI; it must reject a host table with a different number
+ *     (api->abi != GNE_ABI) so mismatches fail loudly instead of
+ *     reading the wrong offsets.
+ *   - A newer host serves a LEGACY VIEW of the table to an extension
+ *     built for an older ABI: identical layout, only api->abi reports
+ *     the older number (the host reads the declared ABI from the
+ *     package sidecar at load time). Extensions built for an ABI newer
+ *     than the host are rejected at install time by `gar gne install`.
  */
 #ifndef GNE_H
 #define GNE_H
@@ -51,26 +66,28 @@
 extern "C" {
 #endif
 
-/* Versi ABI. Host menolak ekstensi dengan nomor berbeda. */
-#define GNE_ABI 1
+/* ABI version. The host rejects extensions with a different number
+ * (legacy numbers are served via the compatibility view described
+ * above). */
+#define GNE_ABI 2
 
-/* Konteks panggilan — FIELD INTERNAL HOST, jangan diakses langsung dari
- * ekstensi (bisa berubah tanpa pemberitahuan pada versi ABI berikutnya).
- * Berlaku hanya selama satu call; jangan disimpan. */
+/* Call context — HOST INTERNAL FIELDS, do not access them directly from
+ * an extension (they may change without notice in the next ABI version).
+ * Valid for one call only; do not store it. */
 struct gne_ctx {
-	uint64_t mod;      /* id modul (internal host) */
-	uint64_t self;     /* self method, 0 bila bukan method */
-	int32_t  line, col; /* posisi panggilan berjalan */
-	int32_t  failed;   /* != 0 bila api->throw sudah dipanggil */
+	uint64_t mod;      /* module id (host-internal) */
+	uint64_t self;     /* method self, 0 when not a method */
+	int32_t  line, col; /* position of the running call */
+	int32_t  failed;   /* != 0 when api->throw has been called */
 	int32_t  status;
-	char    *code, *msg; /* galat tertunda (milik host) */
-	void    *data;       /* instance data modul (api->set_data) */
+	char    *code, *msg; /* pending error (host-owned) */
+	void    *data;       /* per-module instance data (api->set_data) */
 };
 
 typedef struct gne_ctx gne_ctx;
 typedef uint64_t gne_handle;
 
-/* Tipe nilai (enum ringkas). */
+/* Value types (compact enum). */
 enum {
 	GNE_NULL = 0,
 	GNE_BOOL,
@@ -84,19 +101,19 @@ enum {
 	GNE_ERROR
 };
 
-/* Fungsi native yang didaftarkan ke GaLang.
- * Untuk method (define_method), argv[0] adalah self; min/max tidak
- * menghitung self. Return 0 dengan *ret terisi = sukses. */
+/* Native function registered with GaLang.
+ * For methods (define_method), argv[0] is self; min/max do not count
+ * self. Return 0 with *ret set = success. */
 typedef int (*gne_cfunc)(gne_ctx *ctx, int argc, const gne_handle *argv,
 			 gne_handle *ret);
 
-/* Tabel API host — diisi oleh runtime GaLang, dipanggil selama hidup
- * proses. Ekstensi menyimpan pointer ini di variabel statis pada
- * gne_module_init(). Semua fungsi butuh ctx dari call berjalan. */
+/* Host API table — filled in by the GaLang runtime, used for the life of
+ * the process. Extensions store this pointer in a static variable from
+ * gne_module_init(). Every function needs the ctx of the running call. */
 typedef struct gne_host_api {
-	int32_t abi; /* selalu GNE_ABI milik host */
+	int32_t abi; /* always the host's GNE_ABI */
 
-	/* --- konstruktor (hasil: milik C, lihat aturan rc) --- */
+	/* --- constructors (result: C-owned, see rc rules) --- */
 	gne_handle (*null)(gne_ctx *ctx);
 	gne_handle (*bool_new)(gne_ctx *ctx, int v);
 	gne_handle (*int_new)(gne_ctx *ctx, int64_t v);
@@ -105,19 +122,19 @@ typedef struct gne_host_api {
 	gne_handle (*array)(gne_ctx *ctx);
 	gne_handle (*object)(gne_ctx *ctx);
 
-	/* --- aksesor: 0 = sukses, -1 = gagal (tipe/handle salah);
-	 *     tidak melempar error, tidak mengubah status throw. --- */
+	/* --- accessors: 0 = ok, -1 = fail (bad type/handle);
+	 *     they never throw and never change throw status. --- */
 	int (*type_of)(gne_ctx *ctx, gne_handle h, int32_t *out);
 	int (*get_bool)(gne_ctx *ctx, gne_handle h, int *out);
 	int (*get_int)(gne_ctx *ctx, gne_handle h, int64_t *out);
 	int (*get_float)(gne_ctx *ctx, gne_handle h, double *out);
-	/* str_len: panjang byte tanpa NUL.
-	 * str_copy: salinan + NUL ke buf milik penerima; cap wajib
-	 * >= str_len+1; mengembalikan jumlah byte (tanpa NUL) atau -1. */
+	/* str_len: byte length without NUL.
+	 * str_copy: copy + NUL into the receiver's buffer; cap must be
+	 * >= str_len+1; returns bytes copied (without NUL) or -1. */
 	int (*str_len)(gne_ctx *ctx, gne_handle h, size_t *out);
 	int (*str_copy)(gne_ctx *ctx, gne_handle h, char *buf, size_t cap);
 
-	/* --- kontainer (len berlaku untuk array & string) --- */
+	/* --- containers (len applies to arrays & strings) --- */
 	int (*len)(gne_ctx *ctx, gne_handle h, size_t *out);
 	int (*arr_push)(gne_ctx *ctx, gne_handle arr, gne_handle val);
 	int (*arr_get)(gne_ctx *ctx, gne_handle arr, size_t idx, gne_handle *out);
@@ -125,15 +142,15 @@ typedef struct gne_host_api {
 	int (*obj_set)(gne_ctx *ctx, gne_handle obj, const char *key,
 		       gne_handle val);
 	int (*obj_get)(gne_ctx *ctx, gne_handle obj, const char *key,
-		       gne_handle *out); /* -1 bila kunci tidak ada */
+		       gne_handle *out); /* -1 when the key is absent */
 	int (*obj_has)(gne_ctx *ctx, gne_handle obj, const char *key, int *out);
 
-	/* --- fungsi & panggilan balik ---
-	 * define_fn/define_method mendaftarkan ke namespace modul ctx
-	 * (boleh saat init maupun saat call berjalan). call memanggil nilai
-	 * apa pun yang bisa dipanggil; hasil async berupa promise — kirimkan
-	 * apa adanya. module() mengembalikan namespace modul ctx (biasanya
-	 * ditulis ke *out pada gne_module_init). */
+	/* --- functions & callbacks ---
+	 * define_fn/define_method register into the module namespace of
+	 * ctx (allowed during init or during a running call). call
+	 * invokes any callable value; async results arrive as a promise —
+	 * pass it through as-is. module() returns the module namespace of
+	 * ctx (usually written to *out inside gne_module_init). */
 	int (*define_fn)(gne_ctx *ctx, const char *name, int32_t min_args,
 			 int32_t max_args, gne_cfunc fn);
 	int (*define_method)(gne_ctx *ctx, gne_handle obj, const char *name,
@@ -143,26 +160,35 @@ typedef struct gne_host_api {
 		    const gne_handle *argv, gne_handle *ret);
 	gne_handle (*module)(gne_ctx *ctx);
 
-	/* --- error: throw lalu return non-zero dari cfunc.
-	 * code bebas (mis. "redis_error"), status dipakai HTTP (mis. 500);
-	 * error menjadi catchable try/catch e { e.code, e.status }. --- */
+	/* --- error: throw, then return non-zero from the cfunc.
+	 * code is free-form (e.g. "redis_error"), status is HTTP-style
+	 * (e.g. 500); the error becomes catchable: try/catch e { e.code,
+	 * e.status }. --- */
 	void (*throw)(gne_ctx *ctx, const char *code, int32_t status,
 		      const char *msg);
 	int (*failed)(gne_ctx *ctx);
 
-	/* --- data instance per modul (aman untuk multi-interpreter) --- */
+	/* --- per-module instance data (safe with multi-interpreter) --- */
 	void (*set_data)(gne_ctx *ctx, void *data);
 	void *(*get_data)(gne_ctx *ctx);
 
-	/* --- umur handle --- */
+	/* --- handle lifetime --- */
 	void (*retain)(gne_ctx *ctx, gne_handle h);
 	void (*release)(gne_ctx *ctx, gne_handle h);
+
+	/* --- ABI 2: object key enumeration (APPEND-ONLY — new fields
+	 * always go last so older header layouts keep their offsets).
+	 * obj_keys writes an ARRAY of string handles with the object's
+	 * keys in insertion order (C-owned temporary like other accessors:
+	 * released by the host after the cfunc returns). Returns 0 on
+	 * success, -1 when the handle is not an object; it never throws. */
+	int (*obj_keys)(gne_ctx *ctx, gne_handle obj, gne_handle *out);
 } gne_host_api;
 
-/* Titik masuk WAJIB yang diekspor ekstensi.
- * Bangun namespace (biasanya api->object + api->define_fn/define_method)
- * lalu tulis handle-nya ke *out. Return 0 = sukses; untuk gagal:
- * api->throw(...) lalu return non-zero. */
+/* Mandatory entry point exported by every extension.
+ * Build the namespace (usually api->object + api->define_fn/define_method)
+ * then write its handle to *out. Return 0 = success; on failure:
+ * api->throw(...) then return non-zero. */
 GNE_EXPORT int gne_module_init(const gne_host_api *api, gne_ctx *ctx,
 			       gne_handle *out);
 

@@ -57,7 +57,7 @@ func printUsage(w io.Writer) {
 Penggunaan:
   gar run <file.ga> [argumen...]   jalankan program GaLang
   gar repl                        buka sesi interaktif (REPL)
-  gar gne <subperintah>           kelola ekstensi native (install/pack/list/remove)
+  gar gne <subcommand>            manage native extensions (install/pack/list/remove)
   gar version                     tampilkan versi
   gar help                        tampilkan bantuan ini
 

@@ -1,21 +1,21 @@
-// Migrasi database contoh — jalankan dari direktori ini:
+// Sample database migration — run from this directory:
 //     gar run migrate.ga
 //
-// Membaca schema.sql (idempoten: CREATE TABLE IF NOT EXISTS +
-// INSERT OR IGNORE) lalu mencetak jumlah baris sebagai bukti.
-// main.ga juga melakukan bootstrap yang sama saat start, jadi script
-// ini opsional — berguna untuk melihat langkah migrasi terpisah.
+// Reads schema.sql (idempotent: CREATE TABLE IF NOT EXISTS +
+// INSERT OR IGNORE) then prints the row counts as proof.
+// main.ga does the same bootstrap at startup, so this script is
+// optional — useful for watching the migration steps separately.
 use "database"
 use "file"
 
-print("Membaca schema.sql ...")
+print("Reading schema.sql ...")
 $sql = file.read("schema.sql")
 
 $db = database.connect("sqlite:demo.db")
-print("Menjalankan migrasi ...")
+print("Running migration ...")
 $db.exec($sql)
 
 $users = $db.query_row("SELECT count(*) AS n FROM users")
 $posts = $db.query_row("SELECT count(*) AS n FROM posts")
-print("Migrasi selesai. users=" + str($users.n) + ", posts=" + str($posts.n))
+print("Migration done. users=" + str($users.n) + ", posts=" + str($posts.n))
 $db.close()

@@ -1,40 +1,45 @@
-/* jwt.c — ekstensi GNE resmi: JSON Web Token (RFC 7519/7515/8725)
- * dengan HMAC (HS256/HS384/HS512), murni C tanpa dependensi kripto.
+/* jwt.c — official GNE extension: JSON Web Token (RFC 7519/7515/8725)
+ * with HMAC (HS256/HS384/HS512), pure C with no crypto dependencies.
  *
- * Gaya pemakaian:
+ * Usage style:
  *
  *   use "jwt"
- *   $claims = json_encode({"sub": "123", "iat": time.now(), "exp": time.now() + 3600})
- *   $t = jwt.sign($claims, "rahasia-kuat")            // HS256 (bawaan)
- *   $t = jwt.sign($claims, "rahasia-kuat", "HS512")
+ *   $t = jwt.sign({"sub": "123", "iat": time.now(), "exp": time.now() + 3600},
+ *                 "strong-secret")                  // HS256 (default)
+ *   $t = jwt.sign({"sub": "123"}, "strong-secret", "HS512")
  *
- *   $kembali = jwt.verify($t, "rahasia-kuat")          // → string JSON claims
- *   $d = json_decode($kembali)
+ *   $claims = jwt.verify($t, "strong-secret")        // → object; throws on failure
+ *   print($claims.sub)
  *
- *   $mentah = jwt.decode($t)                           // TANPA verifikasi!
+ *   $raw = jwt.decode($t)                           // object, WITHOUT verification!
  *
- * Cakupan & keputusan keamanan:
- *   - Hanya algoritma HMAC (HS256/HS384/HS512). Header "alg" lain
- *     (none, RS256, ES256, ...) DITOLAK — mencegah serangan alg-confusion.
- *   - verify() memeriksa signature (perbandingan constant-time), lalu
- *     klaim waktu: "exp" (kedaluwarsa) dan "nbf" (belum berlaku) bila
- *     ada — keduanya diwajibkan berupa angka (NumericDate).
- *   - decode() sengaja TIDAK memverifikasi signature: untuk inspeksi
- *     saja (menampilkan isi token yang tidak dipercaya = jebakan).
- *   - Claims berupa string JSON objek; serialisasi diserahkan ke
- *     json_encode() milik bahasa — ekstensi tidak membangun JSON.
- *   - Batas: claims ≤1 MiB, token ≤2 MiB, kedalaman JSON64 tingkat.
+ * Scope & security decisions:
+ *   - HMAC algorithms only (HS256/HS384/HS512). Any other header "alg"
+ *     (none, RS256, ES256, ...) is REJECTED — prevents alg-confusion
+ *     attacks.
+ *   - verify() checks the signature (constant-time comparison), then
+ *     the time claims: "exp" (expiry) and "nbf" (not before) when
+ *     present — both must be numbers (NumericDate).
+ *   - decode() deliberately does NOT verify the signature: inspection
+ *     only (displaying the contents of an untrusted token = a trap).
+ *   - Claims: an OBJECT is accepted directly and serialized internally
+ *     (key enumeration via api->obj_keys, ABI 2); a string is treated
+ *     as raw JSON text and must be a valid JSON object.
+ *   - verify()/decode() RETURN an object (the claims JSON parsed into
+ *     GaLang values) — no manual json_decode() needed.
+ *   - Limits: claims ≤1 MiB, token ≤2 MiB, JSON depth64 levels.
  *
- * Galat (catchable try/catch):
- *   - argumen salah tipe / secret kosong / batas terlampaui → "type_error" 500
- *   - struktur token/header/payload rusak atau claims bukan objek →
- *     "jwt_error" 400
- *   - alg ditolak, signature tidak valid, kedaluwarsa, belum berlaku →
+ * Errors (catchable with try/catch):
+ *   - wrong argument type / empty secret / limit exceeded → "type_error" 500
+ *   - broken token/header/payload structure or claims that are not a
+ *     JSON object → "jwt_error" 400
+ *   - rejected alg, invalid signature, expired, not yet valid →
  *     "jwt_error" 401
  */
 #include "gne.h"
 
 #include <ctype.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -47,9 +52,9 @@ static const gne_host_api *api;
 #define JWT_MAX_JSON_DEPTH 64
 
 /* ================================================================
- * SHA-2 (FIPS 180-4) — implementasi mandiri.
- * Tabel K/IV diturunkan dari pecahan akar kuadrat/kubik prima
- * (presisi integer penuh) dan diverifikasi dengan vektor uji.
+ * SHA-2 (FIPS 180-4) — self-contained implementation.
+ * The K/IV tables are derived from the prime square/cube roots
+ * (full integer precision) and verified against test vectors.
  * ================================================================ */
 
 /* ---- SHA-256 ---- */
@@ -156,7 +161,7 @@ static void sha256_final(sha256_ctx *c, unsigned char out[32])
 	}
 }
 
-/* ---- SHA-512 / SHA-384 (satu kode, IV & panjang beda) ---- */
+/* ---- SHA-512 / SHA-384 (one code path, different IV and length) ---- */
 
 typedef struct {
 	uint64_t h[8];
@@ -275,7 +280,7 @@ static void sha512_update(sha512_ctx *c, const unsigned char *p, size_t len)
 	}
 }
 
-/* Tulis outlen byte pertama dari hasil hash (48 untuk SHA-384). */
+/* Writes the first outlen bytes of the hash result (48 for SHA-384). */
 static void sha512_final(sha512_ctx *c, unsigned char *out, size_t outlen)
 {
 	unsigned char pad[144], lenb[16], tmp[64];
@@ -368,7 +373,7 @@ static void hmac_sha512v(const unsigned char *key, size_t klen,
 }
 
 /* ================================================================
- * base64url tanpa padding (RFC 4648 §5 — dipakai JWS)
+ * base64url without padding (RFC 4648 §5 — used by JWS)
  * ================================================================ */
 
 static int b64url_encode(const unsigned char *in, size_t n, char **out,
@@ -406,9 +411,9 @@ static int b64url_encode(const unsigned char *in, size_t n, char **out,
 	return 0;
 }
 
-/* Decode ketat-keluar-longgar-masuk: karakter di luar alfabet → -1.
- * '=' penambahan maksimal2 di akhir diterima (beberapa pustaka JWT
- * mengirimnya); bit sisa yang tak nol diabaikan. */
+/* Strict-decode, lenient-accept: characters outside the alphabet → -1.
+ * Up to2 trailing '=' padding is accepted (some JWT libraries send
+ * it); non-zero leftover bits are ignored. */
 static int b64url_decode(const char *in, size_t n, unsigned char **out,
 			 size_t *outlen)
 {
@@ -454,9 +459,11 @@ static int b64url_decode(const char *in, size_t n, unsigned char **out,
 }
 
 /* ================================================================
- * Parser JSON mini — validasi penuh + ekstraksi klaim top-level.
- * Cukup untuk kebutuhan JWT: memastikan objek sah, mengambil angka
- * (exp/nbf) dan string (alg) di tingkat atas tanpa membangun pohon.
+ * Mini JSON parser — full validation + top-level claim extraction.
+ * Enough for JWT's needs: confirming a valid object, fetching numbers
+ * (exp/nbf) and strings (alg) at the top level without building a
+ * tree. (verify()/decode() additionally run the full parser below to
+ * build the returned object.)
  * ================================================================ */
 
 static const char *json_ws(const char *p, const char *e)
@@ -466,7 +473,7 @@ static const char *json_ws(const char *p, const char *e)
 	return p;
 }
 
-/* p menunjuk tanda kutip pembuka; kembalikan SETELAH kutip penutup. */
+/* p points at the opening quote; returns AFTER the closing quote. */
 static const char *json_string_end(const char *p, const char *e)
 {
 	p++;
@@ -501,7 +508,7 @@ static const char *json_string_end(const char *p, const char *e)
 	return NULL;
 }
 
-/* Validasi satu nilai JSON → pointer sesudah nilai, atau NULL. */
+/* Validate one JSON value → pointer after the value, or NULL. */
 static const char *json_nilai(const char *p, const char *e, int depth)
 {
 	p = json_ws(p, e);
@@ -564,7 +571,7 @@ static const char *json_nilai(const char *p, const char *e, int depth)
 		return p + 5;
 	if (p + 4 <= e && memcmp(p, "null", 4) == 0)
 		return p + 4;
-	/* angka */
+	/* number */
 	if (*p == '-')
 		p++;
 	if (p >= e)
@@ -596,7 +603,8 @@ static const char *json_nilai(const char *p, const char *e, int depth)
 	return p;
 }
 
-/* Seluruh teks harus SATU nilai objek JSON (tanpa sampah sisanya). */
+/* The whole text must be exactly ONE JSON object value (no trailing
+ * garbage). */
 static int json_obj(const char *js, size_t n)
 {
 	const char *p = json_ws(js, js + n);
@@ -608,9 +616,9 @@ static int json_obj(const char *js, size_t n)
 	return json_ws(p, js + n) == js + n;
 }
 
-/* Unescape potongan string JSON ke dst (kapasitas cap, termasuk NUL).
- * Karakter \u di atas ASCII diganti '?' (kunci & alg JWT = ASCII).
- * 0 = sukses, -1 = gagal. */
+/* Unescape a JSON string fragment into dst (capacity cap including
+ * NUL). \u escapes above ASCII become '?' (JWT keys & alg are ASCII).
+ * 0 = success, -1 = failure. */
 static int json_unescape(const char *src, size_t n, char *dst, size_t cap)
 {
 	size_t i = 0, j = 0;
@@ -666,10 +674,10 @@ static int json_unescape(const char *src, size_t n, char *dst, size_t cap)
 	return 0;
 }
 
-/* Cari kunci top-level pada objek JSON yang SUDAH divalidasi json_obj.
- * Mengisi *num (tipe angka) atau strbuf (tipe string).
- * 1 = ketemu & tipe cocok,0 = tak ketemu, -1 = rusak, -2 = ketemu
- * tetapi tipenya bukan yang diminta. */
+/* Look up a top-level key in a JSON object that was ALREADY validated
+ * by json_obj. Fills *num (number type) or strbuf (string type).
+ * 1 = found & type matches, 0 = not found, -1 = corrupt, -2 = found
+ * but the type is not the requested one. */
 static int json_cari(const char *js, size_t n, const char *key, double *num,
 		     char *strbuf, size_t cap)
 {
@@ -741,11 +749,588 @@ static int json_cari(const char *js, size_t n, const char *key, double *num,
 }
 
 /* ================================================================
- * Utilitas argumen
+ * JSON builder — GaLang value → JSON text (used by sign(object)).
+ * Growable buffer; every helper returns -1 on allocation failure.
  * ================================================================ */
 
-/* Ambil argumen sebagai string ketat (tipe lain → type_error).
- * Hasil malloc NUL-terminated; pemanggil wajib free. */
+typedef struct {
+	char *p;
+	size_t len, cap;
+} jbuf;
+
+static int jb_grow(jbuf *b, size_t need)
+{
+	size_t ncap;
+	char *np;
+	if (b->len + need + 1 <= b->cap)
+		return 0;
+	ncap = b->cap ? b->cap : 256;
+	while (ncap < b->len + need + 1)
+		ncap *= 2;
+	np = realloc(b->p, ncap);
+	if (!np)
+		return -1;
+	b->p = np;
+	b->cap = ncap;
+	return 0;
+}
+
+static int jb_add(jbuf *b, const char *s, size_t n)
+{
+	if (jb_grow(b, n) != 0)
+		return -1;
+	if (n)
+		memcpy(b->p + b->len, s, n);
+	b->len += n;
+	b->p[b->len] = '\0';
+	return 0;
+}
+
+static int jb_addc(jbuf *b, char c)
+{
+	return jb_add(b, &c, 1);
+}
+
+/* Emit a JSON string literal (quotes + escaping). */
+static int jb_string(jbuf *b, const char *s, size_t n)
+{
+	static const char hex[] = "0123456789abcdef";
+	size_t i;
+	if (jb_addc(b, '"') != 0)
+		return -1;
+	for (i = 0; i < n; i++) {
+		unsigned char c = (unsigned char)s[i];
+		const char *esc = NULL;
+		char u[6];
+		switch (c) {
+		case '"': esc = "\\\""; break;
+		case '\\': esc = "\\\\"; break;
+		case '\b': esc = "\\b"; break;
+		case '\f': esc = "\\f"; break;
+		case '\n': esc = "\\n"; break;
+		case '\r': esc = "\\r"; break;
+		case '\t': esc = "\\t"; break;
+		default: break;
+		}
+		if (esc) {
+			if (jb_add(b, esc, 2) != 0)
+				return -1;
+		} else if (c < 0x20) {
+			/* other control characters as \u00XX */
+			u[0] = '\\'; u[1] = 'u'; u[2] = '0'; u[3] = '0';
+			u[4] = hex[(c >> 4) & 0xf];
+			u[5] = hex[c & 0xf];
+			if (jb_add(b, u, 6) != 0)
+				return -1;
+		} else if (jb_addc(b, (char)c) != 0) {
+			return -1;
+		}
+	}
+	return jb_addc(b, '"');
+}
+
+/* Serialize one GaLang value as JSON text.
+ * Returns 0 = success, -1 = not serializable (function/promise/error
+ * value, non-finite float, or deeper than JWT_MAX_JSON_DEPTH),
+ * -2 = out of memory. */
+static int json_dari(gne_ctx *ctx, gne_handle h, jbuf *b, int depth)
+{
+	int32_t t;
+	if (depth > JWT_MAX_JSON_DEPTH)
+		return -1;
+	if (api->type_of(ctx, h, &t) != 0)
+		return -1;
+	switch (t) {
+	case GNE_NULL:
+		return jb_add(b, "null", 4);
+	case GNE_BOOL: {
+		int v = 0;
+		if (api->get_bool(ctx, h, &v) != 0)
+			return -1;
+		return v ? jb_add(b, "true", 4) : jb_add(b, "false", 5);
+	}
+	case GNE_INT: {
+		int64_t v = 0;
+		char tmp[24];
+		int n;
+		if (api->get_int(ctx, h, &v) != 0)
+			return -1;
+		n = snprintf(tmp, sizeof tmp, "%lld", (long long)v);
+		if (n < 0 || (size_t)n >= sizeof tmp)
+			return -1;
+		return jb_add(b, tmp, (size_t)n);
+	}
+	case GNE_FLOAT: {
+		double v = 0;
+		char tmp[40];
+		int n;
+		if (api->get_float(ctx, h, &v) != 0)
+			return -1;
+		/* NaN/±inf are not representable in JSON */
+		if (!(v == v && v - v == 0.0))
+			return -1;
+		/* shortest representation that round-trips */
+		n = snprintf(tmp, sizeof tmp, "%.15g", v);
+		if (n < 0 || (size_t)n >= sizeof tmp || strtod(tmp, NULL) != v) {
+			n = snprintf(tmp, sizeof tmp, "%.16g", v);
+			if (n < 0 || (size_t)n >= sizeof tmp ||
+			    strtod(tmp, NULL) != v)
+				n = snprintf(tmp, sizeof tmp, "%.17g", v);
+		}
+		if (n < 0 || (size_t)n >= sizeof tmp)
+			return -1;
+		return jb_add(b, tmp, (size_t)n);
+	}
+	case GNE_STRING: {
+		size_t n = 0;
+		char *s;
+		int rc;
+		if (api->str_len(ctx, h, &n) != 0)
+			return -1;
+		s = malloc(n + 1);
+		if (!s)
+			return -2;
+		if (n > 0 && api->str_copy(ctx, h, s, n + 1) < 0) {
+			free(s);
+			return -1;
+		}
+		s[n] = '\0';
+		rc = jb_string(b, s, n);
+		free(s);
+		return rc;
+	}
+	case GNE_ARRAY: {
+		size_t n = 0, i;
+		if (api->len(ctx, h, &n) != 0)
+			return -1;
+		if (jb_addc(b, '[') != 0)
+			return -2;
+		for (i = 0; i < n; i++) {
+			gne_handle el;
+			int rc;
+			if (i && jb_addc(b, ',') != 0)
+				return -2;
+			if (api->arr_get(ctx, h, i, &el) != 0)
+				return -1;
+			rc = json_dari(ctx, el, b, depth + 1);
+			if (rc != 0)
+				return rc;
+		}
+		return jb_addc(b, ']');
+	}
+	case GNE_OBJECT: {
+		gne_handle keys;
+		size_t n = 0, i;
+		int first = 1, rc = 0;
+		if (api->obj_keys(ctx, h, &keys) != 0)
+			return -1;
+		if (api->len(ctx, keys, &n) != 0)
+			return -1;
+		if (jb_addc(b, '{') != 0)
+			return -2;
+		for (i = 0; i < n; i++) {
+			gne_handle kh, val;
+			size_t kn = 0;
+			char *k;
+			if (first) {
+				first = 0;
+			} else if (jb_addc(b, ',') != 0) {
+				rc = -2;
+				break;
+			}
+			if (api->arr_get(ctx, keys, i, &kh) != 0 ||
+			    api->str_len(ctx, kh, &kn) != 0) {
+				rc = -1;
+				break;
+			}
+			k = malloc(kn + 1);
+			if (!k) {
+				rc = -2;
+				break;
+			}
+			if (kn > 0 && api->str_copy(ctx, kh, k, kn + 1) < 0) {
+				free(k);
+				rc = -1;
+				break;
+			}
+			k[kn] = '\0';
+			rc = jb_string(b, k, kn);
+			if (rc == 0 && jb_addc(b, ':') != 0)
+				rc = -2;
+			if (rc == 0 && api->obj_get(ctx, h, k, &val) != 0)
+				rc = -1;
+			free(k);
+			if (rc != 0)
+				break;
+			rc = json_dari(ctx, val, b, depth + 1);
+			if (rc != 0)
+				break;
+		}
+		if (rc != 0)
+			return rc;
+		return jb_addc(b, '}');
+	}
+	default:
+		/* function, promise, error — no JSON representation */
+		return -1;
+	}
+}
+
+/* ================================================================
+ * JSON reader — JSON text → GaLang value (used by verify/decode).
+ * Errors are reported through the caller's JWT-level messages; this
+ * layer only signals success/failure.
+ * ================================================================ */
+
+/* Write the UTF-8 encoding of cp into o, returning the end pointer. */
+static char *utf8_put(char *o, unsigned cp)
+{
+	if (cp < 0x80) {
+		*o++ = (char)cp;
+	} else if (cp < 0x800) {
+		*o++ = (char)(0xc0 | (cp >> 6));
+		*o++ = (char)(0x80 | (cp & 0x3f));
+	} else if (cp < 0x10000) {
+		*o++ = (char)(0xe0 | (cp >> 12));
+		*o++ = (char)(0x80 | ((cp >> 6) & 0x3f));
+		*o++ = (char)(0x80 | (cp & 0x3f));
+	} else {
+		*o++ = (char)(0xf0 | (cp >> 18));
+		*o++ = (char)(0x80 | ((cp >> 12) & 0x3f));
+		*o++ = (char)(0x80 | ((cp >> 6) & 0x3f));
+		*o++ = (char)(0x80 | (cp & 0x3f));
+	}
+	return o;
+}
+
+/* Decode a JSON string body (src = bytes after the opening quote, n =
+ * length without the closing quote) into a malloc'd NUL-terminated
+ * buffer with *outlen set. Full \u handling: UTF-8 output, surrogate
+ * pairs combined, lone surrogates → U+FFFD. NULL on failure (corrupt
+ * escape or allocation error). Output never exceeds n bytes. */
+static char *json_str_decode(const char *src, size_t n, size_t *outlen)
+{
+	char *o = malloc(n + 1);
+	size_t i = 0, j = 0;
+	if (!o)
+		return NULL;
+	while (i < n) {
+		char c = src[i];
+		if (c != '\\') {
+			o[j++] = c;
+			i++;
+			continue;
+		}
+		i++;
+		if (i >= n)
+			goto fail;
+		switch (src[i]) {
+		case '"': case '\\': case '/':
+			o[j++] = src[i];
+			i++;
+			break;
+		case 'b': o[j++] = '\b'; i++; break;
+		case 'f': o[j++] = '\f'; i++; break;
+		case 'n': o[j++] = '\n'; i++; break;
+		case 'r': o[j++] = '\r'; i++; break;
+		case 't': o[j++] = '\t'; i++; break;
+		case 'u': {
+			unsigned v = 0;
+			int k;
+			if (i + 4 >= n)
+				goto fail;
+			for (k = 1; k <= 4; k++) {
+				char hx = src[i + k];
+				v <<= 4;
+				if (hx >= '0' && hx <= '9')
+					v += (unsigned)(hx - '0');
+				else if (hx >= 'a' && hx <= 'f')
+					v += (unsigned)(hx - 'a' + 10);
+				else if (hx >= 'A' && hx <= 'F')
+					v += (unsigned)(hx - 'A' + 10);
+				else
+					goto fail;
+			}
+			i += 5;
+			if (v >= 0xd800 && v <= 0xdbff) {
+				/* high surrogate — needs a low surrogate pair */
+				unsigned lo = 0;
+				int paired = 0;
+				if (i + 6 <= n && src[i] == '\\' &&
+				    src[i + 1] == 'u') {
+					for (k = 2; k <= 5; k++) {
+						char hx = src[i + k];
+						lo <<= 4;
+						if (hx >= '0' && hx <= '9')
+							lo += (unsigned)(hx - '0');
+						else if (hx >= 'a' && hx <= 'f')
+							lo += (unsigned)(hx - 'a' + 10);
+						else if (hx >= 'A' && hx <= 'F')
+							lo += (unsigned)(hx - 'A' + 10);
+						else
+							break;
+					}
+					if (k == 6 && lo >= 0xdc00 &&
+					    lo <= 0xdfff) {
+						j = (size_t)(utf8_put(o + j,
+							0x10000u +
+							((v - 0xd800u) << 10) +
+							(lo - 0xdc00u)) - o);
+						i += 6;
+						paired = 1;
+					}
+				}
+				if (!paired) {
+					j = (size_t)(utf8_put(o + j, 0xfffd) - o);
+				}
+			} else if (v >= 0xdc00 && v <= 0xdfff) {
+				/* lone low surrogate */
+				j = (size_t)(utf8_put(o + j, 0xfffd) - o);
+			} else {
+				j = (size_t)(utf8_put(o + j, v) - o);
+			}
+			break;
+		}
+		default:
+			goto fail;
+		}
+	}
+	o[j] = '\0';
+	*outlen = j;
+	return o;
+fail:
+	free(o);
+	return NULL;
+}
+
+/* Parse exactly one JSON value starting at *pp; on success advance
+ * *pp past the value, write the handle to *out, and return 0.
+ * Returns -1 on any syntax/type failure or depth overflow. Handles
+ * created along the way are call-scoped temps (released by the host
+ * if never returned). */
+static int json_baca(gne_ctx *ctx, const char **pp, const char *e,
+		     int depth, gne_handle *out)
+{
+	const char *p = json_ws(*pp, e);
+	if (depth > JWT_MAX_JSON_DEPTH || p >= e)
+		return -1;
+	switch (*p) {
+	case '{': {
+		gne_handle o = api->object(ctx);
+		p = json_ws(p + 1, e);
+		if (p < e && *p == '}') {
+			*pp = p + 1;
+			*out = o;
+			return 0;
+		}
+		for (;;) {
+			gne_handle val;
+			const char *kend;
+			char *k;
+			size_t kn = 0;
+			p = json_ws(p, e);
+			if (p >= e || *p != '"')
+				return -1;
+			kend = json_string_end(p, e);
+			if (!kend)
+				return -1;
+			k = json_str_decode(p + 1,
+					    (size_t)(kend - 1 - (p + 1)), &kn);
+			if (!k)
+				return -1;
+			p = json_ws(kend, e);
+			if (p >= e || *p != ':') {
+				free(k);
+				return -1;
+			}
+			p++;
+			if (json_baca(ctx, &p, e, depth + 1, &val) != 0) {
+				free(k);
+				return -1;
+			}
+			if (api->obj_set(ctx, o, k, val) != 0) {
+				free(k);
+				return -1;
+			}
+			free(k);
+			p = json_ws(p, e);
+			if (p >= e)
+				return -1;
+			if (*p == ',') {
+				p++;
+				continue;
+			}
+			if (*p == '}') {
+				*pp = p + 1;
+				*out = o;
+				return 0;
+			}
+			return -1;
+		}
+	}
+	case '[': {
+		gne_handle a = api->array(ctx);
+		p = json_ws(p + 1, e);
+		if (p < e && *p == ']') {
+			*pp = p + 1;
+			*out = a;
+			return 0;
+		}
+		for (;;) {
+			gne_handle val;
+			if (json_baca(ctx, &p, e, depth + 1, &val) != 0)
+				return -1;
+			if (api->arr_push(ctx, a, val) != 0)
+				return -1;
+			p = json_ws(p, e);
+			if (p >= e)
+				return -1;
+			if (*p == ',') {
+				p++;
+				continue;
+			}
+			if (*p == ']') {
+				*pp = p + 1;
+				*out = a;
+				return 0;
+			}
+			return -1;
+		}
+	}
+	case '"': {
+		const char *kend = json_string_end(p, e);
+		size_t n = 0;
+		char *s;
+		if (!kend)
+			return -1;
+		s = json_str_decode(p + 1, (size_t)(kend - 1 - (p + 1)), &n);
+		if (!s)
+			return -1;
+		*out = api->string(ctx, s, n);
+		free(s);
+		*pp = kend;
+		return 0;
+	}
+	case 't':
+		if (e - p >= 4 && memcmp(p, "true", 4) == 0) {
+			*out = api->bool_new(ctx, 1);
+			*pp = p + 4;
+			return 0;
+		}
+		return -1;
+	case 'f':
+		if (e - p >= 5 && memcmp(p, "false", 5) == 0) {
+			*out = api->bool_new(ctx, 0);
+			*pp = p + 5;
+			return 0;
+		}
+		return -1;
+	case 'n':
+		if (e - p >= 4 && memcmp(p, "null", 4) == 0) {
+			*out = api->null(ctx);
+			*pp = p + 4;
+			return 0;
+		}
+		return -1;
+	default: {
+		/* number: validate with the mini parser, then pick int
+		 * vs float from the shape of the text */
+		const char *s = p, *ve;
+		char stack[64], *tmp = stack;
+		size_t L;
+		int isfloat = 0, heap = 0;
+		ve = json_nilai(s, e, depth);
+		if (!ve)
+			return -1;
+		for (p = s; p < ve; p++) {
+			if (*p == '.' || *p == 'e' || *p == 'E') {
+				isfloat = 1;
+				break;
+			}
+		}
+		L = (size_t)(ve - s);
+		if (L >= sizeof stack) {
+			tmp = malloc(L + 1);
+			if (!tmp)
+				return -1;
+			heap = 1;
+		}
+		memcpy(tmp, s, L);
+		tmp[L] = '\0';
+		if (!isfloat) {
+			char *end = NULL;
+			long long iv;
+			errno = 0;
+			iv = strtoll(tmp, &end, 10);
+			if (end && *end == '\0' && errno != ERANGE) {
+				*out = api->int_new(ctx, (int64_t)iv);
+				if (heap)
+					free(tmp);
+				*pp = ve;
+				return 0;
+			}
+		}
+		*out = api->float_new(ctx, strtod(tmp, NULL));
+		if (heap)
+			free(tmp);
+		*pp = ve;
+		return 0;
+	}
+	}
+}
+
+/* Parse a whole buffer that must be exactly ONE JSON object value.
+ * Returns the object handle, or 0 on any failure. */
+static gne_handle json_to_object(gne_ctx *ctx, const char *js, size_t n,
+				int *ok)
+{
+	const char *p = json_ws(js, js + n);
+	gne_handle out = 0;
+	*ok = 0;
+	if (p >= js + n || *p != '{')
+		return 0;
+	if (json_baca(ctx, &p, js + n, 0, &out) != 0)
+		return 0;
+	if (json_ws(p, js + n) != js + n)
+		return 0;
+	*ok = 1;
+	return out;
+}
+
+/* Read a top-level time claim from a parsed claims object.
+ * 0 = absent, 1 = number found, -1 = present but not a number. */
+static int claim_number(gne_ctx *ctx, gne_handle obj, const char *key,
+		       double *out)
+{
+	gne_handle v;
+	int32_t t;
+	if (api->obj_get(ctx, obj, key, &v) != 0)
+		return 0;
+	if (api->type_of(ctx, v, &t) != 0)
+		return -1;
+	if (t == GNE_INT) {
+		int64_t i = 0;
+		if (api->get_int(ctx, v, &i) != 0)
+			return -1;
+		*out = (double)i;
+		return 1;
+	}
+	if (t == GNE_FLOAT) {
+		double d = 0;
+		if (api->get_float(ctx, v, &d) != 0)
+			return -1;
+		*out = d;
+		return 1;
+	}
+	return -1;
+}
+
+/* ================================================================
+ * Argument utilities
+ * ================================================================ */
+
+/* Fetch an argument as a strict string (other types → type_error).
+ * The result is a malloc'd NUL-terminated buffer the caller must free. */
 static char *arg_str(gne_ctx *ctx, gne_handle h, size_t *len)
 {
 	int32_t t;
@@ -753,24 +1338,26 @@ static char *arg_str(gne_ctx *ctx, gne_handle h, size_t *len)
 	char *out;
 	if (api->type_of(ctx, h, &t) != 0 || t != GNE_STRING ||
 	    api->str_len(ctx, h, &n) != 0) {
-		api->throw(ctx, "type_error", 500, "argumen harus string");
+		api->throw(ctx, "type_error", 500, "argument must be a string");
 		return NULL;
 	}
 	out = malloc(n + 1);
 	if (!out) {
-		api->throw(ctx, "jwt_oom", 500, "gagal mengalokasikan memori");
+		api->throw(ctx, "jwt_oom", 500, "memory allocation failed");
 		return NULL;
 	}
-	if (api->str_copy(ctx, h, out, n + 1) < 0) {
+	if (n > 0 && api->str_copy(ctx, h, out, n + 1) < 0) {
 		free(out);
-		api->throw(ctx, "type_error", 500, "argumen string tidak terbaca");
+		api->throw(ctx, "type_error", 500,
+			   "argument string could not be read");
 		return NULL;
 	}
+	out[n] = '\0';
 	*len = n;
 	return out;
 }
 
-/* Perbandingan constant-time. */
+/* Constant-time comparison. */
 static int ct_eq(const unsigned char *a, const unsigned char *b, size_t n)
 {
 	unsigned char d = 0;
@@ -780,14 +1367,14 @@ static int ct_eq(const unsigned char *a, const unsigned char *b, size_t n)
 	return d == 0;
 }
 
-/* true bila alg termasuk daftar izin HS256/HS384/HS512. */
+/* True when alg is on the HS256/HS384/HS512 allowlist. */
 static int alg_valid(const char *alg)
 {
 	return strcmp(alg, "HS256") == 0 || strcmp(alg, "HS384") == 0 ||
 	       strcmp(alg, "HS512") == 0;
 }
 
-/* Pilih HMAC sesuai alg; -1 = alg tidak dikenal. */
+/* Pick the HMAC matching alg; -1 = unknown alg. */
 static int hmac_pilih(const char *alg, const unsigned char *key, size_t klen,
 		      const unsigned char *msg, size_t mlen,
 		      unsigned char *out, size_t *outlen)
@@ -810,8 +1397,8 @@ static int hmac_pilih(const char *alg, const unsigned char *key, size_t klen,
 	return -1;
 }
 
-/* Pecah token "a.b.c" → tiga bagian (menunjuk ke dalam teks asli).
- * 0 = sukses, -1 = struktur salah. */
+/* Split token "a.b.c" into three segments (pointing into the original
+ * text). 0 = success, -1 = wrong structure. */
 static int token_plit(const char *tok, size_t tlen, const char **h, size_t *hn,
 		      const char **p, size_t *pn, const char **s, size_t *sn)
 {
@@ -836,7 +1423,9 @@ static int token_plit(const char *tok, size_t tlen, const char **h, size_t *hn,
 }
 
 /* ================================================================
- * jwt.sign(claims, secret[, alg])
+ * jwt.sign(claims, secret[, alg]) → token string
+ * claims: an OBJECT (serialized internally via api->obj_keys, ABI 2)
+ * or a raw JSON object string.
  * ================================================================ */
 static int jwt_sign(gne_ctx *ctx, int argc, const gne_handle *argv,
 		    gne_handle *ret)
@@ -849,11 +1438,36 @@ static int jwt_sign(gne_ctx *ctx, int argc, const gne_handle *argv,
 	size_t b64hlen = 0, b64plen = 0, signlen = 0, b64slen = 0, toklen = 0;
 	unsigned char sig[64];
 	size_t siglen = 0;
-	int rc = -1;
+	int rc = -1, from_obj = 0;
+	int32_t ctyp = 0;
+	jbuf jb = { NULL, 0, 0 };
 
-	claims = arg_str(ctx, argv[0], &clen);
-	if (!claims)
+	/* claims: object → serialized here; string → validated raw JSON */
+	if (api->type_of(ctx, argv[0], &ctyp) != 0)
+		ctyp = -1;
+	if (ctyp == GNE_OBJECT) {
+		int src = json_dari(ctx, argv[0], &jb, 0);
+		if (src == -2)
+			goto oom;
+		if (src != 0) {
+			api->throw(ctx, "type_error", 500,
+				   "claims contain a value that cannot be serialized to JSON (function, promise, or too deep)");
+			goto beres;
+		}
+		from_obj = 1;
+		claims = jb.p;
+		clen = jb.len;
+		if (!claims)
+			goto oom;
+	} else if (ctyp == GNE_STRING) {
+		claims = arg_str(ctx, argv[0], &clen);
+		if (!claims)
+			goto beres;
+	} else {
+		api->throw(ctx, "type_error", 500,
+			   "claims must be an object or a JSON object string");
 		goto beres;
+	}
 	secret = arg_str(ctx, argv[1], &klen);
 	if (!secret)
 		goto beres;
@@ -865,25 +1479,27 @@ static int jwt_sign(gne_ctx *ctx, int argc, const gne_handle *argv,
 	}
 	if (!alg_valid(alg)) {
 		api->throw(ctx, "type_error", 500,
-			   "alg harus HS256, HS384, atau HS512");
+			   "alg must be HS256, HS384, or HS512");
 		goto beres;
 	}
 	if (klen == 0) {
-		api->throw(ctx, "type_error", 500, "secret tidak boleh kosong");
+		api->throw(ctx, "type_error", 500, "secret must not be empty");
 		goto beres;
 	}
 	if (clen == 0) {
-		api->throw(ctx, "type_error", 500, "claims tidak boleh kosong");
+		api->throw(ctx, "type_error", 500, "claims must not be empty");
 		goto beres;
 	}
 	if (clen > JWT_MAX_CLAIMS) {
 		api->throw(ctx, "type_error", 500,
-			   "claims melebihi batas1 MiB");
+			   "claims exceed the 1 MiB limit");
 		goto beres;
 	}
-	if (!json_obj(claims, clen)) {
+	/* A serialized object is valid JSON by construction; a raw string
+	 * still needs full validation. */
+	if (!from_obj && !json_obj(claims, clen)) {
 		api->throw(ctx, "jwt_error", 400,
-			   "claims harus berupa JSON objek yang sah");
+			   "claims string must be a valid JSON object");
 		goto beres;
 	}
 
@@ -920,7 +1536,7 @@ static int jwt_sign(gne_ctx *ctx, int argc, const gne_handle *argv,
 	goto beres;
 
 oom:
-	api->throw(ctx, "jwt_oom", 500, "gagal mengalokasikan memori");
+	api->throw(ctx, "jwt_oom", 500, "memory allocation failed");
 beres:
 	free(claims);
 	free(secret);
@@ -934,7 +1550,7 @@ beres:
 }
 
 /* ================================================================
- * jwt.verify(token, secret) → claims JSON (signature + exp/nbf)
+ * jwt.verify(token, secret) → claims OBJECT (signature + exp/nbf)
  * ================================================================ */
 static int jwt_verify(gne_ctx *ctx, int argc, const gne_handle *argv,
 		      gne_handle *ret)
@@ -948,7 +1564,8 @@ static int jwt_verify(gne_ctx *ctx, int argc, const gne_handle *argv,
 	char alg[32];
 	double num = 0;
 	time_t now;
-	int rc = -1, a;
+	int rc = -1, a, ok = 0;
+	gne_handle claims = 0;
 
 	(void)argc;
 	tok = arg_str(ctx, argv[0], &tlen);
@@ -958,86 +1575,96 @@ static int jwt_verify(gne_ctx *ctx, int argc, const gne_handle *argv,
 	if (!secret)
 		goto beres;
 	if (klen == 0) {
-		api->throw(ctx, "type_error", 500, "secret tidak boleh kosong");
+		api->throw(ctx, "type_error", 500, "secret must not be empty");
 		goto beres;
 	}
 	if (tlen > JWT_MAX_TOKEN) {
 		api->throw(ctx, "type_error", 500,
-			   "token melebihi batas2 MiB");
+			   "token exceeds the 2 MiB limit");
 		goto beres;
 	}
 	if (token_plit(tok, tlen, &hp, &hn, &pp, &pn, &sp, &sn) != 0) {
 		api->throw(ctx, "jwt_error", 400,
-			   "token tidak memiliki format header.payload.signature");
+			   "token does not have the header.payload.signature format");
 		goto beres;
 	}
 	/* header + alg */
 	if (b64url_decode(hp, hn, &hraw, &hlen) != 0 ||
 	    !json_obj((const char *)hraw, hlen)) {
-		api->throw(ctx, "jwt_error", 400, "header token bukan JSON objek");
+		api->throw(ctx, "jwt_error", 400,
+			   "token header is not a JSON object");
 		goto beres;
 	}
 	a = json_cari((const char *)hraw, hlen, "alg", NULL, alg, sizeof alg);
 	if (a != 1 || alg[0] == '\0') {
-		api->throw(ctx, "jwt_error", 400, "header token tanpa alg");
+		api->throw(ctx, "jwt_error", 400, "token header has no alg");
 		goto beres;
 	}
 	if (strcmp(alg, "HS256") != 0 && strcmp(alg, "HS384") != 0 &&
 	    strcmp(alg, "HS512") != 0) {
 		char msg[128];
 		snprintf(msg, sizeof msg,
-			 "alg %s ditolak — hanya HS256/HS384/HS512 yang diizinkan",
+			 "alg %s is rejected — only HS256/HS384/HS512 are allowed",
 			 alg);
 		api->throw(ctx, "jwt_error", 401, msg);
 		goto beres;
 	}
-	/* payload harus JSON objek (dinilai sebelum cek signature supaya
-	 * pesan rusak vs signature salah bisa dibedakan). */
-	if (b64url_decode(pp, pn, &praw, &plen) != 0 ||
-	    !json_obj((const char *)praw, plen)) {
-		api->throw(ctx, "jwt_error", 400, "payload token bukan JSON objek");
+	/* The payload must be a JSON object, fully parsed BEFORE the
+	 * signature check so "broken payload" vs "bad signature" stay
+	 * distinguishable; the object is only RETURNED once every check
+	 * passes. */
+	if (b64url_decode(pp, pn, &praw, &plen) != 0) {
+		api->throw(ctx, "jwt_error", 400,
+			   "token payload is not a valid base64url segment");
+		goto beres;
+	}
+	claims = json_to_object(ctx, (const char *)praw, plen, &ok);
+	if (!ok) {
+		api->throw(ctx, "jwt_error", 400,
+			   "token payload is not a valid JSON object");
 		goto beres;
 	}
 	/* signature */
 	if (b64url_decode(sp, sn, &sraw, &slen) != 0 || slen == 0) {
 		api->throw(ctx, "jwt_error", 400,
-			   "bagian signature bukan base64url yang sah");
+			   "signature segment is not valid base64url");
 		goto beres;
 	}
 	mac = malloc(64);
 	if (!mac) {
-		api->throw(ctx, "jwt_oom", 500, "gagal mengalokasikan memori");
+		api->throw(ctx, "jwt_oom", 500, "memory allocation failed");
 		goto beres;
 	}
 	hmac_pilih(alg, (const unsigned char *)secret, klen,
 		   (const unsigned char *)tok, (size_t)((hp + hn + 1 + pn) - tok),
 		   mac, &maclen);
-	/* tp = hp+hn; '.' ; pp — panjang input tanda tangan = hn+1+pn */
+	/* signing input = header "." payload — length hn+1+pn */
 	if (slen != maclen || !ct_eq(sraw, mac, slen)) {
-		api->throw(ctx, "jwt_error", 401, "signature tidak valid");
+		api->throw(ctx, "jwt_error", 401, "invalid signature");
 		goto beres;
 	}
-	/* klaim waktu */
+	/* time claims */
 	now = time(NULL);
-	a = json_cari((const char *)praw, plen, "exp", &num, NULL, 0);
+	a = claim_number(ctx, claims, "exp", &num);
 	if (a < 0) {
-		api->throw(ctx, "jwt_error", 400, "klaim exp bukan angka");
+		api->throw(ctx, "jwt_error", 400, "claim exp is not a number");
 		goto beres;
 	}
 	if (a == 1 && (double)now >= num) {
-		api->throw(ctx, "jwt_error", 401, "token kedaluwarsa (exp)");
+		api->throw(ctx, "jwt_error", 401, "token has expired (exp)");
 		goto beres;
 	}
-	a = json_cari((const char *)praw, plen, "nbf", &num, NULL, 0);
+	a = claim_number(ctx, claims, "nbf", &num);
 	if (a < 0) {
-		api->throw(ctx, "jwt_error", 400, "klaim nbf bukan angka");
+		api->throw(ctx, "jwt_error", 400, "claim nbf is not a number");
 		goto beres;
 	}
 	if (a == 1 && (double)now < num) {
-		api->throw(ctx, "jwt_error", 401, "token belum berlaku (nbf)");
+		api->throw(ctx, "jwt_error", 401,
+			   "token is not valid yet (nbf)");
 		goto beres;
 	}
-	*ret = api->string(ctx, (const char *)praw, plen);
+	*ret = claims;
 	rc = 0;
 
 beres:
@@ -1051,7 +1678,7 @@ beres:
 }
 
 /* ================================================================
- * jwt.decode(token) → claims JSON TANPA verifikasi signature
+ * jwt.decode(token) → claims OBJECT WITHOUT signature verification
  * ================================================================ */
 static int jwt_decode(gne_ctx *ctx, int argc, const gne_handle *argv,
 		      gne_handle *ret)
@@ -1062,7 +1689,8 @@ static int jwt_decode(gne_ctx *ctx, int argc, const gne_handle *argv,
 	size_t hn, pn, sn;
 	unsigned char *hraw = NULL, *praw = NULL, *sraw = NULL;
 	size_t hlen = 0, plen = 0, slen = 0;
-	int rc = -1;
+	int rc = -1, ok = 0;
+	gne_handle claims = 0;
 
 	(void)argc;
 	tok = arg_str(ctx, argv[0], &tlen);
@@ -1070,30 +1698,37 @@ static int jwt_decode(gne_ctx *ctx, int argc, const gne_handle *argv,
 		goto beres;
 	if (tlen > JWT_MAX_TOKEN) {
 		api->throw(ctx, "type_error", 500,
-			   "token melebihi batas2 MiB");
+			   "token exceeds the 2 MiB limit");
 		goto beres;
 	}
 	if (token_plit(tok, tlen, &hp, &hn, &pp, &pn, &sp, &sn) != 0) {
 		api->throw(ctx, "jwt_error", 400,
-			   "token tidak memiliki format header.payload.signature");
+			   "token does not have the header.payload.signature format");
 		goto beres;
 	}
 	if (b64url_decode(hp, hn, &hraw, &hlen) != 0 ||
 	    !json_obj((const char *)hraw, hlen)) {
-		api->throw(ctx, "jwt_error", 400, "header token bukan JSON objek");
+		api->throw(ctx, "jwt_error", 400,
+			   "token header is not a JSON object");
 		goto beres;
 	}
-	if (b64url_decode(pp, pn, &praw, &plen) != 0 ||
-	    !json_obj((const char *)praw, plen)) {
-		api->throw(ctx, "jwt_error", 400, "payload token bukan JSON objek");
+	if (b64url_decode(pp, pn, &praw, &plen) != 0) {
+		api->throw(ctx, "jwt_error", 400,
+			   "token payload is not a valid base64url segment");
+		goto beres;
+	}
+	claims = json_to_object(ctx, (const char *)praw, plen, &ok);
+	if (!ok) {
+		api->throw(ctx, "jwt_error", 400,
+			   "token payload is not a valid JSON object");
 		goto beres;
 	}
 	if (b64url_decode(sp, sn, &sraw, &slen) != 0 || slen == 0) {
 		api->throw(ctx, "jwt_error", 400,
-			   "bagian signature bukan base64url yang sah");
+			   "signature segment is not valid base64url");
 		goto beres;
 	}
-	*ret = api->string(ctx, (const char *)praw, plen);
+	*ret = claims;
 	rc = 0;
 
 beres:
@@ -1108,7 +1743,7 @@ int gne_module_init(const gne_host_api *a, gne_ctx *ctx, gne_handle *out)
 {
 	api = a;
 	if (api->abi != GNE_ABI) {
-		api->throw(ctx, "gne_abi", 500, "ABI berbeda");
+		api->throw(ctx, "gne_abi", 500, "ABI mismatch");
 		return 1;
 	}
 	api->define_fn(ctx, "sign", 2, 3, jwt_sign);

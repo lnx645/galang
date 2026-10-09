@@ -1,13 +1,13 @@
 package cli
 
-// Perintah `gar gne` — pengelola paket ekstensi GaLang Native Extension.
+// Command `gar gne` — manager for GaLang Native Extension packages.
 //
-//	pack    — kemas hasil build ext/<nama> jadi zip multi-platform
-//	install — pasang paket (shortcut kanal resmi, URL HTTPS, atau file)
-//	list    — daftar ekstensi terpasang
-//	remove  — lepas ekstensi
+//	pack    — package the build in ext/<name> into a multi-platform zip
+//	install — install a package (official-channel shortcut, HTTPS URL, or file)
+//	list    — list installed extensions
+//	remove  — remove an extension
 //
-// Semua keluaran pesan dalam Bahasa Indonesia.
+// All output messages are in English.
 
 import (
 	"context"
@@ -20,17 +20,17 @@ import (
 	"galang/internal/usecase/gnepkg"
 )
 
-// gneGlobal dipakai oleh `--force` dan `--dir` yang bisa berdiri sendiri
-// setelah subperintah (flag parsar manual agar urutan bebas).
+// gneGlobal backs `--force` and `--dir`, which can stand alone
+// after the subcommand (manual flag parsing so the order is free).
 type gneOps struct {
 	dir   string
 	force bool
 	out   string
 }
 
-// parseGneOps memisahkan flag --force/--dir/-o dari argumen posisional.
-// Urutan bebas: `gar gne install --force redis` maupun
-// `gar gne install redis --force`.
+// parseGneOps separates the --force/--dir/-o flags from positional arguments.
+// Order is free: both `gar gne install --force redis` and
+// `gar gne install redis --force` are accepted.
 func parseGneOps(args []string) (gneOps, []string, error) {
 	var o gneOps
 	var pos []string
@@ -38,7 +38,7 @@ func parseGneOps(args []string) (gneOps, []string, error) {
 		a := args[i]
 		need := func(flag string) (string, error) {
 			if i+1 >= len(args) {
-				return "", fmt.Errorf("flag %s butuh nilai", flag)
+				return "", fmt.Errorf("flag %s requires a value", flag)
 			}
 			i++
 			return args[i], nil
@@ -63,7 +63,7 @@ func parseGneOps(args []string) (gneOps, []string, error) {
 		case strings.HasPrefix(a, "-o="):
 			o.out = a[len("-o="):]
 		case strings.HasPrefix(a, "--"):
-			return o, nil, fmt.Errorf("flag %q tidak dikenal", a)
+			return o, nil, fmt.Errorf("unknown flag %q", a)
 		default:
 			pos = append(pos, a)
 		}
@@ -72,29 +72,29 @@ func parseGneOps(args []string) (gneOps, []string, error) {
 }
 
 func printGneHelp(w io.Writer) {
-	fmt.Fprint(w, `gar gne — pengelola ekstensi native (GNE)
+	fmt.Fprint(w, `gar gne — native extension manager (GNE)
 
-Penggunaan:
-  gar gne pack <dir-ekstensi> [-o keluaran.zip]   kemas build ekstensi jadi paket
-  gar gne install <spesifikasi> [--force] [--dir D]  pasang paket ekstensi
-  gar gne list [--dir D]                          daftar ekstensi terpasang
-  gar gne remove <nama> [--dir D]                 lepas ekstensi
+Usage:
+  gar gne pack <extension-dir> [-o output.zip]    package a build into a zip
+  gar gne install <spec> [--force] [--dir D]         install an extension package
+  gar gne list [--dir D]                          list installed extensions
+  gar gne remove <name> [--dir D]                 remove an extension
 
-Spesifikasi install:
-  redis | smtp             shortcut kanal resmi (rilis terbaru)
-  redis@0.6.0              shortcut versi tertentu
-  https://.../redis.zip    URL HTTPS (wajib HTTPS)
-  ./redis.zip              berkas paket lokal
+Install specification:
+  redis | smtp             official-channel shortcut (latest release)
+  redis@0.6.0              pinned version
+  https://.../redis.zip    HTTPS URL (HTTPS required)
+  ./redis.zip              local package file
 
-Contoh:
+Examples:
   gar gne install redis
   gar gne install redis@0.6.0 --force
   gar gne pack ext/redis -o dist/redis.zip
   gar gne list
   gar gne remove redis
 
-Direktori instalasi default: ~/.galang/gne (dicari otomatis oleh use "nama";
-lokasi lama ~/.garurda/gne dari sebelum v0.7.0 tetap dibaca)
+Default install directory: ~/.galang/gne (found automatically by use "name";
+the old ~/.garurda/gne location from before v0.7.0 is still read)
 `)
 }
 
@@ -124,7 +124,7 @@ func runGNE(args []string, stdout, stderr io.Writer) int {
 	case "remove", "rm", "uninstall":
 		return gneRemove(ops, pos, stdout, stderr)
 	default:
-		fmt.Fprintf(stderr, "gar gne: subperintah %q tidak dikenal\n", sub)
+		fmt.Fprintf(stderr, "gar gne: unknown subcommand %q\n", sub)
 		printGneHelp(stderr)
 		return 2
 	}
@@ -132,7 +132,7 @@ func runGNE(args []string, stdout, stderr io.Writer) int {
 
 func gnePack(ops gneOps, pos []string, stdout, stderr io.Writer) int {
 	if len(pos) != 1 {
-		fmt.Fprintln(stderr, "gar gne pack: butuh tepat satu direktori ekstensi (mis. ext/redis)")
+		fmt.Fprintln(stderr, "gar gne pack: requires exactly one extension directory (e.g. ext/redis)")
 		return 2
 	}
 	zipPath, m, err := gnepkg.Pack(pos[0], ops.out)
@@ -140,7 +140,7 @@ func gnePack(ops gneOps, pos []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "gar gne pack: %v\n", err)
 		return 1
 	}
-	fmt.Fprintf(stdout, "✓ paket %s %s (ABI %d) → %s\n", m.Name, m.Version, m.GNEABI, zipPath)
+	fmt.Fprintf(stdout, "✓ package %s %s (ABI %d) → %s\n", m.Name, m.Version, m.GNEABI, zipPath)
 	fmt.Fprintf(stdout, "  platform: %s\n", joinComma(sortedKeys(m)))
 	return 0
 }
@@ -160,7 +160,7 @@ func sortedKeys(m *gnepkg.Manifest) []string {
 
 func gneInstall(ops gneOps, pos []string, stdout, stderr io.Writer) int {
 	if len(pos) != 1 {
-		fmt.Fprintln(stderr, "gar gne install: butuh tepat satu spesifikasi (nama, URL, atau berkas)")
+		fmt.Fprintln(stderr, "gar gne install: requires exactly one specification (name, URL, or file)")
 		return 2
 	}
 	ctx := context.Background()
@@ -169,15 +169,15 @@ func gneInstall(ops gneOps, pos []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "gar gne install: %v\n", err)
 		return 1
 	}
-	status := "baru"
+	status := "new"
 	if res.Previous {
-		status = "ditimpa"
+		status = "overwritten"
 	}
-	fmt.Fprintf(stdout, "✓ %s %s terpasang (%s, %s)\n", res.Name, res.Version, res.Platform, status)
+	fmt.Fprintf(stdout, "✓ %s %s installed (%s, %s)\n", res.Name, res.Version, res.Platform, status)
 	fmt.Fprintf(stdout, "  %s\n", res.Path)
-	fmt.Fprintf(stdout, `  gunakan: use "%s"`, res.Name)
+	fmt.Fprintf(stdout, `  use it with: use "%s"`, res.Name)
 	if os.Getenv("GNE_PATH") != "" {
-		fmt.Fprintf(stdout, ` (perhatikan: GNE_PATH menang sebelum direktori instalasi)`)
+		fmt.Fprintf(stdout, ` (note: GNE_PATH takes precedence over the install directory)`)
 	}
 	fmt.Fprintln(stdout)
 	return 0
@@ -190,11 +190,11 @@ func gneList(ops gneOps, stdout, stderr io.Writer) int {
 		return 1
 	}
 	if len(items) == 0 {
-		fmt.Fprintln(stdout, "belum ada ekstensi terpasang (coba: gar gne install redis)")
+		fmt.Fprintln(stdout, "no extensions installed yet (try: gar gne install redis)")
 		return 0
 	}
 	tw := tabwriter.NewWriter(stdout, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "NAMA\tVERSI\tABI\tPLATFORM\tUKURAN")
+	fmt.Fprintln(tw, "NAME\tVERSION\tABI\tPLATFORM\tSIZE")
 	for _, it := range items {
 		fmt.Fprintf(tw, "%s\t%s\t%d\t%s\t%d\n",
 			it.Name, it.Version, it.ABI, joinComma(it.Platform), it.Size)
@@ -216,7 +216,7 @@ func joinComma(ss []string) string {
 
 func gneRemove(ops gneOps, pos []string, stdout, stderr io.Writer) int {
 	if len(pos) != 1 {
-		fmt.Fprintln(stderr, "gar gne remove: butuh tepat satu nama ekstensi")
+		fmt.Fprintln(stderr, "gar gne remove: requires exactly one extension name")
 		return 2
 	}
 	removed, err := gnepkg.Remove(ops.dir, pos[0])
@@ -224,6 +224,6 @@ func gneRemove(ops gneOps, pos []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "gar gne remove: %v\n", err)
 		return 1
 	}
-	fmt.Fprintf(stdout, "✓ %s dilepas: %s\n", pos[0], removed)
+	fmt.Fprintf(stdout, "✓ %s removed: %s\n", pos[0], removed)
 	return 0
 }

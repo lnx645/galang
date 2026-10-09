@@ -1,70 +1,77 @@
-# Ekstensi Native — GNE
+# Native Extensions — GNE
 
-**GNE** (GaLang Native Extension) memungkinkan Anda menulis ekstensi dalam
-**C** — klien Redis, driver database, kripto, SMTP, apa pun — tanpa menyentuh
-compiler maupun runtime GaLang. Runtime tetap Go; ekstensi dimuat saat `use`
-memanggilnya lewat `dlopen` (Linux/macOS) atau `LoadLibrary` (Windows).
+**GNE** (GaLang Native Extension) lets you write extensions in **C** — a
+Redis client, a database driver, crypto, SMTP, anything — without touching
+the GaLang compiler or runtime. The runtime stays Go; extensions are
+loaded when `use` reaches them via `dlopen` (Linux/macOS) or `LoadLibrary`
+(Windows).
 
-> Contoh yang sudah jalan: repo
+> Working examples: the
 > [galang-gne-examples](https://github.com/lnx645/galang-gne-examples)
-> (`hello` dan `kv`). Syarat: `gar` **0.5.0+** dan gcc.
+> repo (`hello` and `kv`). Requirements: `gar` **0.5.0+** and gcc.
 
-## Ekstensi resmi — `redis`, `smtp`, `uuid`, `jwt`, dan `httpclient`
+## Official extensions — `redis`, `smtp`, `uuid`, `jwt`, and `httpclient`
 
-Lima ekstensi resmi dikompilasi dari sumber di repo ini (`ext/redis/`,
-`ext/smtp/`, `ext/uuid/`, `ext/jwt/`, `ext/httpclient/`) dan dirilis
-sebagai aset zip multi-platform. Pasang dari kanal resmi (butuh `gar`
-**0.6.0+**; ketiga ekstensi baru membutuhkan `gar` **0.7.1+** untuk
-shortcut nama):
+Five official extensions are compiled from the sources in this repo
+(`ext/redis/`, `ext/smtp/`, `ext/uuid/`, `ext/jwt/`, `ext/httpclient/`)
+and released as multi-platform zip assets. Install them from the official
+channel (the zips shipped from v0.7.1 are built for **ABI 2** and need
+`gar` **0.7.1+**; older ABI 1 packages still install and run on 0.7.1+):
 
 ```bash
-gar gne install redis          # rilis terbaru
-gar gne install smtp@0.6.0     # kunci versi
-gar gne install uuid           # shortcut nama — unduh dari rilis terbaru
-gar gne list                   # nama, versi, ABI, platform
-gar gne remove redis           # lepas binari + sidecar
+gar gne install redis          # latest release
+gar gne install smtp@0.6.0     # pin a version
+gar gne install uuid           # name shortcut — download from the latest release
+gar gne list                   # name, version, ABI, platforms
+gar gne remove redis           # remove binary + sidecar
 ```
 
-Spesifikasi lain: `gar gne install ./redis.zip` (berkas lokal) atau
-`gar gne install https://.../redis.zip` (wajib HTTPS). Pemasangan FLAT ke
-`~/.galang/gne` sehingga langsung dicari `use` dengan nama ekstensinya —
-detail perintah di [CLI — Pengelola Ekstensi](cli.md#pengelola-ekstensi--gar-gne),
-API lengkap di [Modul Standar](modules.md).
+Other specs: `gar gne install ./redis.zip` (local file) or
+`gar gne install https://.../redis.zip` (HTTPS required). Packages install
+flat into `~/.galang/gne`, so `use` finds them right away under the
+extension name — command details in
+[CLI — Extension Manager](cli.md#extension-manager--gar-gne), full API in
+[Standard Modules](modules.md).
 
-Kelima ekstensi butuh binari `gar` dengan CGO (tabel [Platform](#platform)):
+All five require a CGO-enabled `gar` binary (see the [Platforms](#platforms)
+table):
 
-- **`redis`** — klien RESP2 dengan `connect`, `ping`, `get`, `set`, `del`,
+- **`redis`** — a RESP2 client with `connect`, `ping`, `get`, `set`, `del`,
   `exists`, `incr`, `expire`, `hset`, `hget`, `lpush`, `lrange`, `keys`,
-  `cmd`, `close` plus timeout koneksi.
-- **`smtp`** — kirim surel lewat AUTH LOGIN: `connect`, `auth`, `from`,
-  `to`, `subject`, `send`, `send_html`, `close`. STARTTLS/SSL **belum**
-  ada — baca batasannya di [Modul Standar — smtp](modules.md#smtp--ekstensi-resmi).
-- **`uuid`** — UUID RFC 9562: `v4` (acak), `v7` (berstempel waktu),
+  `cmd`, `close` plus connection timeouts.
+- **`smtp`** — send mail over AUTH LOGIN: `connect`, `auth`, `from`, `to`,
+  `subject`, `send`, `send_html`, `close`. STARTTLS/SSL are **not**
+  included — read the limitations in
+  [Standard Modules — smtp](modules.md#smtp--official-extension).
+- **`uuid`** — RFC 9562 UUIDs: `v4` (random), `v7` (time-stamped),
   `is_valid`.
-- **`jwt`** — JWT HS256/HS384/HS512: `sign`, `verify` (signature +
-  klaim `exp`/`nbf`), `decode` tanpa verifikasi.
-- **`httpclient`** — klien HTTP/1.1: `get`, `post`, `request` plus
-  objek respons (`status`, `ok`, `body`, `header()`). https **ditolak**
-  (tanpa TLS bawaan, sama seperti smtp).
+- **`jwt`** — JWT with HS256/HS384/HS512: `sign` (accepts a GaLang
+  **object** — serialized in C — or a raw JSON object string), `verify`
+  (returns the claims **object**; checks the signature plus `exp`/`nbf`
+  claims), and unverified `decode` (also returns an object).
+- **`httpclient`** — an HTTP/1.1 client: `get`, `post`, `request` plus a
+  response object (`status`, `ok`, `body`, `header()`). https is
+  **rejected** (no built-in TLS, same as smtp).
 
-### Bangun sendiri
+### Build them yourself
 
-Sumber lengkap ada di repo — kompilasi biasa sesuai tabel [Membangun](#membangun)
-di bawah, lalu taruh hasilnya di `./gne/` atau `~/.galang/gne` (tanpa
-`pack` pun `use` langsung menemukannya). Untuk mengemasnya jadi paket:
+The full sources are in the repo — compile as in the
+[Building](#building) table below and drop the result into `./gne/` or
+`~/.galang/gne` (even without `pack`, `use` finds it). To package it as
+a proper zip:
 
 ```bash
 make ext                    # linux/amd64, linux/arm64, windows/amd64
-make pack-ext               # dist/<nama>.zip per ekstensi
+make pack-ext               # dist/<name>.zip per extension
 ```
 
-macOS memang tidak bisa di-cross-compile dari Linux (CGO), jadi `.dylib`
-darwin dibangun oleh GitHub Actions pada setiap tag rilis. Dua pilihan:
-kompilasi langsung di Mac Anda (`clang -dynamiclib ...`), atau unduh
-`ext-darwin-builds.zip` dari halaman rilis lalu jalankan `make pack-ext`
-untuk mengemas paket lengkap semua platform.
+macOS cannot be cross-compiled from Linux (CGO), so darwin `.dylib`
+binaries are built by GitHub Actions on every release tag. Two options:
+compile directly on your Mac (`clang -dynamiclib ...`), or download
+`ext-darwin-builds.zip` from the release page and run `make pack-ext` to
+package the full set.
 
-## Contoh kilat
+## Quick tour
 
 ```c
 /* hello.c */
@@ -77,7 +84,7 @@ static int add(gne_ctx *ctx, int argc, const gne_handle *argv, gne_handle *ret) 
     (void)argc;
     if (api->get_int(ctx, argv[0], &a) != 0 ||
         api->get_int(ctx, argv[1], &b) != 0) {
-        api->throw(ctx, "type_error", 500, "add() butuh dua integer");
+        api->throw(ctx, "type_error", 500, "add() needs two integers");
         return 1;
     }
     *ret = api->int_new(ctx, a + b);
@@ -85,19 +92,19 @@ static int add(gne_ctx *ctx, int argc, const gne_handle *argv, gne_handle *ret) 
 }
 
 int gne_module_init(const gne_host_api *a, gne_ctx *ctx, gne_handle *out) {
-    api = a;                              // simpan api: valid selama proses
-    if (api->abi != GNE_ABI) {            // WAJIB: tolak ABI berbeda
-        api->throw(ctx, "gne_abi", 500, "ABI berbeda");
+    api = a;                              // keep api: valid for the process
+    if (api->abi != GNE_ABI) {            // REQUIRED: reject a different ABI
+        api->throw(ctx, "gne_abi", 500, "ABI mismatch");
         return 1;
     }
     api->define_fn(ctx, "add", 2, 2, add);
-    *out = api->module(ctx);              // namespace modul
+    *out = api->module(ctx);              // module namespace
     return 0;
 }
 ```
 
 ```sh
-gcc -shared -fPIC -I <arah gne.h> -o hello.so hello.c   # macOS: -dynamiclib
+gcc -shared -fPIC -I <dir of gne.h> -o hello.so hello.c   # macOS: -dynamiclib
 mkdir -p gne && mv hello.so gne/
 ```
 
@@ -106,96 +113,118 @@ use "hello"
 print(hello.add(2, 3))    // 5
 ```
 
-## Resolusi `use`
+## How `use` resolves
 
-Urutan resolusi tetap: **bawaan → file `.ga` → GNE** (parser dan compiler
-tidak berubah sama sekali). Bila langkah file tidak menemukan apa pun,
-interpreter mencari ekstensi native pada urutan:
+The order is unchanged: **builtin → `.ga` file → GNE** (neither parser nor
+compiler changes at all). When the file step finds nothing, the interpreter
+searches for a native extension in order:
 
-1. `./gne/` — relatif terhadap **direktori file yang memanggil `use`**
-   (menang untuk pengembangan proyek);
-2. setiap entri `$GNE_PATH` (dipisah `:` di Linux/macOS, `;` di Windows;
-   path relatif diselesaikan terhadap direktori pemanggil);
-3. `~/.galang/gne` — global per pengguna. Lokasi lama `~/.garurda/gne`
-   (sebelum v0.7.0) masih ikut dibaca agar ekstensi lama tetap
-   ditemukan; pemasangan baru selalu menulis ke `~/.galang/gne`.
+1. `./gne/` — relative to the directory of the **file issuing `use`**
+   (wins during project development);
+2. each `$GNE_PATH` entry (`:` on Linux/macOS, `;` on Windows; relative
+   entries resolve against the issuing file's directory);
+3. `~/.galang/gne` — per-user global. The old `~/.garurda/gne` location
+   (pre-v0.7.0) is still read so existing extensions keep working; new
+   installs always write to `~/.galang/gne`.
 
-Untuk `use "redis"`, yang dicari: `redis.so` (Linux), `redis.dylib` atau
-`redis.so` (macOS), `redis.dll` (Windows). Path eksplisit juga boleh:
-`use "lib/redis.so"` langsung memuat berkas itu (relatif terhadap file
-pemanggil). Galat "not found" menyebut **semua** kandidat yang dicoba.
+For `use "redis"` it looks for `redis.so` (Linux), `redis.dylib` or
+`redis.so` (macOS), `redis.dll` (Windows). Explicit paths work too:
+`use "lib/redis.so"` loads that file directly (relative to the issuing
+file). The "not found" error lists **every** candidate that was tried.
 
-Berkas yang sudah dimuat di-cache: `use` kedua memakai objek namespace yang
-sama; dua nama yang menunjuk berkas sama berbagi satu instance.
+Loaded files are cached: a second `use` reuses the same namespace object;
+two names pointing at the same file share one instance.
 
-## Titik masuk
+## Entry point
 
-Ekstensi **wajib** mengekspor tepat satu simbol:
+An extension **must** export exactly one symbol:
 
 ```c
 GNE_EXPORT int gne_module_init(const gne_host_api *api, gne_ctx *ctx,
                                gne_handle *out);
 ```
 
-- Bangun namespace (biasanya `api->object()` + `api->define_fn()` /
-  `api->define_method()`), lalu tulis handle-nya ke `*out`
-  (`api->module(ctx)`), atau tulis `0` untuk memakai objek bawaan.
-- Return `0` = sukses. Untuk gagal: `api->throw(...)` lalu return non-zero.
-- Selalu cek `api->abi != GNE_ABI` lebih dulu — cara inilah ekstensi menolak
-  runtime dengan versi ABI berbeda.
+- Build the namespace (usually `api->object()` plus `api->define_fn()` /
+  `api->define_method()`), write its handle to `*out`
+  (`api->module(ctx)`), or write `0` to use the default object.
+- Return `0` on success. On failure: `api->throw(...)` then return
+  non-zero.
+- Always check `api->abi != GNE_ABI` first — that is how an extension
+  rejects a runtime with a different ABI version (see
+  [ABI versioning](#abi-versioning)).
 
-## Referensi API
+## ABI versioning
 
-Semua fungsi ada di tabel `const gne_host_api *api` (disimpan di variabel
-statis pada init).
+`GNE_ABI` in `gne.h` is currently **2** (ABI 1 had no `obj_keys`). Two
+rules make extensions survive upgrades:
 
-| Kelompok | Fungsi |
+- **The table is append-only.** New fields are only ever added at the
+  end of `gne_host_api` — never reordered, removed, or retyped — so
+  every view keeps identical field offsets.
+- **The host serves a legacy view.** `gar gne install` records the
+  package's ABI in the sidecar (`<name>.gne.json`, field `gne_abi`). At
+  load time the host hands an extension built for an older ABI a table
+  with the same layout but the older number in `api->abi`, so
+  already-installed extensions keep working after a `gar` upgrade.
+  Packages built for an ABI **newer** than the host are rejected at
+  install time with a clear message.
+
+That is why the mandatory init check is `api->abi != GNE_ABI` (strict
+equality): a real mismatch always fails loudly instead of reading the
+wrong field offsets.
+
+## API reference
+
+All functions live in the `const gne_host_api *api` table (saved in a
+static variable during init).
+
+| Group | Functions |
 |---|---|
-| Konstruktor | `null`, `bool_new`, `int_new`, `float_new`, `string`, `array`, `object` |
-| Aksesor | `type_of`, `get_bool`, `get_int`, `get_float`, `str_len`, `str_copy` |
-| Kontainer | `len`, `arr_push`, `arr_get`, `arr_set`, `obj_set`, `obj_get`, `obj_has` |
-| Fungsi | `define_fn`, `define_method`, `module`, `call` |
-| Galat | `throw`, `failed` |
+| Constructors | `null`, `bool_new`, `int_new`, `float_new`, `string`, `array`, `object` |
+| Accessors | `type_of`, `get_bool`, `get_int`, `get_float`, `str_len`, `str_copy` |
+| Containers | `len`, `arr_push`, `arr_get`, `arr_set`, `obj_set`, `obj_get`, `obj_has`, `obj_keys` (ABI 2) |
+| Functions | `define_fn`, `define_method`, `module`, `call` |
+| Errors | `throw`, `failed` |
 | State | `set_data`, `get_data` |
-| Umur | `retain`, `release` |
+| Lifetime | `retain`, `release` |
 
-Konvensi aksesor: **0 = sukses, -1 = gagal** (tipe atau handle salah) —
-aksesor tidak pernah melempar galat; terserah ekstensi mau menolak atau
-tidak. `len` berlaku untuk array dan string (string: panjang **byte**).
+Accessor convention: **0 = success, -1 = failure** (wrong type or handle) —
+accessors never throw; the extension decides whether to reject or not.
+`len` works for arrays and strings (strings: **byte** length). `obj_keys`
+returns an array of string handles holding the object's keys in
+insertion order (same 0/-1 convention, no throw).
 
-## Nilai dan aturan handle
+## Values and handle rules
 
-Nilai GaLang disebut lewat `gne_handle` (`uint64_t`). **0 selalu tidak
-valid**; `null` GaLang punya handle sendiri dari `api->null()`.
-Handle tidak pernah dipakai ulang — `release()` sampai rc=0 menghapus
-entri, sehingga handle basi menghasilkan kegagalan `get_*` yang jelas,
-bukan kebocoran diam-diam.
+GaLang values are referenced through `gne_handle` (`uint64_t`). **0 is
+never valid**; GaLang's `null` has its own handle from `api->null()`.
+Handles are never reused — `release()` down to rc=0 deletes the entry, so
+a stale handle yields a clear `get_*` failure instead of a silent leak.
 
-Aturan kepemilikan (hafalkan ini):
+Ownership rules (memorize these):
 
-- **Semua handle yang dibuat selama satu call** — argumen, hasil
-  konstruktor, hasil `get_*`, hasil `call` — adalah **sementara milik
-  host**. Host me-release semuanya begitu `cfunc` selesai. **Jangan
-  `release()` sendiri**; cukup `retain()` bila handle harus bertahan
-  setelah call (mis. disimpan di state).
-- **`*ret` memindahkan kepemilikan ke host.** Jangan `release()` sesudah
-  mengembalikannya; kalau C juga menyimpannya, `retain()` **dulu**
-  sebelum mengembalikan.
-- `define_method()` me-pin `self` miliknya (host sudah retain), jadi
-  method tetap valid selama modul hidup.
-- String lewat batas C↔Go selalu **disalin** (`str_copy` ke buffer milik
-  Anda, atau konstruktor `string`). Tidak ada pointer host yang boleh
-  disimpan — ini syarat kedisiplinan cgo.
+- **Every handle created during a call** — arguments, constructor
+  results, `get_*` results, `call` results — is **host-owned
+  temporary**. The host releases them all once the `cfunc` returns.
+  **Do not `release()` them yourself**; just `retain()` when a handle
+  must outlive the call (e.g. stored in state).
+- **`*ret` transfers ownership to the host.** Never `release()` after
+  returning it; if C also keeps it, `retain()` **before** returning.
+- `define_method()` pins its own `self` (the host already retained it),
+  so methods stay valid for the module's lifetime.
+- Strings always **cross the C↔Go boundary by copy** (`str_copy` into
+  your own buffer, or the `string` constructor). No host pointer may be
+  stored — that is a cgo discipline requirement.
 
-## Error
+## Errors
 
 ```c
-api->throw(ctx, "redis_error", 502, "koneksi ditolak");
+api->throw(ctx, "redis_error", 502, "connection refused");
 return 1;
 ```
 
-- `throw` lalu **return non-zero** → galat catchable di GaLang dengan
-  `e.code`, `e.status`, `e.message`:
+- `throw` followed by a **non-zero return** → a catchable error in
+  GaLang carrying `e.code`, `e.status`, `e.message`:
 
 ```galang
 try {
@@ -205,26 +234,25 @@ try {
 }
 ```
 
-- Return non-zero **tanpa** `throw` → galat `gne_error` (status 500).
-- Return 0 tetapi `*ret` tidak diisi → galat engine (program berhenti) —
-  ini bug ekstensi, bukan kondisi runtime.
-- `api->throw` dari dalam panggilan balik (callback `call`) juga diteruskan
-  utuh: code/status asli dipertahankan.
-- Panik di dalam host dipulihkan menjadi galat `gne_panic` (catchable) —
-  runtime Go tidak akan mati.
+- Non-zero return **without** `throw` → a `gne_error` (status 500).
+- Returning 0 with `*ret` left unset → engine error (program stops) —
+  that is an extension bug, not a runtime condition.
+- A `throw` inside a callback (`call`) is forwarded intact: the original
+  code/status is preserved.
+- A panic inside the host is recovered as a catchable `gne_panic` error —
+  the Go runtime never dies.
 
-## Method dan objek native
+## Methods and native objects
 
-`define_method(ctx, obj, nama, min, max, fn, self)` mengikat fungsi ke
-objek; pada waktu dipanggil, **`argv[0]` = `self`** (min/max tidak menghitung
-self):
+`define_method(ctx, obj, name, min, max, fn, self)` binds a function to an
+object; when called, **`argv[0]` = `self`** (min/max exclude self):
 
 ```c
 static int next(gne_ctx *ctx, int argc, const gne_handle *argv, gne_handle *ret) {
-    /* argv[0] = objek counter */
+    /* argv[0] = the counter object */
     ...
 }
-/* pada init: */
+/* during init: */
 counter = api->object(ctx);
 api->define_method(ctx, counter, "next", 0, 0, next, counter);
 api->obj_set(ctx, api->module(ctx), "counter", counter);
@@ -235,24 +263,24 @@ $c = hello.counter
 print($c.next())
 ```
 
-## Panggilan balik ke GaLang
+## Calling back into GaLang
 
 ```c
 gne_handle out;
 if (api->call(ctx, argv[0], 1, &argv[1], &out) != 0)
-    return 1;            // galat callback sudah tercatat di ctx
+    return 1;            // the callback error is already recorded in ctx
 *ret = out;
 ```
 
-`call` menerima nilai apa pun yang bisa dipanggil (closure, builtin). Bila
-hasilnya promise (fungsi async), kirimkan apa adanya — jangan ditunggu;
-runtime GaLang yang menanganinya.
+`call` accepts anything callable (closure, builtin). If the result is a
+promise (async function), pass it straight through — do not wait; the
+GaLang runtime handles it.
 
-## State per-modul
+## Per-module state
 
-`set_data`/`get_data` menggantungkan satu `void *` pada **instance modul
-ini** — aman bila satu `.so` dimuat oleh beberapa interpreter (state tidak
-bocor antar instance):
+`set_data`/`get_data` hang one `void *` on **this module's instance** —
+safe when one `.so` is loaded by several interpreters (state never leaks
+between instances):
 
 ```c
 typedef struct { ... } kv_state;
@@ -262,77 +290,77 @@ int gne_module_init(const gne_host_api *a, gne_ctx *ctx, gne_handle *out) {
     a->set_data(ctx, s);
     ...
 }
-/* di dalam fungsi: kv_state *s = a->get_data(ctx); */
+/* inside functions: kv_state *s = a->get_data(ctx); */
 ```
 
-Varabel global statis dalam `.so` juga hidup satu proses — jangan
-digunakan untuk state per-instance. Lihat `kv/kv.c` di repo contoh untuk
-pola lengkap (key-value + simpan/muat berkas).
+Static globals inside the `.so` live for one process — do not use them for
+per-instance state. See `kv/kv.c` in the examples repo for the full pattern
+(key-value + save/load to file).
 
-## Membangun
+## Building
 
-| Platform | Perintah |
+| Platform | Command |
 |---|---|
 | Linux | `gcc -shared -fPIC -Wall -Wextra -I <gne.h> -o x.so x.c` |
 | macOS | `gcc -dynamiclib -Wall -Wextra -I <gne.h> -o x.dylib x.c` |
 | Windows | `x86_64-w64-mingw32-gcc -shared -Wall -Wextra -I <gne.h> -o x.dll x.c` (MSYS2: `pacman -S mingw-w64-x86_64-gcc`) |
 
-Header `gne.h` ada di **setiap zip rilis** dan di repo GaLang
-(`include/gne.h`). Setelah build, taruh hasilnya di `./gne/` atau
+`gne.h` ships in **every release zip** and in the GaLang repo
+(`include/gne.h`). After building, drop the result into `./gne/` or
 `~/.galang/gne`.
 
-## Batasan yang perlu diketahui
+## Limitations to know
 
-- **Performa**: setiap panggilan C↔Go melintasi boundary cgo (ratusan
-  nanosekon per lintasan). GNE untuk I/O, binding pustaka, dan pekerjaan
-  berat — bukan untuk dipakai di jantung hot loop (hitung dulu dulu;
-  ukur dengan benchmark).
-- **Satu goroutine**: semua fungsi host hanya dipanggil dari goroutine
-  interpreter yang sama; `ctx` hanya berlaku selama satu call — jangan
-  disimpan atau dikirim ke thread lain.
-- **Tidak ada unload**: modul hidup selama proses (`dlclose` tidak pernah
-  dipanggil) — atur ulang state di `init` bila perlu.
-- **Tanpa CGO tidak ada GNE**: biner cross-build tertentu memakai stub —
-  `use` ekstensi akan menolak dengan pesan "butuh CGO" (lihat tabel
-  platform di bawah).
+- **Performance**: every C↔Go call crosses the cgo boundary (hundreds of
+  nanoseconds per crossing). GNE is for I/O, library bindings, and heavy
+  work — not the heart of a hot loop (count operations first; benchmark).
+- **One goroutine**: host functions are only called from the same
+  interpreter goroutine; `ctx` is valid for a single call — never store
+  it or send it to another thread.
+- **No unload**: modules live for the whole process (`dlclose` is never
+  called) — reset state in `init` when needed.
+- **No CGO, no GNE**: certain cross-builds ship a stub — `use` of an
+  extension is rejected with a "CGO required" message (see the platform
+  table below).
 
-## Keamanan
+## Security
 
-Memuat ekstensi native = **menjalankan kode C di proses Anda** — sama
-riskannya dengan meng-install paket npm ber-addon native atau menjalankan
-binary dari repository. GNE tidak mengubah perhitungan itu, tetapi
-membatasi jalurnya:
+Loading a native extension means **running C code in your process** — as
+risky as installing an npm package with native addons or running a
+binary from a repository. GNE does not change that arithmetic, but it
+narrows the path:
 
-- hanya tiga lokasi eksplisit (`./gne`, `$GNE_PATH`, `~/.galang/gne`) —
-  tidak ada pemindaian `PATH`/`LD_LIBRARY_PATH` yang bisa dibajak;
-- `dlopen` dengan `RTLD_NOW | RTLD_LOCAL` (simbol tidak bocor ke global);
-- ABI dicek saat init; handle tidak pernah dipakai ulang;
-- penulis ekstensi tidak perlu — dan tidak bisa — menyentuh compiler
-  atau runtime GaLang.
+- only three explicit locations (`./gne`, `$GNE_PATH`, `~/.galang/gne`)
+  — no `PATH`/`LD_LIBRARY_PATH` scanning that could be hijacked;
+- `dlopen` with `RTLD_NOW | RTLD_LOCAL` (symbols do not leak globally);
+- the ABI is checked at init; handles are never reused;
+- extension authors do not need — and cannot — touch the GaLang
+  compiler or runtime.
 
-Pasang ekstensi hanya dari sumber yang Anda percaya.
+Only install extensions from sources you trust.
 
-## Platform
+## Platforms
 
-| Zip rilis | CGO | GNE | SQLite |
+| Release zip | CGO | GNE | SQLite |
 |---|---|---|---|
 | `gar-linux-amd64` | ✔ | ✔ | ✔ |
 | `gar-windows-amd64` | ✔ (mingw) | ✔ | ✔ |
 | `gar-darwin-amd64`, `gar-darwin-arm64` | ✔ | ✔ | ✔ |
 | `gar-linux/arm64`, `gar-windows/arm64` | ✘ | stub | ✘ |
 
-Binari `CGO=0` tetap berjalan normal; hanya `use` ekstensi native (dan
-SQLite) yang menolak dengan pesan jelas. Binari darwin dibangun di GitHub
-Actions dengan CGO=1; untuk `linux/arm64` dan `windows/arm64`, build
-native di platform tersebut (mis. meng-`make build` di mesin ARM)
-mendapatkan GNE penuh.
+`CGO=0` binaries run normally; only native extension `use` (and SQLite)
+is rejected with a clear message. The darwin binaries are built on
+GitHub Actions with CGO=1; for `linux/arm64` and `windows/arm64`, a
+native build on that platform (e.g. `make build` on an ARM machine) gets
+full GNE.
 
-## Contoh
+## Examples
 
-Repo [galang-gne-examples](https://github.com/lnx645/galang-gne-examples):
+The [galang-gne-examples](https://github.com/lnx645/galang-gne-examples)
+repo:
 
-- **`hello/`** — fungsi, method objek, `throw` catchable, callback ke
-  closure GaLang, state antar panggilan;
-- **`kv/`** — key-value dengan state per-modul + persistensi berkas
-  (pola yang sama untuk ekstensi Database/Redis);
-- `build.sh` / `build.ps1` — build Linux/macOS/Windows.
+- **`hello/`** — functions, object methods, catchable `throw`, callbacks
+  into GaLang closures, state across calls;
+- **`kv/`** — key-value with per-module state plus file persistence (the
+  same pattern as Database/Redis extensions);
+- `build.sh` / `build.ps1` — Linux/macOS/Windows builds.

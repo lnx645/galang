@@ -1,14 +1,14 @@
-// Package gnepkg mengelola paket ekstensi GNE (manifest + alur pack,
-// install, list, remove). Aturan bisnis ada di sini; mekanik arsip zip,
-// hash, dan unduh HTTPS ada di internal/infra/gnepkg.
+// Package gnepkg manages GNE extension packages (manifest plus the pack,
+// install, list, remove flows). Business rules live here; the zip archive,
+// hash, and HTTPS download mechanics live in internal/infra/gnepkg.
 //
-// Struktur paket (zip):
+// Package layout (zip):
 //
 //	manifest.json                 — name, version, gne_abi, entry per platform
-//	<GOOS-GOARCH>/<name><ext>     — binari native per platform
+//	<GOOS-GOARCH>/<name><ext>     — native binary per platform
 //
-// Pemasangan FLAT: ~/.galang/gne/<name><ext> + sidecar <name>.gne.json,
-// persis pola yang dicari discovery `use "nama"` — tanpa ubahan loader.
+// FLAT installation: ~/.galang/gne/<name><ext> + sidecar <name>.gne.json,
+// exactly the pattern discovery `use "name"` looks for — no loader changes.
 package gnepkg
 
 import (
@@ -25,11 +25,11 @@ import (
 	"galang/internal/infra/gnepkg"
 )
 
-// OfficialRepo adalah kanal distribusi ekstensi resmi: shortcut
-// `gar gne install redis` diselesaikan ke aset rilis repo ini.
+// OfficialRepo is the official distribution channel for extensions: the
+// shortcut `gar gne install redis` resolves to this repo's release assets.
 const OfficialRepo = "https://github.com/lnx645/galang"
 
-// ManifestFile adalah berkas manifest di dalam paket dan sidecar terpasang.
+// ManifestFile is the manifest file inside a package and the installed sidecar.
 const (
 	ManifestFile  = "manifest.json"
 	suffixSidecar = ".gne.json"
@@ -42,14 +42,14 @@ var (
 	reSHA256   = regexp.MustCompile(`^[0-9a-f]{64}$`)
 )
 
-// Entry adalah binari satu platform di dalam paket.
+// Entry is one platform's native binary inside a package.
 type Entry struct {
-	File   string `json:"file"`   // path di dalam zip: "linux-amd64/redis.so"
-	SHA256 string `json:"sha256"` // sidik jari isi binari
-	Size   int64  `json:"size"`   // ukuran binari dalam byte
+	File   string `json:"file"`   // path inside the zip: "linux-amd64/redis.so"
+	SHA256 string `json:"sha256"` // fingerprint of the binary content
+	Size   int64  `json:"size"`   // binary size in bytes
 }
 
-// Manifest adalah isi manifest.json dalam paket (dan sidecar terpasang).
+// Manifest is the content of manifest.json in a package (and the installed sidecar).
 type Manifest struct {
 	Name        string           `json:"name"`
 	Version     string           `json:"version"`
@@ -58,15 +58,15 @@ type Manifest struct {
 	Entry       map[string]Entry `json:"entry"` // "GOOS-GOARCH" → Entry
 }
 
-// Source adalah metadata pengembang di ext/<nama>/gne.json (input pack).
+// Source is developer metadata in ext/<name>/gne.json (the pack input).
 type Source struct {
 	Name        string `json:"name"`
 	Version     string `json:"version"`
 	Description string `json:"description,omitempty"`
 }
 
-// libExtFor mengembalikan ekstensi pustaka wajib untuk sebuah GOOS
-// sesuai pola discovery: linux .so, darwin .dylib, windows .dll.
+// libExtFor returns the required library extension for a GOOS according to
+// the discovery pattern: linux .so, darwin .dylib, windows .dll.
 func libExtFor(goos string) string {
 	switch goos {
 	case "windows":
@@ -78,7 +78,7 @@ func libExtFor(goos string) string {
 	}
 }
 
-// splitPlatform memecah "GOOS-GOARCH"; ok=false bila format salah.
+// splitPlatform splits "GOOS-GOARCH"; ok=false when the format is wrong.
 func splitPlatform(p string) (goos, goarch string, ok bool) {
 	if !rePlatform.MatchString(p) {
 		return "", "", false
@@ -87,40 +87,41 @@ func splitPlatform(p string) (goos, goarch string, ok bool) {
 	return p[:i], p[i+1:], true
 }
 
-// validateManifest memeriksa kontrak paket: nama aman untuk namespace,
-// versi sah, ABI cocok dengan host, dan tiap entri menunjuk binari yang
-// nama+ekstensinya sesuai platformnya (menolak paket silang/tampered).
+// validateManifest checks the package contract: a namespace-safe name, a
+// valid version, an ABI this host can run, and every entry pointing to a
+// binary whose name+extension matches its platform (rejecting cross-built
+// or tampered packages).
 func validateManifest(m *Manifest) error {
 	if !reName.MatchString(m.Name) {
-		return fmt.Errorf("nama paket %q tidak valid (huruf kecil, diawali huruf, tanpa tanda baca)", m.Name)
+		return fmt.Errorf("package name %q is invalid (lowercase, starts with a letter, no punctuation)", m.Name)
 	}
 	if !reVersion.MatchString(m.Version) {
-		return fmt.Errorf("versi paket %q tidak valid (format semver)", m.Version)
+		return fmt.Errorf("package version %q is invalid (semver format)", m.Version)
 	}
-	if m.GNEABI != gne.ABI {
-		return fmt.Errorf("paket dibuat untuk ABI GNE %d, host memakai ABI %d — tidak kompatibel",
+	if m.GNEABI > gne.ABI {
+		return fmt.Errorf("package was built for GNE ABI %d, this build supports ABI %d — not compatible",
 			m.GNEABI, gne.ABI)
 	}
 	if len(m.Entry) == 0 {
-		return fmt.Errorf("paket tidak memuat binari apa pun")
+		return fmt.Errorf("package contains no binary")
 	}
 	for platform, e := range m.Entry {
 		goos, _, ok := splitPlatform(platform)
 		if !ok {
-			return fmt.Errorf("platform %q tidak valid", platform)
+			return fmt.Errorf("platform %q is invalid", platform)
 		}
 		want := platform + "/" + m.Name + libExtFor(goos)
 		if e.File != want {
-			return fmt.Errorf("entri %q menunjuk %q, seharusnya %q", platform, e.File, want)
+			return fmt.Errorf("entry %q points to %q, expected %q", platform, e.File, want)
 		}
 		if !reSHA256.MatchString(e.SHA256) {
-			return fmt.Errorf("entri %q tanpa sha256 yang sah", platform)
+			return fmt.Errorf("entry %q has no valid sha256", platform)
 		}
 	}
 	return nil
 }
 
-// joinPlatforms mengembalikan daftar platform terurut untuk pesan galat.
+// joinPlatforms returns the sorted list of platforms for error messages.
 func joinPlatforms(m *Manifest) string {
 	plats := make([]string, 0, len(m.Entry))
 	for p := range m.Entry {
@@ -130,14 +131,14 @@ func joinPlatforms(m *Manifest) string {
 	return strings.Join(plats, ", ")
 }
 
-// CurrentPlatform adalah GOOS-GOARCH mesin sekarang.
+// CurrentPlatform is the current machine's GOOS-GOARCH.
 func CurrentPlatform() string {
 	return runtime.GOOS + "-" + runtime.GOARCH
 }
 
 // ---- sidecar ----
 
-// readSidecar memuat <name>.gne.json dari direktori instalasi.
+// readSidecar loads <name>.gne.json from the install directory.
 func readSidecar(dir, name string) (*Manifest, error) {
 	b, err := os.ReadFile(filepath.Join(dir, name+suffixSidecar))
 	if err != nil {
@@ -145,13 +146,13 @@ func readSidecar(dir, name string) (*Manifest, error) {
 	}
 	var m Manifest
 	if err := json.Unmarshal(b, &m); err != nil {
-		return nil, fmt.Errorf("sidecar %s%s rusak: %v", name, suffixSidecar, err)
+		return nil, fmt.Errorf("sidecar %s%s is corrupt: %v", name, suffixSidecar, err)
 	}
 	return &m, nil
 }
 
-// writeSidecar menyimpan manifest terpasang agar `gar gne list` tidak
-// perlu membaca ulang zip.
+// writeSidecar stores the installed manifest so that `gar gne list` does
+// not need to re-read the zip.
 func writeSidecar(dir string, m *Manifest) error {
 	b, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
@@ -160,33 +161,34 @@ func writeSidecar(dir string, m *Manifest) error {
 	return gnepkg.WriteFile(filepath.Join(dir, m.Name+suffixSidecar), append(b, '\n'))
 }
 
-// ---- direktori instalasi ----
+// ---- installation directories ----
 
-// InstallDir mengembalikan direktori instalasi default
-// (~/.galang/gne) — sama dengan kandidat discovery global `use`.
+// InstallDir returns the default install directory
+// (~/.galang/gne) — same as the global `use` discovery candidate.
 func InstallDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
-		return "", fmt.Errorf("tidak dapat menentukan direktori home — berikan --dir secara eksplisit")
+		return "", fmt.Errorf("cannot determine home directory — pass --dir explicitly")
 	}
 	return filepath.Join(home, ".galang", "gne"), nil
 }
 
-// LegacyInstallDir adalah lokasi instalasi sebelum rebrand v0.7.0
-// (~/.garurda/gne). Masih dipakai untuk PEMBACAAN (list/remove/discovery)
-// agar ekstensi yang sudah terpasang tidak hilang begitu binari di-upgrade;
-// pemasangan baru selalu menulis ke InstallDir.
+// LegacyInstallDir is the install location from before the v0.7.0 rebrand
+// (~/.garurda/gne). Still used for READING (list/remove/discovery) so that
+// already-installed extensions are not lost the moment the binary is
+// upgraded; new installs always write to InstallDir.
 func LegacyInstallDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
-		return "", fmt.Errorf("tidak dapat menentukan direktori home — berikan --dir secara eksplisit")
+		return "", fmt.Errorf("cannot determine home directory — pass --dir explicitly")
 	}
 	return filepath.Join(home, ".garurda", "gne"), nil
 }
 
-// SearchDirs mengembalikan direktori instalasi untuk PEMBACAAN tanpa
-// --dir eksplisit: direktori aktif lebih dulu, disusul lokasi lama bila
-// masih ada. Urutan menentukan pemenang saat nama sama ada di dua tempat.
+// SearchDirs returns the install directories for READING without an
+// explicit --dir: the active directory first, followed by the legacy
+// location if it still exists. The order decides which one wins when the
+// same name exists in both places.
 func SearchDirs() ([]string, error) {
 	cur, err := InstallDir()
 	if err != nil {
@@ -203,17 +205,17 @@ func SearchDirs() ([]string, error) {
 
 // ---- pack ----
 
-// Pack membaca ext/<nama>/ (gne.json + build/<GOOS-GOARCH>/<nama><ext>)
-// lalu menulis paket zip multi-platform. Mengembalikan path zip dan
-// manifest yang dihasilkan.
+// Pack reads ext/<name>/ (gne.json + build/<GOOS-GOARCH>/<name><ext>) and
+// then writes a multi-platform zip package. Returns the zip path and the
+// generated manifest.
 func Pack(dir, out string) (string, *Manifest, error) {
 	b, err := os.ReadFile(filepath.Join(dir, "gne.json"))
 	if err != nil {
-		return "", nil, fmt.Errorf("baca gne.json: %v", err)
+		return "", nil, fmt.Errorf("read gne.json: %v", err)
 	}
 	var s Source
 	if err := json.Unmarshal(b, &s); err != nil {
-		return "", nil, fmt.Errorf("gne.json tidak valid: %v", err)
+		return "", nil, fmt.Errorf("invalid gne.json: %v", err)
 	}
 	m := &Manifest{
 		Name:        s.Name,
@@ -223,18 +225,18 @@ func Pack(dir, out string) (string, *Manifest, error) {
 		Entry:       map[string]Entry{},
 	}
 	if !reName.MatchString(m.Name) {
-		return "", nil, fmt.Errorf("nama %q di gne.json tidak valid (huruf kecil, diawali huruf, tanpa tanda baca)", m.Name)
+		return "", nil, fmt.Errorf("name %q in gne.json is invalid (lowercase, starts with a letter, no punctuation)", m.Name)
 	}
 	if !reVersion.MatchString(m.Version) {
-		return "", nil, fmt.Errorf("versi %q di gne.json tidak valid (format semver)", m.Version)
+		return "", nil, fmt.Errorf("version %q in gne.json is invalid (semver format)", m.Version)
 	}
 
-	// Pindai build/<platform>/ — setiap direktori harus berisi tepat
-	// satu binari bernama <nama><ekstensi platform>.
+	// Scan build/<platform>/ — each directory must contain exactly one
+	// binary named <name><platform extension>.
 	buildDir := filepath.Join(dir, "build")
 	ents, err := os.ReadDir(buildDir)
 	if err != nil {
-		return "", nil, fmt.Errorf("baca build/: %v (jalankan make ext dulu)", err)
+		return "", nil, fmt.Errorf("read build/: %v (run make ext first)", err)
 	}
 	var files []gnepkg.File
 	manifestRaw, err := json.MarshalIndent(m, "", "  ")
@@ -251,12 +253,12 @@ func Pack(dir, out string) (string, *Manifest, error) {
 		platform := de.Name()
 		goos, _, ok := splitPlatform(platform)
 		if !ok {
-			return "", nil, fmt.Errorf("direktori build/%q bukan platform GOOS-GOARCH yang sah", platform)
+			return "", nil, fmt.Errorf("build directory %q is not a valid GOOS-GOARCH platform", platform)
 		}
 		binPath := filepath.Join(buildDir, platform, m.Name+libExtFor(goos))
 		data, err := gnepkg.ReadFile(binPath, gnepkg.MaxPackageSize)
 		if err != nil {
-			return "", nil, fmt.Errorf("baca %s: %v", binPath, err)
+			return "", nil, fmt.Errorf("read %s: %v", binPath, err)
 		}
 		rel := platform + "/" + m.Name + libExtFor(goos)
 		m.Entry[platform] = Entry{
@@ -268,10 +270,10 @@ func Pack(dir, out string) (string, *Manifest, error) {
 		nBuild++
 	}
 	if nBuild == 0 {
-		return "", nil, fmt.Errorf("build/ kosong — jalankan make ext dulu")
+		return "", nil, fmt.Errorf("build/ is empty — run make ext first")
 	}
 
-	// Manifest ditulis ulang setelah entry terisi.
+	// Manifest is rewritten once the entries are filled in.
 	if manifestRaw, err = json.MarshalIndent(m, "", "  "); err != nil {
 		return "", nil, err
 	}

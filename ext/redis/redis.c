@@ -1,28 +1,28 @@
-/* redis.c — ekstensi GNE resmi: klien Redis (RESP2) murni C.
+/* redis.c — official GNE extension: a pure C Redis (RESP2) client.
  *
- * Gaya pemakaian:
+ * Usage style:
  *
  *   use "redis"
  *   $r = redis.connect("127.0.0.1", 6379)        // timeout 5000 ms
- *   $r = redis.connect("127.0.0.1", 6379, 3000)  // timeout custom
+ *   $r = redis.connect("127.0.0.1", 6379, 3000)  // custom timeout
  *   $r.set("k", "v")
  *   print($r.get("k"))
  *   $r.close()
  *
- * State: tabel koneksi maksimal 64 slot digantungkan lewat
- * api->set_data (aman bila satu .so dipakai beberapa interpreter);
- * tiap objek koneksi menyimpan field "id" → slot. Koneksi yang
- * ditutup atau rusak dilempar sebagai galat catchable "redis_error".
+ * State: the connection table (max 64 slots) is attached via
+ * api->set_data (safe when one .so is used by several interpreters);
+ * each connection object stores an "id" field → slot. Connections that
+ * are closed or broken are thrown as the catchable "redis_error".
  *
- * Balasan error server (-ERR ...) menjadi throw "redis_error":
- *   status 500 — server menolak / protokol tak terduga / argumen salah
- *   status 502 — gagal terhubung / koneksi terputus
- *   status 504 — waktu tunggu habis (timeout)
+ * Server error replies (-ERR ...) become a throw "redis_error":
+ *   status 500 — server rejection / unexpected protocol / bad argument
+ *   status 502 — connection failed / connection dropped
+ *   status 504 — timed out (timeout)
  *
- * Lintas platform: POSIX (fcntl/select) dan Winsock (#ifdef _WIN32).
- * Sinyal SIGPIPE ditahan lewat MSG_NOSIGNAL (Linux) atau
- * SO_NOSIGPIPE (macOS) — ekstensi tidak pernah mengubah handler
- * sinyal proses.
+ * Cross-platform: POSIX (fcntl/select) and Winsock (#ifdef _WIN32).
+ * SIGPIPE is suppressed via MSG_NOSIGNAL (Linux) or
+ * SO_NOSIGPIPE (macOS) — the extension never changes the process
+ * signal handler.
  */
 #include "gne.h"
 
@@ -70,19 +70,19 @@ typedef int rfd_t;
 
 static const gne_host_api *api;
 
-/* ---- batas (dokumentasikan di docs) ---- */
+/* ---- limits (document them in docs) ---- */
 #define REDIS_MAX_CONN 64
 #define REDIS_TIMEOUT_DEFAULT_MS 5000
-#define REDIS_MAX_LINE (1u << 20)      /* baris protokol ≤ 1 MiB */
-#define REDIS_MAX_BULK (64u << 20)     /* balasan bulk ≤ 64 MiB */
-#define REDIS_MAX_DEPTH 32             /* kedalaman array RESP */
-#define REDIS_MAX_ELEMS 1000000        /* jumlah elemen array RESP */
-#define REDIS_MAX_CMD (64u << 20)      /* perintah keluar ≤ 64 MiB */
+#define REDIS_MAX_LINE (1u << 20)      /* protocol line ≤ 1 MiB */
+#define REDIS_MAX_BULK (64u << 20)     /* bulk reply ≤ 64 MiB */
+#define REDIS_MAX_DEPTH 32             /* RESP array depth */
+#define REDIS_MAX_ELEMS 1000000        /* RESP array element count */
+#define REDIS_MAX_CMD (64u << 20)      /* outgoing command ≤ 64 MiB */
 
 typedef struct {
-	int fd; /* -1 = slot kosong */
+	int fd; /* -1 = empty slot */
 	int timeout_ms;
-	int64_t gen; /* nomor generasi — menolak objek basi dari siklus close/connect */
+	int64_t gen; /* generation number — rejects stale objects from a close/connect cycle */
 	char *rbuf;
 	size_t rcap, rlen, rpos;
 } conn;
@@ -91,45 +91,45 @@ typedef struct {
 	conn conns[REDIS_MAX_CONN];
 } redis_state;
 
-/* Hasil membaca buffer. */
+/* Buffer read results. */
 enum {
 	BUF_OK = 0,
-	BUF_EOF = -1,      /* server menutup koneksi */
-	BUF_TIMEOUT = -2,  /* SO_RCVTIMEO tercapai */
-	BUF_ERR = -3,      /* galat socket lain */
-	BUF_TOOLARGE = -4  /* melewati batas ukuran */
+	BUF_EOF = -1,      /* server closed the connection */
+	BUF_TIMEOUT = -2,  /* SO_RCVTIMEO reached */
+	BUF_ERR = -3,      /* other socket error */
+	BUF_TOOLARGE = -4  /* exceeded the size limit */
 };
 
-/* ---- teks galat socket (deterministik, tanpa strerror) ---- */
+/* ---- socket error text (deterministic, no strerror) ---- */
 static const char *sock_text(int e, char *buf, size_t cap)
 {
 	const char *s = NULL;
 #ifdef _WIN32
 	switch (e) {
-	case WSAETIMEDOUT: s = "waktu tunggu habis"; break;
-	case WSAECONNREFUSED: s = "koneksi ditolak"; break;
-	case WSAECONNRESET: s = "koneksi direset"; break;
-	case WSAEHOSTUNREACH: s = "tujuan tak terjangkau"; break;
-	case WSAENETUNREACH: s = "jaringan tak terjangkau"; break;
-	case WSAENOTCONN: s = "koneksi belum terbuka"; break;
+	case WSAETIMEDOUT: s = "timed out"; break;
+	case WSAECONNREFUSED: s = "connection refused"; break;
+	case WSAECONNRESET: s = "connection reset"; break;
+	case WSAEHOSTUNREACH: s = "destination unreachable"; break;
+	case WSAENETUNREACH: s = "network unreachable"; break;
+	case WSAENOTCONN: s = "not connected"; break;
 	default: break;
 	}
 #else
 	switch (e) {
-	case ETIMEDOUT: s = "waktu tunggu habis"; break;
-	case ECONNREFUSED: s = "koneksi ditolak"; break;
-	case ECONNRESET: s = "koneksi direset"; break;
-	case EHOSTUNREACH: s = "tujuan tak terjangkau"; break;
-	case ENETUNREACH: s = "jaringan tak terjangkau"; break;
-	case ENOTCONN: s = "koneksi belum terbuka"; break;
-	case EPIPE: s = "pipa tertutup"; break;
+	case ETIMEDOUT: s = "timed out"; break;
+	case ECONNREFUSED: s = "connection refused"; break;
+	case ECONNRESET: s = "connection reset"; break;
+	case EHOSTUNREACH: s = "destination unreachable"; break;
+	case ENETUNREACH: s = "network unreachable"; break;
+	case ENOTCONN: s = "not connected"; break;
+	case EPIPE: s = "broken pipe"; break;
 	default: break;
 	}
 #endif
 	if (s)
-		snprintf(buf, cap, "%s (kode %d)", s, e);
+		snprintf(buf, cap, "%s (code %d)", s, e);
 	else
-		snprintf(buf, cap, "galat socket %d", e);
+		snprintf(buf, cap, "socket error %d", e);
 	return buf;
 }
 
@@ -143,7 +143,7 @@ static int is_retry_err(int e)
 	return e == SOCK_EINTR;
 }
 
-/* ---- buffer baca ---- */
+/* ---- read buffer ---- */
 
 static int buf_grow(conn *c, size_t need)
 {
@@ -166,7 +166,7 @@ static int buf_grow(conn *c, size_t need)
 	return BUF_OK;
 }
 
-/* Pindahkan data belum terpakai ke awal buffer. */
+/* Move unused data to the start of the buffer. */
 static void buf_compact(conn *c)
 {
 	if (c->rpos == 0)
@@ -177,12 +177,12 @@ static void buf_compact(conn *c)
 	c->rpos = 0;
 }
 
-/* Terima minimal satu byte lagi (setelah compact bila perlu). */
+/* Receive at least one more byte (compacting first if needed). */
 static int buf_refill(conn *c)
 {
 	int rc;
 	if (c->rpos > 0) {
-		if (c->rlen == c->rpos) { /* hanya sisa terpakai */
+		if (c->rlen == c->rpos) { /* only used data remains */
 			c->rlen = 0;
 			c->rpos = 0;
 		} else {
@@ -238,7 +238,7 @@ static int buf_refill(conn *c)
 	}
 }
 
-/* Pastikan ada ≥ n byte di buffer (dari posisi baca). */
+/* Make sure ≥ n bytes are in the buffer (from the read position). */
 static int buf_ensure(conn *c, size_t n)
 {
 	while (c->rlen - c->rpos < n) {
@@ -249,8 +249,8 @@ static int buf_ensure(conn *c, size_t n)
 	return BUF_OK;
 }
 
-/* Baca satu baris protokol (tanpa CRLF). *out menunjuk ke dalam buffer —
- * SAH hanya sampai operasi baca berikutnya. */
+/* Read one protocol line (without CRLF). *out points into the buffer —
+ * VALID only until the next read operation. */
 static int buf_line(conn *c, const char **out, size_t *outlen)
 {
 	for (;;) {
@@ -276,19 +276,19 @@ static int buf_line(conn *c, const char **out, size_t *outlen)
 	}
 }
 
-/* ---- galat ---- */
+/* ---- errors ---- */
 
 static int fail_io(gne_ctx *ctx, conn *c, int rc, const char *what)
 {
 	char buf[256];
 	if (rc == BUF_TIMEOUT) {
-		snprintf(buf, sizeof buf, "%s: waktu tunggu %d ms habis", what, c->timeout_ms);
+		snprintf(buf, sizeof buf, "%s: timed out after %d ms", what, c->timeout_ms);
 		api->throw(ctx, "redis_error", 504, buf);
 	} else if (rc == BUF_EOF) {
-		snprintf(buf, sizeof buf, "%s: server menutup koneksi", what);
+		snprintf(buf, sizeof buf, "%s: server closed the connection", what);
 		api->throw(ctx, "redis_error", 502, buf);
 	} else if (rc == BUF_TOOLARGE) {
-		snprintf(buf, sizeof buf, "%s: balasan melewati batas ukuran", what);
+		snprintf(buf, sizeof buf, "%s: reply exceeded the size limit", what);
 		api->throw(ctx, "redis_error", 500, buf);
 	} else {
 		int e = SOCK_ERRNO;
@@ -299,7 +299,7 @@ static int fail_io(gne_ctx *ctx, conn *c, int rc, const char *what)
 	return -1;
 }
 
-/* ---- kumpulan argumen ---- */
+/* ---- argument collection ---- */
 
 typedef struct {
 	char **v;
@@ -319,12 +319,12 @@ static void args_free(argvec *av)
 	av->n = 0;
 }
 
-/* Konversi satu handle menjadi string protokol; galat tipe → throw. */
+/* Convert one handle into a protocol string; type error → throw. */
 static char *arg_to_str(gne_ctx *ctx, gne_handle h, size_t *len)
 {
 	int32_t t;
 	if (api->type_of(ctx, h, &t) != 0) {
-		api->throw(ctx, "type_error", 500, "argumen tidak valid");
+		api->throw(ctx, "type_error", 500, "invalid argument");
 		return NULL;
 	}
 	switch (t) {
@@ -332,17 +332,17 @@ static char *arg_to_str(gne_ctx *ctx, gne_handle h, size_t *len)
 		size_t n;
 		char *out;
 		if (api->str_len(ctx, h, &n) != 0) {
-			api->throw(ctx, "type_error", 500, "argumen string tidak terbaca");
+			api->throw(ctx, "type_error", 500, "string argument could not be read");
 			return NULL;
 		}
 		out = malloc(n + 1);
 		if (!out) {
-			api->throw(ctx, "redis_oom", 500, "gagal mengalokasikan memori");
+			api->throw(ctx, "redis_oom", 500, "failed to allocate memory");
 			return NULL;
 		}
 		if (api->str_copy(ctx, h, out, n + 1) < 0) {
 			free(out);
-			api->throw(ctx, "type_error", 500, "argumen string tidak terbaca");
+			api->throw(ctx, "type_error", 500, "string argument could not be read");
 			return NULL;
 		}
 		*len = n;
@@ -355,7 +355,7 @@ static char *arg_to_str(gne_ctx *ctx, gne_handle h, size_t *len)
 		snprintf(tmp, sizeof tmp, "%" PRId64, v);
 		out = strdup(tmp);
 		if (!out) {
-			api->throw(ctx, "redis_oom", 500, "gagal mengalokasikan memori");
+			api->throw(ctx, "redis_oom", 500, "failed to allocate memory");
 			return NULL;
 		}
 		*len = strlen(tmp);
@@ -370,7 +370,7 @@ static char *arg_to_str(gne_ctx *ctx, gne_handle h, size_t *len)
 			snprintf(tmp, sizeof tmp, "%.17g", d);
 		out = strdup(tmp);
 		if (!out) {
-			api->throw(ctx, "redis_oom", 500, "gagal mengalokasikan memori");
+			api->throw(ctx, "redis_oom", 500, "failed to allocate memory");
 			return NULL;
 		}
 		*len = strlen(tmp);
@@ -378,12 +378,12 @@ static char *arg_to_str(gne_ctx *ctx, gne_handle h, size_t *len)
 	}
 	default:
 		api->throw(ctx, "type_error", 500,
-			   "argumen Redis harus string atau angka");
+			   "Redis arguments must be strings or numbers");
 		return NULL;
 	}
 }
 
-/* Kumpulkan argv[from..argc) ke wadah malloc; 0 = sukses, -1 = throw. */
+/* Collect argv[from..argc) into a malloc'd container; 0 = success, -1 = throw. */
 static int args_collect(gne_ctx *ctx, int argc, const gne_handle *argv, int from, argvec *av)
 {
 	int i, n = argc - from;
@@ -396,7 +396,7 @@ static int args_collect(gne_ctx *ctx, int argc, const gne_handle *argv, int from
 	av->len = calloc((size_t)n, sizeof(size_t));
 	if (!av->v || !av->len) {
 		args_free(av);
-		api->throw(ctx, "redis_oom", 500, "gagal mengalokasikan memori");
+		api->throw(ctx, "redis_oom", 500, "failed to allocate memory");
 		return -1;
 	}
 	for (i = 0; i < n; i++) {
@@ -410,7 +410,7 @@ static int args_collect(gne_ctx *ctx, int argc, const gne_handle *argv, int from
 	return 0;
 }
 
-/* ---- kirim + baca balasan ---- */
+/* ---- send + read reply ---- */
 
 typedef struct {
 	char *b;
@@ -475,12 +475,12 @@ static int send_all(conn *c, const char *p, size_t n)
 			return -1;
 		}
 #endif
-		return -1; /* EOF pada send tidak terjadi di stream, tetap gagal */
+		return -1; /* EOF on send does not occur on a stream; fail anyway */
 	}
 	return 0;
 }
 
-/* Susun RESP: *N\r\n $len\r\n arg\r\n ... lalu kirim. */
+/* Build RESP: *N\r\n $len\r\n arg\r\n ... then send. */
 static int send_cmd(conn *c, const char *name, const argvec *av)
 {
 	sbuf s = { NULL, 0, 0 };
@@ -521,8 +521,8 @@ fail:
 	return -1;
 }
 
-/* Baca satu balasan RESP menjadi handle GaLang (rekursif).
- * 0 = sukses, -1 = sudah throw (atau galat I/O dengan throw). */
+/* Read one RESP reply into a GaLang handle (recursive).
+ * 0 = success, -1 = already thrown (or an I/O error with a throw). */
 static int read_reply(gne_ctx *ctx, conn *c, gne_handle *out, int depth)
 {
 	const char *line;
@@ -530,14 +530,14 @@ static int read_reply(gne_ctx *ctx, conn *c, gne_handle *out, int depth)
 	int rc;
 
 	if (depth > REDIS_MAX_DEPTH) {
-		api->throw(ctx, "redis_error", 500, "balasan Redis terlalu bertingkat");
+		api->throw(ctx, "redis_error", 500, "Redis reply is too deeply nested");
 		return -1;
 	}
 	rc = buf_line(c, &line, &linelen);
 	if (rc != BUF_OK)
-		return fail_io(ctx, c, rc, "membaca balasan");
+		return fail_io(ctx, c, rc, "reading reply");
 	if (linelen == 0) {
-		api->throw(ctx, "redis_error", 500, "balasan Redis kosong");
+		api->throw(ctx, "redis_error", 500, "empty Redis reply");
 		return -1;
 	}
 
@@ -558,7 +558,7 @@ static int read_reply(gne_ctx *ctx, conn *c, gne_handle *out, int depth)
 	case ':': {
 		char tmp[32];
 		if (linelen - 1 >= sizeof tmp) {
-			api->throw(ctx, "redis_error", 500, "balasan integer tidak terduga");
+			api->throw(ctx, "redis_error", 500, "unexpected integer reply");
 			return -1;
 		}
 		memcpy(tmp, line + 1, linelen - 1);
@@ -570,7 +570,7 @@ static int read_reply(gne_ctx *ctx, conn *c, gne_handle *out, int depth)
 		long long n;
 		char tmp[32];
 		if (linelen - 1 >= sizeof tmp) {
-			api->throw(ctx, "redis_error", 500, "panjang bulk tidak terduga");
+			api->throw(ctx, "redis_error", 500, "unexpected bulk length");
 			return -1;
 		}
 		memcpy(tmp, line + 1, linelen - 1);
@@ -581,12 +581,12 @@ static int read_reply(gne_ctx *ctx, conn *c, gne_handle *out, int depth)
 			return 0;
 		}
 		if ((unsigned long long)n > REDIS_MAX_BULK) {
-			api->throw(ctx, "redis_error", 500, "balasan bulk melewati batas 64 MiB");
+			api->throw(ctx, "redis_error", 500, "bulk reply exceeds the 64 MiB limit");
 			return -1;
 		}
 		rc = buf_ensure(c, (size_t)n + 2);
 		if (rc != BUF_OK)
-			return fail_io(ctx, c, rc, "membaca balasan bulk");
+			return fail_io(ctx, c, rc, "reading bulk reply");
 		*out = api->string(ctx, c->rbuf + c->rpos, (size_t)n);
 		c->rpos += (size_t)n + 2;
 		return 0;
@@ -597,7 +597,7 @@ static int read_reply(gne_ctx *ctx, conn *c, gne_handle *out, int depth)
 		long long i;
 		gne_handle arr;
 		if (linelen - 1 >= sizeof tmp) {
-			api->throw(ctx, "redis_error", 500, "jumlah elemen tidak terduga");
+			api->throw(ctx, "redis_error", 500, "unexpected element count");
 			return -1;
 		}
 		memcpy(tmp, line + 1, linelen - 1);
@@ -608,7 +608,7 @@ static int read_reply(gne_ctx *ctx, conn *c, gne_handle *out, int depth)
 			return 0;
 		}
 		if (n > REDIS_MAX_ELEMS) {
-			api->throw(ctx, "redis_error", 500, "terlalu banyak elemen balasan");
+			api->throw(ctx, "redis_error", 500, "too many reply elements");
 			return -1;
 		}
 		arr = api->array(ctx);
@@ -617,7 +617,7 @@ static int read_reply(gne_ctx *ctx, conn *c, gne_handle *out, int depth)
 			if (read_reply(ctx, c, &elem, depth + 1) != 0)
 				return -1;
 			if (api->arr_push(ctx, arr, elem) != 0) {
-				api->throw(ctx, "redis_error", 500, "gagal menyusun array balasan");
+				api->throw(ctx, "redis_error", 500, "failed to build the reply array");
 				return -1;
 			}
 		}
@@ -625,12 +625,12 @@ static int read_reply(gne_ctx *ctx, conn *c, gne_handle *out, int depth)
 		return 0;
 	}
 	default:
-		api->throw(ctx, "redis_error", 500, "balasan Redis tidak dikenal");
+		api->throw(ctx, "redis_error", 500, "unknown Redis reply");
 		return -1;
 	}
 }
 
-/* ---- koneksi ---- */
+/* ---- connections ---- */
 
 static conn *self_conn(gne_ctx *ctx, gne_handle self)
 {
@@ -638,7 +638,7 @@ static conn *self_conn(gne_ctx *ctx, gne_handle self)
 	gne_handle h;
 	int64_t id, gen;
 	if (!st) {
-		api->throw(ctx, "redis_error", 500, "state modul Redis hilang");
+		api->throw(ctx, "redis_error", 500, "Redis module state is missing");
 		return NULL;
 	}
 	if (api->obj_get(ctx, self, "id", &h) != 0 ||
@@ -647,7 +647,7 @@ static conn *self_conn(gne_ctx *ctx, gne_handle self)
 	    api->obj_get(ctx, self, "gen", &h) != 0 ||
 	    api->get_int(ctx, h, &gen) != 0 ||
 	    st->conns[id].fd < 0 || st->conns[id].gen != gen) {
-		api->throw(ctx, "redis_error", 500, "koneksi sudah ditutup atau tidak valid");
+		api->throw(ctx, "redis_error", 500, "connection already closed or invalid");
 		return NULL;
 	}
 	return &st->conns[id];
@@ -656,7 +656,7 @@ static conn *self_conn(gne_ctx *ctx, gne_handle self)
 static void set_timeouts(rfd_t fd, int ms)
 {
 	if (ms <= 0)
-		return; /* 0 = tanpa batas (blocking murni) */
+		return; /* 0 = no limit (pure blocking) */
 #ifdef _WIN32
 	{
 		DWORD t = (DWORD)ms;
@@ -674,7 +674,7 @@ static void set_timeouts(rfd_t fd, int ms)
 #endif
 }
 
-/* Konek nonblocking + select(timeout). 0 = sukses; nilai lain = errno/WSA. */
+/* Nonblocking connect + select(timeout). 0 = success; other values = errno/WSA. */
 static int conn_dial(rfd_t fd, const struct sockaddr *sa, socklen_t slen, int timeout_ms)
 {
 	int rc;
@@ -779,7 +779,7 @@ static int conn_dial(rfd_t fd, const struct sockaddr *sa, socklen_t slen, int ti
 #endif
 }
 
-/* Cari slot kosong; -1 bila penuh. */
+/* Find a free slot; -1 if full. */
 static int slot_free(redis_state *st)
 {
 	int i;
@@ -789,37 +789,37 @@ static int slot_free(redis_state *st)
 	return -1;
 }
 
-/* ---- metode koneksi ---- */
+/* ---- connection methods ---- */
 
-/* Eksekusi nama perintah + args → *ret (balasan mentah). 0 sukses. */
+/* Execute command name + args → *ret (raw reply). 0 on success. */
 static int exec_cmd(gne_ctx *ctx, conn *c, const char *name, const argvec *av, gne_handle *ret)
 {
 	if (send_cmd(c, name, av) != 0) {
 		int e = SOCK_ERRNO;
 		char buf[160], txt[96];
 		if (is_timeout_err(e))
-			snprintf(buf, sizeof buf, "mengirim perintah %s: waktu tunggu %d ms habis", name, c->timeout_ms);
+			snprintf(buf, sizeof buf, "sending command %s: timed out after %d ms", name, c->timeout_ms);
 		else
-			snprintf(buf, sizeof buf, "mengirim perintah %s: %s", name, sock_text(e, txt, sizeof txt));
+			snprintf(buf, sizeof buf, "sending command %s: %s", name, sock_text(e, txt, sizeof txt));
 		api->throw(ctx, "redis_error", is_timeout_err(e) ? 504 : 502, buf);
 		return -1;
 	}
 	return read_reply(ctx, c, ret, 0);
 }
 
-/* Balasan integer → bool (untuk exists/expire). */
+/* Integer reply → bool (for exists/expire). */
 static int int_to_bool(gne_ctx *ctx, gne_handle *h, int negate)
 {
 	int64_t n;
 	if (api->get_int(ctx, *h, &n) != 0) {
-		api->throw(ctx, "redis_error", 500, "balasan Redis tidak terduga (bukan integer)");
+		api->throw(ctx, "redis_error", 500, "unexpected Redis reply (not an integer)");
 		return -1;
 	}
 	*h = api->bool_new(ctx, negate ? n == 0 : n != 0);
 	return 0;
 }
 
-/* Pola metode umum: self + args → kirim nama → balasan mentah. */
+/* Common method pattern: self + args → send name → raw reply. */
 static int method_simple(gne_ctx *ctx, int argc, const gne_handle *argv,
 			 gne_handle *ret, const char *name, int konversi)
 {
@@ -834,9 +834,9 @@ static int method_simple(gne_ctx *ctx, int argc, const gne_handle *argv,
 		return -1;
 	}
 	args_free(&av);
-	if (konversi == 1) /* balasan integer → bool */
+	if (konversi == 1) /* integer reply → bool */
 		return int_to_bool(ctx, ret, 0);
-	if (konversi == 2) /* balasan integer → bool terbalik */
+	if (konversi == 2) /* integer reply → negated bool */
 		return int_to_bool(ctx, ret, 1);
 	return 0;
 }
@@ -848,7 +848,7 @@ static int method_simple(gne_ctx *ctx, int argc, const gne_handle *argv,
 		return method_simple(ctx, argc, argv, ret, #nm, konv);       \
 	}
 
-/* Nama perintah berbeda dari nama metode. */
+/* Command name differs from the method name. */
 static int m_del(gne_ctx *ctx, int argc, const gne_handle *argv, gne_handle *ret)
 {
 	return method_simple(ctx, argc, argv, ret, "DEL", 0);
@@ -894,7 +894,7 @@ static int m_incr(gne_ctx *ctx, int argc, const gne_handle *argv, gne_handle *re
 	return method_simple(ctx, argc, argv, ret, "INCR", 0);
 }
 
-/* ping() → true (balasan apapun non-galat berarti hidup). */
+/* ping() → true (any non-error reply means the server is alive). */
 static int m_ping(gne_ctx *ctx, int argc, const gne_handle *argv, gne_handle *ret)
 {
 	conn *c = self_conn(ctx, argv[0]);
@@ -909,7 +909,7 @@ static int m_ping(gne_ctx *ctx, int argc, const gne_handle *argv, gne_handle *re
 	return 0;
 }
 
-/* cmd(nama, ...args) → balasan mentah. */
+/* cmd(name, ...args) → raw reply. */
 static int m_cmd(gne_ctx *ctx, int argc, const gne_handle *argv, gne_handle *ret)
 {
 	conn *c = self_conn(ctx, argv[0]);
@@ -921,10 +921,10 @@ static int m_cmd(gne_ctx *ctx, int argc, const gne_handle *argv, gne_handle *ret
 		return -1;
 	if (av.n == 0) {
 		args_free(&av);
-		api->throw(ctx, "type_error", 500, "cmd() butuh nama perintah");
+		api->throw(ctx, "type_error", 500, "cmd() requires a command name");
 		return -1;
 	}
-	name = av.v[0]; /* nama perintah = argumen pertama */
+	name = av.v[0]; /* command name = first argument */
 	{
 		argvec rest;
 		int i;
@@ -935,17 +935,17 @@ static int m_cmd(gne_ctx *ctx, int argc, const gne_handle *argv, gne_handle *ret
 			args_free(&av);
 			return -1;
 		}
-		/* rest menunjuk ke dalam av — bebaskan semua lewat av. */
+		/* rest points into av — free everything through av. */
 		(void)i;
 	}
 	args_free(&av);
 	return 0;
 }
 
-/* close() → true bila menutup koneksi hidup, false bila sudah tertutup
- * atau objek basi (idempoten; metode lain tetap melempar "sudah ditutup").
- * Generasi dinaikkan supaya objek lama tidak bisa mengendalikan koneksi
- * baru yang kebetulan memakai slot yang sama. */
+/* close() → true when it closes a live connection, false when already closed
+ * or the object is stale (idempotent; other methods still throw "already closed").
+ * The generation is bumped so an old object cannot control a
+ * new connection that happens to use the same slot. */
 static int m_close(gne_ctx *ctx, int argc, const gne_handle *argv, gne_handle *ret)
 {
 	redis_state *st = api->get_data(ctx);
@@ -963,7 +963,7 @@ static int m_close(gne_ctx *ctx, int argc, const gne_handle *argv, gne_handle *r
 	}
 	rfd_close(st->conns[id].fd);
 	st->conns[id].fd = -1;
-	st->conns[id].gen++; /* invalidate objek ini untuk koneksi berikutnya */
+	st->conns[id].gen++; /* invalidate this object for the next connection */
 	free(st->conns[id].rbuf);
 	st->conns[id].rbuf = NULL;
 	st->conns[id].rcap = st->conns[id].rlen = st->conns[id].rpos = 0;
@@ -984,30 +984,30 @@ static int redis_connect(gne_ctx *ctx, int argc, const gne_handle *argv, gne_han
 	gne_handle obj, hv;
 
 	if (!st) {
-		api->throw(ctx, "redis_error", 500, "state modul Redis hilang");
+		api->throw(ctx, "redis_error", 500, "Redis module state is missing");
 		return -1;
 	}
 	if (argc >= 3 && api->get_int(ctx, argv[2], &timeout) != 0) {
-		api->throw(ctx, "type_error", 500, "timeout harus berupa angka (milidetik)");
+		api->throw(ctx, "type_error", 500, "timeout must be a number (milliseconds)");
 		return -1;
 	}
 	if (timeout < 0) {
-		api->throw(ctx, "type_error", 500, "timeout tidak boleh negatif (0 = tanpa batas)");
+		api->throw(ctx, "type_error", 500, "timeout must not be negative (0 = no limit)");
 		return -1;
 	}
 	if (api->str_len(ctx, argv[0], &hlen) != 0 || hlen == 0 || hlen >= sizeof host) {
-		api->throw(ctx, "type_error", 500, "host harus string 1–255 karakter");
+		api->throw(ctx, "type_error", 500, "host must be a string of 1–255 characters");
 		return -1;
 	}
 	api->str_copy(ctx, argv[0], host, sizeof host);
 	if (api->get_int(ctx, argv[1], &port) != 0 || port < 1 || port > 65535) {
-		api->throw(ctx, "type_error", 500, "port harus angka 1–65535");
+		api->throw(ctx, "type_error", 500, "port must be a number in the range 1–65535");
 		return -1;
 	}
 	slot = slot_free(st);
 	if (slot < 0) {
 		api->throw(ctx, "redis_error", 500,
-			   "koneksi penuh (maksimal 64 koneksi terbuka; tutup yang tidak dipakai)");
+			   "too many connections (max 64 open; close unused ones)");
 		return -1;
 	}
 
@@ -1017,7 +1017,7 @@ static int redis_connect(gne_ctx *ctx, int argc, const gne_handle *argv, gne_han
 	hints.ai_socktype = SOCK_STREAM;
 	if (getaddrinfo(host, ports, &hints, &res) != 0) {
 		char msg[320];
-		snprintf(msg, sizeof msg, "gagal memecahkan alamat host %s", host);
+		snprintf(msg, sizeof msg, "failed to resolve host address %s", host);
 		api->throw(ctx, "redis_error", 502, msg);
 		return -1;
 	}
@@ -1040,7 +1040,7 @@ static int redis_connect(gne_ctx *ctx, int argc, const gne_handle *argv, gne_han
 			c = &st->conns[slot];
 			c->fd = (int)fd;
 			c->timeout_ms = (int)timeout;
-			c->gen++; /* siklus hidup baru — invalidasi objek lama */
+			c->gen++; /* new lifecycle — invalidate old objects */
 			c->rbuf = NULL;
 			c->rcap = c->rlen = c->rpos = 0;
 			freeaddrinfo(res);
@@ -1080,10 +1080,10 @@ static int redis_connect(gne_ctx *ctx, int argc, const gne_handle *argv, gne_han
 	{
 		char msg[384], txt[96];
 		if (e == ETIMEDOUT || is_timeout_err(e))
-			snprintf(msg, sizeof msg, "gagal terhubung ke %.200s:%" PRId64 " (waktu tunggu %d ms habis)",
+			snprintf(msg, sizeof msg, "failed to connect to %.200s:%" PRId64 " (timed out after %d ms)",
 				 host, port, (int)timeout);
 		else
-			snprintf(msg, sizeof msg, "gagal terhubung ke %.200s:%" PRId64 ": %s",
+			snprintf(msg, sizeof msg, "failed to connect to %.200s:%" PRId64 ": %s",
 				 host, port, sock_text(e, txt, sizeof txt));
 		api->throw(ctx, "redis_error", 502, msg);
 	}
@@ -1096,7 +1096,7 @@ int gne_module_init(const gne_host_api *a, gne_ctx *ctx, gne_handle *out)
 	int i;
 	api = a;
 	if (api->abi != GNE_ABI) {
-		api->throw(ctx, "gne_abi", 500, "ABI berbeda");
+		api->throw(ctx, "gne_abi", 500, "ABI mismatch");
 		return 1;
 	}
 #ifdef _WIN32
@@ -1105,7 +1105,7 @@ int gne_module_init(const gne_host_api *a, gne_ctx *ctx, gne_handle *out)
 		if (!wsa_done) {
 			WSADATA wsa;
 			if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
-				api->throw(ctx, "redis_error", 502, "WSAStartup gagal");
+				api->throw(ctx, "redis_error", 502, "WSAStartup failed");
 				return 1;
 			}
 			wsa_done = 1;
@@ -1114,7 +1114,7 @@ int gne_module_init(const gne_host_api *a, gne_ctx *ctx, gne_handle *out)
 #endif
 	st = calloc(1, sizeof(*st));
 	if (!st) {
-		api->throw(ctx, "redis_oom", 500, "gagal mengalokasikan state koneksi");
+		api->throw(ctx, "redis_oom", 500, "failed to allocate connection state");
 		return 1;
 	}
 	for (i = 0; i < REDIS_MAX_CONN; i++)

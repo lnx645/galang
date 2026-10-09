@@ -15,8 +15,8 @@ loaded when `use` reaches them via `dlopen` (Linux/macOS) or `LoadLibrary`
 Five official extensions are compiled from the sources in this repo
 (`ext/redis/`, `ext/smtp/`, `ext/uuid/`, `ext/jwt/`, `ext/httpclient/`)
 and released as multi-platform zip assets. Install them from the official
-channel (requires `gar` **0.6.0+**; the three newer extensions need `gar`
-**0.7.1+** for the name shortcut):
+channel (the zips shipped from v0.7.1 are built for **ABI 2** and need
+`gar` **0.7.1+**; older ABI 1 packages still install and run on 0.7.1+):
 
 ```bash
 gar gne install redis          # latest release
@@ -45,8 +45,10 @@ table):
   [Standard Modules — smtp](modules.md#smtp--official-extension).
 - **`uuid`** — RFC 9562 UUIDs: `v4` (random), `v7` (time-stamped),
   `is_valid`.
-- **`jwt`** — JWT with HS256/HS384/HS512: `sign`, `verify` (signature
-  plus `exp`/`nbf` claims), and unverified `decode`.
+- **`jwt`** — JWT with HS256/HS384/HS512: `sign` (accepts a GaLang
+  **object** — serialized in C — or a raw JSON object string), `verify`
+  (returns the claims **object**; checks the signature plus `exp`/`nbf`
+  claims), and unverified `decode` (also returns an object).
 - **`httpclient`** — an HTTP/1.1 client: `get`, `post`, `request` plus a
   response object (`status`, `ok`, `body`, `header()`). https is
   **rejected** (no built-in TLS, same as smtp).
@@ -148,7 +150,28 @@ GNE_EXPORT int gne_module_init(const gne_host_api *api, gne_ctx *ctx,
 - Return `0` on success. On failure: `api->throw(...)` then return
   non-zero.
 - Always check `api->abi != GNE_ABI` first — that is how an extension
-  rejects a runtime with a different ABI version.
+  rejects a runtime with a different ABI version (see
+  [ABI versioning](#abi-versioning)).
+
+## ABI versioning
+
+`GNE_ABI` in `gne.h` is currently **2** (ABI 1 had no `obj_keys`). Two
+rules make extensions survive upgrades:
+
+- **The table is append-only.** New fields are only ever added at the
+  end of `gne_host_api` — never reordered, removed, or retyped — so
+  every view keeps identical field offsets.
+- **The host serves a legacy view.** `gar gne install` records the
+  package's ABI in the sidecar (`<name>.gne.json`, field `gne_abi`). At
+  load time the host hands an extension built for an older ABI a table
+  with the same layout but the older number in `api->abi`, so
+  already-installed extensions keep working after a `gar` upgrade.
+  Packages built for an ABI **newer** than the host are rejected at
+  install time with a clear message.
+
+That is why the mandatory init check is `api->abi != GNE_ABI` (strict
+equality): a real mismatch always fails loudly instead of reading the
+wrong field offsets.
 
 ## API reference
 
@@ -159,7 +182,7 @@ static variable during init).
 |---|---|
 | Constructors | `null`, `bool_new`, `int_new`, `float_new`, `string`, `array`, `object` |
 | Accessors | `type_of`, `get_bool`, `get_int`, `get_float`, `str_len`, `str_copy` |
-| Containers | `len`, `arr_push`, `arr_get`, `arr_set`, `obj_set`, `obj_get`, `obj_has` |
+| Containers | `len`, `arr_push`, `arr_get`, `arr_set`, `obj_set`, `obj_get`, `obj_has`, `obj_keys` (ABI 2) |
 | Functions | `define_fn`, `define_method`, `module`, `call` |
 | Errors | `throw`, `failed` |
 | State | `set_data`, `get_data` |
@@ -167,7 +190,9 @@ static variable during init).
 
 Accessor convention: **0 = success, -1 = failure** (wrong type or handle) —
 accessors never throw; the extension decides whether to reject or not.
-`len` works for arrays and strings (strings: **byte** length).
+`len` works for arrays and strings (strings: **byte** length). `obj_keys`
+returns an array of string handles holding the object's keys in
+insertion order (same 0/-1 convention, no throw).
 
 ## Values and handle rules
 

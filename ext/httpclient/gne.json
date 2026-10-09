@@ -1,5 +1,5 @@
 {
   "name": "httpclient",
   "version": "0.7.1",
-  "description": "Klien HTTP/1.1 tanpa TLS: GET/POST/request, header tambahan, chunked, dan pengalihan otomatis; https ditolak (proksi TLS lokal)."
+  "description": "HTTP/1.1 client without TLS: GET/POST/request, extra headers, chunked encoding, and automatic redirects; https is rejected (use a local TLS proxy)."
 }

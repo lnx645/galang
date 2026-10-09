@@ -2,20 +2,23 @@ package interp
 
 // GNE — GaLang Native Extension.
 //
-// Fallback resolusi `use`: bila berkas sumber tidak ditemukan (atau path
-// eksplisit berupa pustaka native), interpreter mencari ekstensi C berupa
-// .so/.dylib/.dll pada:
+// Fallback resolution for `use`: when no source file is found (or the
+// explicit path points at a native library), the interpreter looks for
+// a C extension — .so/.dylib/.dll — in:
 //
-//	1. <direktori pemanggil>/gne   (proyek — menang untuk pengembangan)
-//	2. setiap entri $GNE_PATH     (pemisah os.PathListSeparator)
+//	1. <caller dir>/gne   (project — wins, for development)
+//	2. every $GNE_PATH entry   (os.PathListSeparator separated)
 //	3. ~/.galang/gne             (global)
 //
-// Urutan resolusi `use` tetap: bawaan (in.Modules) → file .ga → GNE.
-// Tidak ada perubahan parser atau compiler: compileUse sudah terikat ke
-// nama namespace (fileModuleName) sebelum jalur runtime ini dijalankan.
-// Lihat include/gne.h untuk ABI dan docs/id/gne.md untuk panduan penulis.
+// The resolution order for `use` is unchanged: builtins (in.Modules)
+// → .ga file → GNE. Neither parser nor compiler changes: compileUse
+// already binds the namespace name (fileModuleName) before this
+// runtime path runs.
+// See include/gne.h for the ABI and docs/en/gne.md for the authoring
+// guide.
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -26,11 +29,17 @@ import (
 	"galang/internal/infra/gne"
 )
 
-// gneNativeSuffixes adalah ekstensi pustaka native yang dikenali.
+// gneSidecarSuffix is the per-extension manifest written by
+// `gar gne install` next to the library (<name>.gne.json). Its
+// gne_abi field tells the loader which ABI view the library was built
+// for.
+const gneSidecarSuffix = ".gne.json"
+
+// gneNativeSuffixes are the native library suffixes we recognize.
 var gneNativeSuffixes = []string{".so", ".dylib", ".dll"}
 
-// gneIsNative melaporkan apakah path menunjuk pustaka native, bukan
-// berkas sumber GaLang.
+// gneIsNative reports whether path points at a native library rather
+// than a GaLang source file.
 func gneIsNative(path string) bool {
 	lp := strings.ToLower(path)
 	for _, s := range gneNativeSuffixes {
@@ -41,7 +50,7 @@ func gneIsNative(path string) bool {
 	return false
 }
 
-// gneStripSuffix membuang ekstensi native: "lib/redis.so" → "redis".
+// gneStripSuffix drops the native suffix: "lib/redis.so" → "redis".
 func gneStripSuffix(path string) string {
 	lp := strings.ToLower(path)
 	for _, s := range gneNativeSuffixes {
@@ -52,8 +61,8 @@ func gneStripSuffix(path string) string {
 	return path
 }
 
-// gneLibExts mengembalikan ekstensi pustaka untuk platform berjalan
-// (macOS juga menerima .so karena dlopen menerimanya).
+// gneLibExts returns the library suffixes for the running platform
+// (macOS also accepts .so because dlopen does).
 func gneLibExts() []string {
 	switch runtime.GOOS {
 	case "windows":
@@ -65,8 +74,26 @@ func gneLibExts() []string {
 	}
 }
 
-// gneRegistry membuat registry GNE pada pertama kalinya, lengkap dengan
-// hooks semantik interpreter (Builtin, galat catchable, callback).
+// gneDeclaredABI reads gne_abi from the sidecar sitting next to the
+// library. Returns 0 when the sidecar is missing or unreadable — the
+// loader then assumes the current host ABI (correct for manually
+// dropped libraries built against the current header).
+func gneDeclaredABI(dir, name string) int {
+	b, err := os.ReadFile(filepath.Join(dir, name+gneSidecarSuffix))
+	if err != nil {
+		return 0
+	}
+	var sc struct {
+		GNEABI int `json:"gne_abi"`
+	}
+	if err := json.Unmarshal(b, &sc); err != nil {
+		return 0
+	}
+	return sc.GNEABI
+}
+
+// gneRegistry creates the GNE registry on first use, complete with the
+// interpreter's semantic hooks (Builtin, catchable errors, callbacks).
 func (in *Interp) gneRegistry() *gne.Registry {
 	if in.gne == nil {
 		in.gne = gne.NewRegistry(gne.Hooks{
@@ -96,7 +123,7 @@ func (in *Interp) gneRegistry() *gne.Registry {
 	return in.gne
 }
 
-// gneDirs mengembalikan direktori pencarian, urut prioritas.
+// gneDirs returns the search directories, in priority order.
 func (in *Interp) gneDirs() []string {
 	dirs := []string{filepath.Join(in.curDir, "gne")}
 	if env := os.Getenv("GNE_PATH"); env != "" {
@@ -112,8 +139,9 @@ func (in *Interp) gneDirs() []string {
 	}
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
 		dirs = append(dirs, filepath.Join(home, ".galang", "gne"))
-		// Lokasi lama sebelum rebrand v0.7.0 — dicari bila masih ada
-		// agar ekstensi terpasang lama tidak perlu dipasang ulang.
+		// Old location from before the v0.7.0 rebrand — searched when
+		// it exists so previously installed extensions keep working
+		// without reinstalling.
 		legacy := filepath.Join(home, ".garurda", "gne")
 		if st, statErr := os.Stat(legacy); statErr == nil && st.IsDir() {
 			dirs = append(dirs, legacy)
@@ -122,9 +150,9 @@ func (in *Interp) gneDirs() []string {
 	return dirs
 }
 
-// gneCandidatesList mengembalikan semua path yang akan dicoba untuk nama
-// telanjang — dipakai pada pesan "not found" agar pengguna tahu persis
-// ke mana meletakkan ekstensi.
+// gneCandidatesList returns every path that will be tried for a bare
+// name — used in the "not found" message so users know exactly where
+// to drop an extension.
 func (in *Interp) gneCandidatesList(name string) []string {
 	var out []string
 	for _, d := range in.gneDirs() {
@@ -135,8 +163,8 @@ func (in *Interp) gneCandidatesList(name string) []string {
 	return out
 }
 
-// gneAdopt memakai hasil Registry.Load: memberi konteks posisi pada galat
-// init yang catchable, atau mengubah galat mekanis menjadi errf.
+// gneAdopt applies Registry.Load's result: giving the init error a
+// catchable position context, or turning a mechanical error into errf.
 func (in *Interp) gneAdopt(v domain.Value, err error, pos domain.Position) (domain.Value, error) {
 	if err == nil {
 		return v, nil
@@ -153,9 +181,9 @@ func (in *Interp) gneAdopt(v domain.Value, err error, pos domain.Position) (doma
 	return nil, in.errf(pos, "%v", err)
 }
 
-// loadGNEExplicit memuat ekstensi dari path eksplisit, mis.
-// use "lib/foo.so" atau use "foo.dll". Path relatif diselesaikan
-// terhadap direktori file pemanggil.
+// loadGNEExplicit loads an extension from an explicit path, e.g.
+// use "lib/foo.so" or use "foo.dll". Relative paths are resolved
+// against the calling file's directory.
 func (in *Interp) loadGNEExplicit(path string, pos domain.Position) (domain.Value, error) {
 	p := path
 	if !filepath.IsAbs(p) {
@@ -163,7 +191,7 @@ func (in *Interp) loadGNEExplicit(path string, pos domain.Position) (domain.Valu
 	}
 	name := gneStripSuffix(filepath.Base(path))
 	reg := in.gneRegistry()
-	m, err := reg.Load(name, p)
+	m, err := reg.Load(name, p, gneDeclaredABI(filepath.Dir(p), name))
 	if err != nil {
 		_, aerr := in.gneAdopt(nil, err, pos)
 		return nil, aerr
@@ -171,8 +199,8 @@ func (in *Interp) loadGNEExplicit(path string, pos domain.Position) (domain.Valu
 	return m.Namespace(), nil
 }
 
-// loadGNEBare mencari nama telanjang pada direktori pencarian GNE.
-// found=false bila tidak ada satu pun kandidat yang ada.
+// loadGNEBare searches for a bare name in the GNE search directories.
+// found=false when no candidate exists.
 func (in *Interp) loadGNEBare(name string, pos domain.Position) (domain.Value, bool, error) {
 	reg := in.gneRegistry()
 	for _, d := range in.gneDirs() {
@@ -181,7 +209,7 @@ func (in *Interp) loadGNEBare(name string, pos domain.Position) (domain.Value, b
 			if st, err := os.Stat(p); err != nil || st.IsDir() {
 				continue
 			}
-			v, lerr := reg.Load(name, p)
+			v, lerr := reg.Load(name, p, gneDeclaredABI(d, name))
 			if lerr != nil {
 				_, aerr := in.gneAdopt(nil, lerr, pos)
 				return nil, true, aerr

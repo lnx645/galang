@@ -2,9 +2,9 @@
 
 package interp
 
-// Uji ekstensi resmi ext/smtp: mengompilasi sumber asli (bukan salinan),
-// menjalankannya lewat `use "smtp"` pada program GaLang nyata, dengan
-// server SMTP tiruan in-process. Suite tetap hermetic — tanpa MTA nyata.
+// Tests the official ext/smtp extension: compiles the original source (not a
+// copy), runs it through `use "smtp"` in a real GaLang program, with an
+// in-process fake SMTP server. The suite stays hermetic — no real MTA.
 
 import (
 	"bufio"
@@ -21,35 +21,35 @@ import (
 	"time"
 )
 
-// ---- server SMTP tiruan ----
+// ---- fake SMTP server ----
 
-// smtpKonf mengatur perilaku server SMTP tiruan per kasus uji.
+// smtpKonf configures the fake SMTP server's behavior per test case.
 type smtpKonf struct {
-	greeting  string   // sapaan awal; "" = "220 siap.test ESMTP"
-	ehloTolak bool     // balas 502 ke EHLO (uji fallback HELO)
-	ekstensi  []string // baris kemampuan EHLO; nil = default (AUTH LOGIN, 8BITMIME)
-	authTolak bool     // 535 pada akhir AUTH LOGIN
-	rcptTolak string   // substrimat alamat yang dibalas 550 ("" = semua diterima)
-	diamEHLO  bool     // berhenti membalas sesudah EHLO (uji timeout)
+	greeting  string   // initial greeting; "" = "220 siap.test ESMTP"
+	ehloTolak bool     // reply 502 to EHLO (tests HELO fallback)
+	ekstensi  []string // EHLO capability lines; nil = default (AUTH LOGIN, 8BITMIME)
+	authTolak bool     // 535 at the end of AUTH LOGIN
+	rcptTolak string   // address substring that gets a 550 reply ("" = accept all)
+	diamEHLO  bool     // stop replying after EHLO (tests timeout)
 }
 
-// srvSMTP adalah server SMTP mini in-process: mencatat perintah, kredensial
-// AUTH, dan setiap DATA (mentah + setelah unstuffing titik).
+// srvSMTP is a mini in-process SMTP server: it records commands, AUTH
+// credentials, and every DATA (raw + after dot-unstuffing).
 type srvSMTP struct {
 	konf smtpKonf
 
 	mu       sync.Mutex
 	perintah []string
-	pesan    []string // DATA setelah unstuffing (headers + badan, CRLF)
-	raw      []string // DATA mentah seperti terkirim klien
+	pesan    []string // DATA after unstuffing (headers + body, CRLF)
+	raw      []string // raw DATA exactly as the client sent it
 	authUser string
 	authPass string
 
 	done chan struct{}
 }
 
-// bukaServerSMTP menjalankan server tiruan pada 127.0.0.1:0 dan
-// mengembalikan handle server beserta host/port-nya.
+// bukaServerSMTP runs the fake server on 127.0.0.1:0 and
+// returns the server handle along with its host/port.
 func bukaServerSMTP(t *testing.T, konf smtpKonf) (*srvSMTP, string, int) {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -127,7 +127,7 @@ func (sv *srvSMTP) authCreds() (string, string) {
 	return sv.authUser, sv.authPass
 }
 
-// layani menjalankan protokol SMTP pada satu koneksi.
+// layani runs the SMTP protocol on one connection.
 func (sv *srvSMTP) layani(c net.Conn) {
 	defer c.Close()
 	br := bufio.NewReader(c)
@@ -161,7 +161,7 @@ func (sv *srvSMTP) layani(c net.Conn) {
 		switch {
 		case strings.HasPrefix(up, "EHLO "):
 			if sv.konf.ehloTolak {
-				kirim("502 5.5.2 EHLO tidak didukung\r\n")
+				kirim("502 5.5.2 EHLO not supported\r\n")
 				continue
 			}
 			eks := sv.konf.ekstensi
@@ -210,22 +210,22 @@ func (sv *srvSMTP) layani(c net.Conn) {
 				sv.setAuth("", string(d))
 			}
 			if sv.konf.authTolak {
-				kirim("535 5.7.8 Autentikasi gagal\r\n")
+				kirim("535 5.7.8 Authentication failed\r\n")
 				continue
 			}
-			kirim("235 2.7.0 Autentikasi berhasil\r\n")
+			kirim("235 2.7.0 Authentication successful\r\n")
 		case strings.HasPrefix(up, "MAIL FROM:"):
 			kirim("250 2.1.0 OK\r\n")
 		case strings.HasPrefix(up, "RCPT TO:"):
 			if sv.konf.rcptTolak != "" && strings.Contains(line, sv.konf.rcptTolak) {
-				kirim("550 5.1.1 Alamat penerima ditolak\r\n")
+				kirim("550 5.1.1 Recipient address rejected\r\n")
 				continue
 			}
 			kirim("250 2.1.5 OK\r\n")
 		case up == "RSET":
 			kirim("250 2.0.0 OK\r\n")
 		case up == "DATA":
-			if !kirim("354 Akhiri dengan <CR><LF>.<CR><LF>\r\n") {
+			if !kirim("354 End with <CR><LF>.<CR><LF>\r\n") {
 				return
 			}
 			var raw, bersih strings.Builder
@@ -239,27 +239,27 @@ func (sv *srvSMTP) layani(c net.Conn) {
 				}
 				raw.WriteString(l)
 				if strings.HasPrefix(l, "..") {
-					l = l[1:] // unstuffing ala MTA nyata
+					l = l[1:] // unstuffing like a real MTA
 				}
 				bersih.WriteString(l)
 			}
 			sv.simpan(raw.String(), bersih.String())
-			kirim("250 2.0.0 OK: antre\r\n")
+			kirim("250 2.0.0 OK: queued\r\n")
 		case up == "QUIT":
-			kirim("221 2.0.0 Sampai jumpa\r\n")
+			kirim("221 2.0.0 Goodbye\r\n")
 			return
 		default:
-			kirim("500 5.5.2 Perintah tidak dikenal\r\n")
+			kirim("500 5.5.2 Command not recognized\r\n")
 		}
 	}
 }
 
-// bangunSMTPC mengompilasi ext/smtp/smtp.c (sumber asli) menjadi
-// <dir>/gne/smtp.so. Gagal bila gcc tidak ada — ini kode kita, bukan fixture.
+// bangunSMTPC compiles ext/smtp/smtp.c (the original source) into
+// <dir>/gne/smtp.so. Fails if gcc is missing — this is our code, not a fixture.
 func bangunSMTPC(t *testing.T, dir string) {
 	t.Helper()
 	if _, err := exec.LookPath("gcc"); err != nil {
-		t.Skip("gcc tidak tersedia")
+		t.Skip("gcc not available")
 	}
 	src := filepath.Join("..", "..", "..", "ext", "smtp", "smtp.c")
 	inc := filepath.Join("..", "..", "..", "include")
@@ -270,11 +270,11 @@ func bangunSMTPC(t *testing.T, dir string) {
 	cmd := exec.Command("gcc", "-shared", "-fPIC", "-Wall", "-Wextra",
 		"-I", inc, "-o", out, src)
 	if b, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("gagal mengompilasi ext/smtp/smtp.c: %v\n%s", err, b)
+		t.Fatalf("failed to compile ext/smtp/smtp.c: %v\n%s", err, b)
 	}
 }
 
-// ambilHeader mengambil nilai header (setelah "Nama: ") dari blok header.
+// ambilHeader extracts a header value (after "Name: ") from a header block.
 func ambilHeader(h, nama string) string {
 	for _, hl := range strings.Split(h, "\r\n") {
 		if strings.HasPrefix(hl, nama) {
@@ -284,7 +284,7 @@ func ambilHeader(h, nama string) string {
 	return ""
 }
 
-// adaPerintah mengecek apakah server menerima perintah dengan awalan tertentu.
+// adaPerintah checks whether the server received a command with a given prefix.
 func adaPerintah(sv *srvSMTP, prefix string) bool {
 	for _, p := range sv.perintahSemua() {
 		if strings.HasPrefix(p, prefix) {
@@ -294,10 +294,10 @@ func adaPerintah(sv *srvSMTP, prefix string) bool {
 	return false
 }
 
-// TestSMTPPenuh menguji alur penuh: AUTH, dua penerima, tiga transaksi DATA
-// (teks non-ASCII, kosong, multipart HTML), dot-stuffing, CTE 8bit, close
-// idempoten, dan objek basi pasca-close.
-func TestSMTPPenuh(t *testing.T) {
+// TestSMTPFull exercises the full flow: AUTH, two recipients, three DATA
+// transactions (non-ASCII text, empty, multipart HTML), dot-stuffing, 8bit
+// CTE, idempotent close, and a stale object after close.
+func TestSMTPFull(t *testing.T) {
 	sv, host, port := bukaServerSMTP(t, smtpKonf{})
 	dir := t.TempDir()
 	bangunSMTPC(t, dir)
@@ -310,19 +310,19 @@ print($s.auth("pengguna@contoh.id", "rahasia123"))
 print($s.from("kirim@contoh.id"))
 print($s.to("satu@contoh.id"))
 print($s.to("dua@contoh.id"))
-print($s.subject("Halo dari GaLang"))
-print($s.send("Baris pertama\n.dengan titik\nakhir ☕"))
+print($s.subject("Hello from GaLang"))
+print($s.send("First line\n.with dot\nlast ☕"))
 print($s.from("kirim@contoh.id"))
 print($s.to("kosong@contoh.id"))
 print($s.send(""))
 print($s.from("kirim@contoh.id"))
 print($s.to("satu@contoh.id"))
-print($s.send_html("Versi teks", "<p>Halo <b>dunia</b></p>"))
+print($s.send_html("Text version", "<p>Hello <b>world</b></p>"))
 print($s.close())
 print($s.close())
 try {
   $s.from("x@y.z")
-  print("tidak")
+  print("no")
 } catch e {
   print(e.code + "/" + str(e.status))
 }
@@ -336,67 +336,67 @@ try {
 	}
 	want = append(want, "false", "smtp_error/500")
 	if got := strings.TrimSpace(out); got != strings.Join(want, "\n") {
-		t.Errorf("output =\n%s\nmau =\n%s", got, strings.Join(want, "\n"))
+		t.Errorf("output =\n%s\nwant =\n%s", got, strings.Join(want, "\n"))
 	}
 
 	pesan := sv.pesanSemua()
 	if len(pesan) != 3 {
-		t.Fatalf("jumlah pesan = %d, mau 3", len(pesan))
+		t.Fatalf("message count = %d, want 3", len(pesan))
 	}
 	raw := sv.rawSemua()
 
-	// --- pesan 1: text/plain, CTE 8bit, dot-stuffing ---
+	// --- message 1: text/plain, 8bit CTE, dot-stuffing ---
 	h1, b1, ok := strings.Cut(pesan[0], "\r\n\r\n")
 	if !ok {
-		t.Fatalf("pesan 1 tanpa pemisah header/badan: %q", pesan[0])
+		t.Fatalf("message 1 has no header/body separator: %q", pesan[0])
 	}
 	for _, w := range []string{
 		"From: kirim@contoh.id\r\n",
 		"To: satu@contoh.id, dua@contoh.id\r\n",
-		"Subject: Halo dari GaLang\r\n",
+		"Subject: Hello from GaLang\r\n",
 		"Content-Type: text/plain; charset=utf-8\r\n",
 		"Content-Transfer-Encoding: 8bit\r\n",
 		"MIME-Version: 1.0\r\n",
 	} {
 		if !strings.Contains(h1+"\r\n", w) {
-			t.Errorf("header pesan 1 tanpa %q:\n%s", w, h1)
+			t.Errorf("message 1 header missing %q:\n%s", w, h1)
 		}
 	}
 	tgl := ambilHeader(h1, "Date: ")
 	ts, err := time.Parse("Mon, 02 Jan 2006 15:04:05 -0700", tgl)
 	if err != nil {
-		t.Errorf("Date tidak terurai (%v): %q", err, tgl)
+		t.Errorf("Date failed to parse (%v): %q", err, tgl)
 	} else {
 		if d := time.Since(ts); d < -5*time.Minute || d > 5*time.Minute {
-			t.Errorf("Date jauh dari waktu sekarang: %q", tgl)
+			t.Errorf("Date far from the current time: %q", tgl)
 		}
 		if len(tgl) >= 3 && ts.UTC().Format("Mon") != tgl[:3] {
-			t.Errorf("nama hari %q tidak cocok dengan tanggalnya (seharusnya %s): %q",
+			t.Errorf("weekday name %q does not match the date (expected %s): %q",
 				tgl[:3], ts.UTC().Format("Mon"), tgl)
 		}
 	}
 	if mid := ambilHeader(h1, "Message-ID: "); !strings.HasPrefix(mid, "<") || !strings.HasSuffix(mid, ">") {
-		t.Errorf("Message-ID aneh: %q", mid)
+		t.Errorf("weird Message-ID: %q", mid)
 	}
-	if want := "Baris pertama\r\n.dengan titik\r\nakhir ☕\r\n"; b1 != want {
-		t.Errorf("badan 1 = %q, mau %q", b1, want)
+	if want := "First line\r\n.with dot\r\nlast ☕\r\n"; b1 != want {
+		t.Errorf("body 1 = %q, want %q", b1, want)
 	}
-	if !strings.Contains(raw[0], "\r\n..dengan titik\r\n") {
-		t.Errorf("dot-stuffing hilang di jalur kirim:\n%s", raw[0])
+	if !strings.Contains(raw[0], "\r\n..with dot\r\n") {
+		t.Errorf("dot-stuffing missing on the wire:\n%s", raw[0])
 	}
 
-	// --- pesan 2: badan kosong ---
+	// --- message 2: empty body ---
 	if _, b2, _ := strings.Cut(pesan[1], "\r\n\r\n"); b2 != "" {
-		t.Errorf("badan kosong = %q", b2)
+		t.Errorf("empty body = %q", b2)
 	}
 	if !strings.Contains(pesan[1], "To: kosong@contoh.id\r\n") {
-		t.Errorf("pesan 2 tanpa penerima:\n%s", pesan[1])
+		t.Errorf("message 2 has no recipient:\n%s", pesan[1])
 	}
 
-	// --- pesan 3: multipart/alternative ---
+	// --- message 3: multipart/alternative ---
 	h3, b3, ok := strings.Cut(pesan[2], "\r\n\r\n")
 	if !ok {
-		t.Fatalf("pesan 3 tanpa pemisah header/badan: %q", pesan[2])
+		t.Fatalf("message 3 has no header/body separator: %q", pesan[2])
 	}
 	bnd := ""
 	if i := strings.Index(h3, `boundary="`); i >= 0 {
@@ -406,44 +406,44 @@ try {
 		}
 	}
 	if !strings.HasPrefix(bnd, "galang=") {
-		t.Fatalf("boundary aneh: %q", bnd)
+		t.Fatalf("weird boundary: %q", bnd)
 	}
 	if n := strings.Count(b3, "--"+bnd+"\r\n"); n != 2 {
-		t.Errorf("baris pembatas multipart = %d, mau 2:\n%s", n, b3)
+		t.Errorf("multipart delimiter lines = %d, want 2:\n%s", n, b3)
 	}
 	if !strings.Contains(b3, "--"+bnd+"--\r\n") {
-		t.Errorf("penutup multipart hilang:\n%s", b3)
+		t.Errorf("multipart terminator missing:\n%s", b3)
 	}
 	for _, w := range []string{
 		"Content-Type: text/plain; charset=utf-8\r\n",
 		"Content-Type: text/html; charset=utf-8\r\n",
 		"Content-Transfer-Encoding: 7bit\r\n",
-		"Versi teks",
-		"<p>Halo <b>dunia</b></p>",
+		"Text version",
+		"<p>Hello <b>world</b></p>",
 	} {
 		if !strings.Contains(b3, w) {
-			t.Errorf("multipart tanpa %q:\n%s", w, b3)
+			t.Errorf("multipart missing %q:\n%s", w, b3)
 		}
 	}
 
-	// --- AUTH & QUIT terekam ---
+	// --- AUTH & QUIT recorded ---
 	u, p := sv.authCreds()
 	if u != "pengguna@contoh.id" || p != "rahasia123" {
-		t.Errorf("kredensial AUTH = %q/%q, mau pengguna@contoh.id/rahasia123", u, p)
+		t.Errorf("AUTH credentials = %q/%q, want pengguna@contoh.id/rahasia123", u, p)
 	}
 	if !adaPerintah(sv, "QUIT") {
-		t.Errorf("server tidak melihat QUIT: %v", sv.perintahSemua())
+		t.Errorf("server never saw QUIT: %v", sv.perintahSemua())
 	}
 }
 
-// TestSMTPGalat menguji pemetaan galat (502/504/500), validasi argumen,
-// penolakan server, fallback HELO, timeout tengah sesi, dan objek basi.
-func TestSMTPGalat(t *testing.T) {
+// TestSMTPErrors tests error mapping (502/504/500), argument validation,
+// server rejections, HELO fallback, mid-session timeouts, and stale objects.
+func TestSMTPErrors(t *testing.T) {
 	dir := t.TempDir()
 	bangunSMTPC(t, dir)
 
-	// jalankan menjalankan program dengan server tiruan sesuai konf;
-	// program memakai dua placeholder %s (host) dan %d (port).
+	// jalankan runs the program against a fake server per konf;
+	// the program uses two placeholders %s (host) and %d (port).
 	jalankan := func(t *testing.T, konf smtpKonf, src string) (*srvSMTP, string) {
 		t.Helper()
 		sv, host, port := bukaServerSMTP(t, konf)
@@ -459,7 +459,7 @@ use "smtp"
 try {
   $s = smtp.connect("%s", %d, 500)
   $s.close()
-  print("tidak")
+  print("no")
 } catch e {
   print(e.code + "/" + str(e.status))
 }
@@ -468,58 +468,58 @@ try {
 use "smtp"
 try {
   $s = smtp.connect("%s", %d, 1000)
-  print("tidak")
+  print("no")
 } catch e {
   print(e.code + "/" + str(e.status))
 }
 `
 
-	t.Run("PortMati", func(t *testing.T) {
+	t.Run("DeadPort", func(t *testing.T) {
 		out, err := jalankanMain(t, dir, fmt.Sprintf(progKonek, "127.0.0.1", portMati(t)))
 		if err != nil {
 			t.Fatalf("eval: %v", err)
 		}
 		if got := strings.TrimSpace(out); got != "smtp_error/502" {
-			t.Errorf("port mati = %q, mau smtp_error/502", got)
+			t.Errorf("dead port = %q, want smtp_error/502", got)
 		}
 	})
 
-	t.Run("TutupCepat", func(t *testing.T) {
+	t.Run("QuickClose", func(t *testing.T) {
 		host, port := serverTutupCepat(t)
 		out, err := jalankanMain(t, dir, fmt.Sprintf(progKonek, host, port))
 		if err != nil {
 			t.Fatalf("eval: %v", err)
 		}
 		if got := strings.TrimSpace(out); got != "smtp_error/502" {
-			t.Errorf("tutup cepat = %q, mau smtp_error/502", got)
+			t.Errorf("quick close = %q, want smtp_error/502", got)
 		}
 	})
 
-	t.Run("Gantung", func(t *testing.T) {
+	t.Run("Hang", func(t *testing.T) {
 		host, port := serverGantung(t)
 		out, err := jalankanMain(t, dir, fmt.Sprintf(progKonek, host, port))
 		if err != nil {
 			t.Fatalf("eval: %v", err)
 		}
 		if got := strings.TrimSpace(out); got != "smtp_error/504" {
-			t.Errorf("gantung = %q, mau smtp_error/504", got)
+			t.Errorf("hang = %q, want smtp_error/504", got)
 		}
 	})
 
-	t.Run("SapaanSalah", func(t *testing.T) {
-		_, got := jalankan(t, smtpKonf{greeting: "421 4.7.0 Sedang pemeliharaan"}, progKonekBuka)
+	t.Run("BadGreeting", func(t *testing.T) {
+		_, got := jalankan(t, smtpKonf{greeting: "421 4.7.0 Under maintenance"}, progKonekBuka)
 		if got != "smtp_error/500" {
-			t.Errorf("sapaan 421 = %q, mau smtp_error/500", got)
+			t.Errorf("greeting 421 = %q, want smtp_error/500", got)
 		}
 	})
 
-	t.Run("ArgumenSalah", func(t *testing.T) {
-		// Validasi argumen terjadi sebelum dial, jadi tanpa server pun aman.
+	t.Run("BadArgument", func(t *testing.T) {
+		// Argument validation happens before dialing, so it is safe without a server.
 		out, err := jalankanMain(t, dir, `
 use "smtp"
 try {
-  $s = smtp.connect("127.0.0.1", "bukan-angka", 1000)
-  print("tidak")
+  $s = smtp.connect("127.0.0.1", "not-a-number", 1000)
+  print("no")
 } catch e {
   print(e.code + "/" + str(e.status))
 }
@@ -528,11 +528,11 @@ try {
 			t.Fatalf("eval: %v", err)
 		}
 		if got := strings.TrimSpace(out); got != "type_error/500" {
-			t.Errorf("port string = %q, mau type_error/500", got)
+			t.Errorf("string port = %q, want type_error/500", got)
 		}
 	})
 
-	t.Run("UrutanSalah", func(t *testing.T) {
+	t.Run("WrongOrder", func(t *testing.T) {
 		sv, got := jalankan(t, smtpKonf{}, `
 use "smtp"
 $s = smtp.connect("%s", %d, 1000)
@@ -542,12 +542,12 @@ try { $s.subject("abc\r\nBcc: rahasia@contoh.id") } catch e { print(e.code) }
 print($s.from("kirim@contoh.id"))
 print($s.from("pengirim@contoh.id"))
 print($s.to("satu@contoh.id"))
-print($s.send("pulih dari galat urutan"))
+print($s.send("recover from ordering error"))
 print($s.close())
 `)
 		want := strings.Join([]string{
-			"panggil from() dulu sebelum to()",
-			"transaksi belum siap — panggil from() lalu to() minimal sekali sebelum send()",
+			"call from() before to()",
+			"transaction not ready — call from() then to() at least once before send()",
 			"type_error",
 			"true",
 			"true",
@@ -556,42 +556,42 @@ print($s.close())
 			"true",
 		}, "\n")
 		if got != want {
-			t.Errorf("output =\n%s\nmau =\n%s", got, want)
+			t.Errorf("output =\n%s\nwant =\n%s", got, want)
 		}
 		if !adaPerintah(sv, "RSET") {
-			t.Errorf("from() kedua tidak memicu RSET: %v", sv.perintahSemua())
+			t.Errorf("second from() did not trigger RSET: %v", sv.perintahSemua())
 		}
 		if p := sv.pesanSemua(); len(p) != 1 || !strings.Contains(p[0], "From: pengirim@contoh.id\r\n") {
-			t.Errorf("pesan pulih salah: %q", p)
+			t.Errorf("wrong recovery message: %q", p)
 		}
 	})
 
-	t.Run("TolakRcpt", func(t *testing.T) {
+	t.Run("RejectRcpt", func(t *testing.T) {
 		sv, got := jalankan(t, smtpKonf{rcptTolak: "tolak@"}, `
 use "smtp"
 $s = smtp.connect("%s", %d, 1000)
 $s.from("kirim@contoh.id")
 try { $s.to("tolak@contoh.id") } catch e { print(e.message) }
 print($s.to("baik@contoh.id"))
-print($s.send("hanya penerima yang diterima"))
+print($s.send("only accepted recipients"))
 print($s.close())
 `)
 		want := strings.Join([]string{
-			"RCPT TO: server membalas 550 5.1.1 Alamat penerima ditolak",
+			"RCPT TO: server replied 550 5.1.1 Recipient address rejected",
 			"true",
 			"true",
 			"true",
 		}, "\n")
 		if got != want {
-			t.Errorf("output =\n%s\nmau =\n%s", got, want)
+			t.Errorf("output =\n%s\nwant =\n%s", got, want)
 		}
 		p := sv.pesanSemua()
 		if len(p) != 1 || !strings.Contains(p[0], "To: baik@contoh.id\r\n") {
-			t.Errorf("daftar penerima pesan salah: %q", p)
+			t.Errorf("wrong message recipient list: %q", p)
 		}
 	})
 
-	t.Run("AuthTolak", func(t *testing.T) {
+	t.Run("AuthReject", func(t *testing.T) {
 		_, got := jalankan(t, smtpKonf{authTolak: true}, `
 use "smtp"
 $s = smtp.connect("%s", %d, 1000)
@@ -599,15 +599,15 @@ try { $s.auth("u", "p") } catch e { print(e.message) }
 print($s.close())
 `)
 		want := strings.Join([]string{
-			"AUTH LOGIN (kata sandi): server membalas 535 5.7.8 Autentikasi gagal",
+			"AUTH LOGIN (password): server replied 535 5.7.8 Authentication failed",
 			"true",
 		}, "\n")
 		if got != want {
-			t.Errorf("output =\n%s\nmau =\n%s", got, want)
+			t.Errorf("output =\n%s\nwant =\n%s", got, want)
 		}
 	})
 
-	t.Run("FallbackHelo", func(t *testing.T) {
+	t.Run("HeloFallback", func(t *testing.T) {
 		sv, got := jalankan(t, smtpKonf{ehloTolak: true}, `
 use "smtp"
 $s = smtp.connect("%s", %d, 1000)
@@ -616,28 +616,28 @@ print($s.close())
 `)
 		lines := strings.Split(got, "\n")
 		if len(lines) != 2 || !strings.Contains(lines[0], "STARTTLS") {
-			t.Errorf("auth pasca-HELO = %q, mau pesan soal STARTTLS", got)
+			t.Errorf("post-HELO auth = %q, want a message about STARTTLS", got)
 		}
 		if lines[1] != "true" {
-			t.Errorf("close = %q, mau true", lines[1])
+			t.Errorf("close = %q, want true", lines[1])
 		}
 		if !adaPerintah(sv, "HELO ") {
-			t.Errorf("fallback HELO tidak terkirim: %v", sv.perintahSemua())
+			t.Errorf("HELO fallback was not sent: %v", sv.perintahSemua())
 		}
 	})
 
-	t.Run("DiamSesudahEHLO", func(t *testing.T) {
+	t.Run("SilentAfterEHLO", func(t *testing.T) {
 		_, got := jalankan(t, smtpKonf{diamEHLO: true}, `
 use "smtp"
 $s = smtp.connect("%s", %d, 600)
 try { $s.from("a@b.c") } catch e { print(e.code + "/" + str(e.status)) }
 `)
 		if got != "smtp_error/504" {
-			t.Errorf("diam sesudah EHLO = %q, mau smtp_error/504", got)
+			t.Errorf("silent after EHLO = %q, want smtp_error/504", got)
 		}
 	})
 
-	t.Run("ObjekBasi", func(t *testing.T) {
+	t.Run("StaleObject", func(t *testing.T) {
 		sv, host, port := bukaServerSMTP(t, smtpKonf{})
 		out, err := jalankanMain(t, dir, fmt.Sprintf(`
 use "smtp"
@@ -652,18 +652,18 @@ print($s2.close())
 		}
 		want := strings.Join([]string{"true", "smtp_error/500", "true"}, "\n")
 		if got := strings.TrimSpace(out); got != want {
-			t.Errorf("output =\n%s\nmau =\n%s", got, want)
+			t.Errorf("output =\n%s\nwant =\n%s", got, want)
 		}
 		if len(sv.perintahSemua()) == 0 {
-			t.Error("server tidak menerima apa pun")
+			t.Error("server received nothing")
 		}
 	})
 }
 
-// TestSMTPTanpa8Bit menguji pemilihan CTE otomatis: tanpa iklan 8BITMIME,
-// badan non-ASCII dibungkus base64 dan subjek non-ASCII menjadi encoded-word
-// RFC 2047 — server menampung apa adanya, lalu diuraikan kembali di sini.
-func TestSMTPTanpa8Bit(t *testing.T) {
+// TestSMTPWithout8Bit tests automatic CTE selection: without 8BITMIME
+// advertised, a non-ASCII body is base64-wrapped and a non-ASCII subject
+// becomes an RFC 2047 encoded-word — accepted as-is, decoded back here.
+func TestSMTPWithout8Bit(t *testing.T) {
 	sv, host, port := bukaServerSMTP(t, smtpKonf{ekstensi: []string{"AUTH LOGIN"}})
 	dir := t.TempDir()
 	bangunSMTPC(t, dir)
@@ -673,45 +673,45 @@ use "smtp"
 $s = smtp.connect("%s", %d, 1000)
 $s.from("kirim@contoh.id")
 $s.to("satu@contoh.id")
-$s.subject("Subjek ☕")
-print($s.send("Kopi ☕ panas"))
+$s.subject("Subject ☕")
+print($s.send("Hot ☕ coffee"))
 $s.close()
 `, host, port))
 	if err != nil {
 		t.Fatalf("eval: %v\noutput: %s", err, out)
 	}
 	if got := strings.TrimSpace(out); got != "true" {
-		t.Fatalf("output = %q, mau true", got)
+		t.Fatalf("output = %q, want true", got)
 	}
 	p := sv.pesanSemua()
 	if len(p) != 1 {
-		t.Fatalf("jumlah pesan = %d, mau 1", len(p))
+		t.Fatalf("message count = %d, want 1", len(p))
 	}
 	h, b, ok := strings.Cut(p[0], "\r\n\r\n")
 	if !ok {
-		t.Fatalf("pesan tanpa pemisah header/badan: %q", p[0])
+		t.Fatalf("message has no header/body separator: %q", p[0])
 	}
 	if !strings.Contains(h+"\r\n", "Content-Transfer-Encoding: base64\r\n") {
-		t.Errorf("CTE bukan base64:\n%s", h)
+		t.Errorf("CTE is not base64:\n%s", h)
 	}
 
 	subj := ambilHeader(h, "Subject: ")
 	if !strings.HasPrefix(subj, "=?UTF-8?B?") || !strings.HasSuffix(subj, "?=") {
-		t.Fatalf("subjek non-ASCII bukan encoded-word: %q", subj)
+		t.Fatalf("non-ASCII subject is not an encoded-word: %q", subj)
 	}
 	dec, err := base64.StdEncoding.DecodeString(strings.TrimSuffix(strings.TrimPrefix(subj, "=?UTF-8?B?"), "?="))
 	if err != nil {
-		t.Fatalf("encoded-word tidak terurai: %v", err)
+		t.Fatalf("encoded-word failed to decode: %v", err)
 	}
-	if string(dec) != "Subjek ☕" {
-		t.Errorf("subjek hasil decode = %q, mau %q", string(dec), "Subjek ☕")
+	if string(dec) != "Subject ☕" {
+		t.Errorf("decoded subject = %q, want %q", string(dec), "Subject ☕")
 	}
 
 	bodyDec, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(b, "\r\n", ""))
 	if err != nil {
-		t.Fatalf("badan base64 tidak terurai (badan=%q): %v", b, err)
+		t.Fatalf("base64 body failed to decode (body=%q): %v", b, err)
 	}
-	if string(bodyDec) != "Kopi ☕ panas" {
-		t.Errorf("badan hasil decode = %q, mau %q", string(bodyDec), "Kopi ☕ panas")
+	if string(bodyDec) != "Hot ☕ coffee" {
+		t.Errorf("decoded body = %q, want %q", string(bodyDec), "Hot ☕ coffee")
 	}
 }

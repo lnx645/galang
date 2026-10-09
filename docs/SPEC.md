@@ -351,7 +351,9 @@ unboxed, jadi kode numerik dengan desimal masih melalui jalur umum.
 - **v0.6** — pengelola ekstensi `gar gne` (pack/install/list/remove) dan
   ekstensi resmi `redis` serta `smtp` (GNE; SMTP masih tanpa TLS).
 - **v0.7.1** — ekstensi resmi `uuid` (RFC 9562 v4/v7), `jwt`
-  (HS256/384/512, tanpa OpenSSL), dan `httpclient` (HTTP/1.1, tanpa TLS).
+  (HS256/384/512, tanpa OpenSSL; `sign`/`verify`/`decode` berbasis objek),
+  dan `httpclient` (HTTP/1.1, tanpa TLS) — plus ABI GNE v2 (`obj_keys`;
+  paket ABI 1 tetap jalan via view lama).
 - **v1** — generic `<T>` + analyzer tipe statis, bytecode VM + cache opcode
   (padanan `opcache` PHP), perluasan konvensi unboxed ke float dan string.
 - **v2** — class & method, generic pada struct, batasan tipe (`<T: int|string>`),

@@ -13,18 +13,18 @@ import (
 	"galang/internal/infra/gnepkg"
 )
 
-// Options mengatur perilaku Install.
+// Options controls the behavior of Install.
 type Options struct {
-	// Dir adalah direktori instalasi; kosong = ~/.galang/gne.
+	// Dir is the install directory; empty = ~/.galang/gne.
 	Dir string
-	// Force menimpa instalasi yang ada dan menembus penolakan
-	// non-CGO / platform yang tidak tersedia.
+	// Force overwrites an existing install and gets past the non-CGO /
+	// unavailable-platform rejections.
 	Force bool
-	// Available memeriksa apakah binari gar ini memuat loader GNE
-	// (default gne.Available); disuntik untuk menguji jalur non-CGO.
+	// Available checks whether this gar binary embeds the GNE loader
+	// (default gne.Available); injected to test the non-CGO path.
 	Available func() bool
-	// Fetch mengunduh paket dari URL (default gnepkg.FetchURL);
-	// disuntik untuk menguji jalur URL tanpa jaringan.
+	// Fetch downloads a package from a URL (default gnepkg.FetchURL);
+	// injected to test the URL path without a network.
 	Fetch func(ctx context.Context, url string) ([]byte, error)
 }
 
@@ -37,21 +37,21 @@ func (o *Options) setDefaults() {
 	}
 }
 
-// Result adalah laporan pemasangan yang sukses.
+// Result is the report of a successful installation.
 type Result struct {
 	Name     string
 	Version  string
-	Platform string // platform binari yang benar-benar dipasang
-	Path     string // berkas native hasil ekstrak
-	Sidecar  string // <nama>.gne.json
-	Previous bool   // ada instalasi lama yang ditimpa (butuh Force)
-	Source   string // URL atau path asal paket
+	Platform string // platform of the binary that was actually installed
+	Path     string // extracted native file
+	Sidecar  string // <name>.gne.json
+	Previous bool   // an old install was overwritten (requires Force)
+	Source   string // URL or path the package came from
 }
 
-// parseShortcut memecah spesifikasi kanal jadi (nama, versi, ok).
+// parseShortcut splits a channel spec into (name, version, ok).
 // "redis" → ("redis", "", true); "redis@0.6.0" → ("redis", "0.6.0", true).
-// Pemanggil wajib memeriksa ok sebelum memakai hasilnya (nama kosong
-// berarti spesifikasi bukan shortcut).
+// Callers must check ok before using the result (an empty name means the
+// spec is not a shortcut).
 func parseShortcut(spec string) (name, ver string, ok bool) {
 	if i := strings.IndexByte(spec, '@'); i >= 0 {
 		name, ver = spec[:i], spec[i+1:]
@@ -70,20 +70,21 @@ func parseShortcut(spec string) (name, ver string, ok bool) {
 	return name, ver, true
 }
 
-// resolveSource menentukan sumber paket dari spesifikasi user:
-// URL HTTPS, path berkas lokal, atau shortcut kanal resmi ("redis@0.6.0").
-// HTTP ditolak: paket adalah kode native dan tidak boleh turun ke plaintext.
+// resolveSource determines the package source from the user's spec:
+// an HTTPS URL, a local file path, or an official-channel shortcut
+// ("redis@0.6.0"). HTTP is rejected: a package is native code and must
+// never fall back to plaintext.
 func resolveSource(spec string) (source string, local bool, err error) {
 	if strings.Contains(spec, "://") {
 		if !strings.HasPrefix(spec, "https://") {
-			return "", false, fmt.Errorf("hanya HTTPS yang diizinkan, dapat %q (paket adalah kode native)", spec)
+			return "", false, fmt.Errorf("only HTTPS is allowed, got %q (packages are native code)", spec)
 		}
 		return spec, false, nil
 	}
-	// Path berkas: mengandung pemisah atau berakhiran .zip.
+	// File path: contains a separator or ends with .zip.
 	if strings.ContainsAny(spec, `/\`) || strings.HasSuffix(spec, ".zip") {
 		if _, statErr := os.Stat(spec); statErr != nil {
-			return "", true, fmt.Errorf("berkas paket %q tidak ditemukan", spec)
+			return "", true, fmt.Errorf("package file %q not found", spec)
 		}
 		return spec, true, nil
 	}
@@ -91,17 +92,17 @@ func resolveSource(spec string) (source string, local bool, err error) {
 		u, uerr := gnepkg.OfficialURL(OfficialRepo, spec)
 		return u, false, uerr
 	}
-	return "", false, fmt.Errorf("%q bukan URL HTTPS, berkas .zip, atau nama ekstensi resmi", spec)
+	return "", false, fmt.Errorf("%q is not an HTTPS URL, a .zip file, or an official extension name", spec)
 }
 
-// OfficialURL membangun URL shortcut kanal resmi ("redis" → rilis terbaru;
-// "redis@0.6.0" → rilis v0.6.0).
+// OfficialURL builds the official-channel shortcut URL ("redis" → latest
+// release; "redis@0.6.0" → release v0.6.0).
 func OfficialURL(spec string) (string, error) {
 	return gnepkg.OfficialURL(OfficialRepo, spec)
 }
 
-// Install memasang paket ekstensi dari spec (URL HTTPS / berkas lokal /
-// shortcut kanal resmi) ke direktori instalasi.
+// Install installs an extension package from spec (HTTPS URL / local file /
+// official-channel shortcut) into the install directory.
 func Install(ctx context.Context, spec string, o Options) (*Result, error) {
 	o.setDefaults()
 
@@ -110,7 +111,7 @@ func Install(ctx context.Context, spec string, o Options) (*Result, error) {
 		return nil, err
 	}
 
-	// 1. Baca isi paket (unduh HTTPS atau berkas lokal), dengan cap ukuran.
+	// 1. Read the package contents (HTTPS download or local file), with a size cap.
 	var data []byte
 	if local {
 		data, err = gnepkg.ReadFile(source, gnepkg.MaxPackageSize)
@@ -118,40 +119,40 @@ func Install(ctx context.Context, spec string, o Options) (*Result, error) {
 		data, err = o.Fetch(ctx, source)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("baca paket: %v", err)
+		return nil, fmt.Errorf("read package: %v", err)
 	}
 
-	// 2. Buka zip — seluruh entri divalidasi anti zip-slip/tautan simbolik.
+	// 2. Open the zip — every entry is validated against zip-slip/symlink attacks.
 	entries, err := gnepkg.ReadZip(data)
 	if err != nil {
-		return nil, fmt.Errorf("paket rusak: %v", err)
+		return nil, fmt.Errorf("corrupt package: %v", err)
 	}
 	rawManifest, ok := entries[ManifestFile]
 	if !ok {
-		return nil, fmt.Errorf("paket tidak memuat %s", ManifestFile)
+		return nil, fmt.Errorf("package does not contain %s", ManifestFile)
 	}
 	var m Manifest
 	if err := json.Unmarshal(rawManifest, &m); err != nil {
-		return nil, fmt.Errorf("%s tidak valid: %v", ManifestFile, err)
+		return nil, fmt.Errorf("%s is invalid: %v", ManifestFile, err)
 	}
 
-	// 3. Kontrak paket: nama/versi/ABI/entri (termasuk kecocokan nama
-	//    berkas dengan platformnya — menolak paket silang).
+	// 3. Package contract: name/version/ABI/entries (including whether each
+	//    file name matches its platform — rejecting cross-built packages).
 	if err := validateManifest(&m); err != nil {
 		return nil, err
 	}
 
-	// 4. Binari tanpa CGO tidak akan bisa memuat ekstensi sama sekali.
+	// 4. A binary built without CGO cannot load extensions at all.
 	if !o.Available() && !o.Force {
-		return nil, fmt.Errorf("binari gar ini dibangun tanpa CGO — GNE tidak aktif, pemasangan dibatalkan (pakai --force bila ingin tetap menyiapkan berkas)")
+		return nil, fmt.Errorf("this gar binary was built without CGO — GNE is not active, install aborted (use --force if you still want to lay out the files)")
 	}
 
-	// 5. Pilih platform: milik mesin ini, atau paksa yang pertama bila
-	//    --force (prakarsa direktori untuk mesin lain).
+	// 5. Pick the platform: this machine's, or force the first one with
+	//    --force (bootstrapping a directory for another machine).
 	platform := CurrentPlatform()
 	if _, ada := m.Entry[platform]; !ada {
 		if !o.Force {
-			return nil, fmt.Errorf("paket tidak menyediakan binari untuk %s (tersedia: %s)", platform, joinPlatforms(&m))
+			return nil, fmt.Errorf("package does not provide a binary for %s (available: %s)", platform, joinPlatforms(&m))
 		}
 		platform = firstPlatform(&m)
 	}
@@ -159,19 +160,19 @@ func Install(ctx context.Context, spec string, o Options) (*Result, error) {
 	e := m.Entry[platform]
 	binary, ok := entries[e.File]
 	if !ok {
-		return nil, fmt.Errorf("paket tidak memuat berkas %q yang tercatat di manifest", e.File)
+		return nil, fmt.Errorf("package does not contain file %q recorded in the manifest", e.File)
 	}
 
-	// 6. Verifikasi integritas SEBELUM ekstrak: sha256 + ukuran harus
-	//    persis seperti yang dijanjikan manifest.
+	// 6. Verify integrity BEFORE extracting: sha256 and size must match
+	//    the manifest exactly.
 	if int64(len(binary)) != e.Size {
-		return nil, fmt.Errorf("ukuran %s tidak cocok manifest (dapat %d, harap %d)", e.File, len(binary), e.Size)
+		return nil, fmt.Errorf("size of %s does not match the manifest (got %d, want %d)", e.File, len(binary), e.Size)
 	}
 	if got := gnepkg.SHA256Hex(binary); got != e.SHA256 {
-		return nil, fmt.Errorf("sha256 %s tidak cocok manifest (dapat %s, harap %s)", e.File, got, e.SHA256)
+		return nil, fmt.Errorf("sha256 of %s does not match the manifest (got %s, want %s)", e.File, got, e.SHA256)
 	}
 
-	// 7. Target FLAT: <dir>/<nama><ekstensi platform terpasang>.
+	// 7. FLAT target: <dir>/<name><installed platform extension>.
 	goos, _, _ := splitPlatform(platform)
 	target := filepath.Join(o.dir(), m.Name+libExtFor(goos))
 	sidecar := filepath.Join(o.dir(), m.Name+suffixSidecar)
@@ -184,31 +185,31 @@ func Install(ctx context.Context, spec string, o Options) (*Result, error) {
 		existed = true
 	}
 	if existed && !o.Force {
-		return nil, fmt.Errorf("%s sudah terpasang di %s (pakai --force untuk menimpa)", m.Name, o.dir())
+		return nil, fmt.Errorf("%s is already installed in %s (use --force to overwrite)", m.Name, o.dir())
 	}
 
 	if err := os.MkdirAll(o.dir(), 0o755); err != nil {
-		return nil, fmt.Errorf("buat direktori instalasi: %v", err)
+		return nil, fmt.Errorf("create install directory: %v", err)
 	}
 
-	// 8. Ekstrak, lalu VERIFIKASI ULANG sha256 dari berkas yang sudah
-	//    tertulis di disk (mendeteksi kegagalan tulis/rotasi di tengah).
+	// 8. Extract, then RE-VERIFY the sha256 of the file already written to
+	//    disk (detecting a failed write/rotation halfway through).
 	if err := gnepkg.WriteFile(target, binary); err != nil {
-		return nil, fmt.Errorf("tulis binari: %v", err)
+		return nil, fmt.Errorf("write binary: %v", err)
 	}
 	diskData, err := gnepkg.ReadFile(target, gnepkg.MaxPackageSize)
 	if err != nil {
 		os.Remove(target)
-		return nil, fmt.Errorf("verifikasi pasca-ekstrak gagal: %v", err)
+		return nil, fmt.Errorf("post-extract verification failed: %v", err)
 	}
 	if got := gnepkg.SHA256Hex(diskData); got != e.SHA256 {
 		os.Remove(target)
-		return nil, fmt.Errorf("sha256 berkas terpasang tidak cocok (%s) — berkas dibuang", got)
+		return nil, fmt.Errorf("installed file sha256 does not match (%s) — file discarded", got)
 	}
 
 	if err := writeSidecar(o.dir(), &m); err != nil {
 		os.Remove(target)
-		return nil, fmt.Errorf("tulis sidecar: %v", err)
+		return nil, fmt.Errorf("write sidecar: %v", err)
 	}
 
 	return &Result{
@@ -228,13 +229,13 @@ func (o Options) dir() string {
 	}
 	d, err := InstallDir()
 	if err != nil {
-		return "" // Install akan menemukan galat saat MkdirAll
+		return "" // Install will report the error at MkdirAll
 	}
 	return d
 }
 
-// firstPlatform mengembalikan platform terurut pertama — pilihan
-// deterministik untuk --force lintas-platform.
+// firstPlatform returns the first sorted platform — a deterministic
+// choice for cross-platform --force.
 func firstPlatform(m *Manifest) string {
 	plats := make([]string, 0, len(m.Entry))
 	for p := range m.Entry {
@@ -246,7 +247,7 @@ func firstPlatform(m *Manifest) string {
 
 // ---- list & remove ----
 
-// Installed adalah satu entri hasil `gar gne list`.
+// Installed is one entry of the `gar gne list` output.
 type Installed struct {
 	Name     string
 	Version  string
@@ -256,10 +257,10 @@ type Installed struct {
 	Size     int64
 }
 
-// List membaca semua sidecar di direktori instalasi. dir kosong = semua
-// lokasi instalasi (direktori aktif; lokasi lama ~/.garurda/gne bila
-// masih ada) — nama yang muncul di dua tempat dihitung sekali, versi
-// direktori aktif yang menang.
+// List reads every sidecar in the install directory. dir empty = all
+// install locations (the active directory; the legacy ~/.garurda/gne
+// location if it still exists) — a name appearing in two places is
+// counted once, and the active directory's version wins.
 func List(dir string) ([]Installed, error) {
 	if dir != "" {
 		return listDir(dir)
@@ -287,13 +288,13 @@ func List(dir string) ([]Installed, error) {
 	return out, nil
 }
 
-// listDir membaca satu direktori instalasi; direktori yang belum ada
-// menghasilkan daftar kosong, bukan galat.
+// listDir reads a single install directory; a directory that does not
+// exist yet yields an empty list, not an error.
 func listDir(dir string) ([]Installed, error) {
 	ents, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, nil // belum ada instalasi sama sekali
+			return nil, nil // no installs at all yet
 		}
 		return nil, err
 	}
@@ -308,16 +309,16 @@ func listDir(dir string) ([]Installed, error) {
 		}
 		var m Manifest
 		if err := json.Unmarshal(b, &m); err != nil {
-			continue // sidecar rusak dilewati, bukan menggagalkan seluruh list
+			continue // a corrupt sidecar is skipped instead of failing the whole list
 		}
 		t := Installed{Name: m.Name, Version: m.Version, ABI: m.GNEABI}
 		for p := range m.Entry {
 			t.Platform = append(t.Platform, p)
 		}
 		sort.Strings(t.Platform)
-		// Ukuran binari terpasang: cari varian ekstensi yang benar-benar
-		// ada di disk. Jangan pakai platform pertama manifest — bisa saja
-		// platform itu bukan milik mesin ini (mis. darwin saat host linux).
+		// Size of the installed binary: look for the extension variant that
+		// actually exists on disk. Do not use the manifest's first platform —
+		// it may not belong to this machine (e.g. darwin on a linux host).
 		for _, ext := range []string{".so", ".dylib", ".dll"} {
 			if st, err := os.Stat(filepath.Join(dir, m.Name+ext)); err == nil {
 				t.Size = st.Size()
@@ -329,12 +330,13 @@ func listDir(dir string) ([]Installed, error) {
 	return out, nil
 }
 
-// Remove melepas ekstensi beserta sidecar-nya. dir kosong = cari di
-// semua lokasi instalasi (aktif + lokasi lama) dan hapus dari mana pun
-// ia berada — ekstensi lama bisa dilepas tanpa --dir manual.
+// Remove uninstalls an extension together with its sidecar. dir empty =
+// search every install location (active + legacy) and delete from
+// wherever it lives — legacy extensions can be removed without a manual
+// --dir.
 func Remove(dir, name string) (string, error) {
 	if !reName.MatchString(name) {
-		return "", fmt.Errorf("nama %q tidak valid", name)
+		return "", fmt.Errorf("name %q is invalid", name)
 	}
 	if dir == "" {
 		dirs, err := SearchDirs()
@@ -348,7 +350,7 @@ func Remove(dir, name string) (string, error) {
 			}
 		}
 		if len(targets) == 0 {
-			return "", fmt.Errorf("%s tidak terpasang di %s", name, dirs[0])
+			return "", fmt.Errorf("%s is not installed in %s", name, dirs[0])
 		}
 		var removed []string
 		for _, d := range targets {
@@ -362,7 +364,7 @@ func Remove(dir, name string) (string, error) {
 	}
 	sidecar := filepath.Join(dir, name+suffixSidecar)
 	if _, err := os.Stat(sidecar); err != nil {
-		return "", fmt.Errorf("%s tidak terpasang di %s", name, dir)
+		return "", fmt.Errorf("%s is not installed in %s", name, dir)
 	}
 	removed, err := removeFiles(dir, name)
 	if err != nil {
@@ -371,23 +373,23 @@ func Remove(dir, name string) (string, error) {
 	return strings.Join(removed, ", "), nil
 }
 
-// removeFiles menghapus binari native lalu sidecar name dari dir.
-// Sidecar wajib sudah diverifikasi ada oleh pemanggil.
+// removeFiles deletes the native binary and then the name sidecar from dir.
+// The sidecar must already have been verified to exist by the caller.
 func removeFiles(dir, name string) ([]string, error) {
 	var removed []string
-	// Hapus semua varian ekstensi native (binari platform terpasang).
+	// Delete every native extension variant (the installed platform binary).
 	for _, ext := range []string{".so", ".dylib", ".dll"} {
 		p := filepath.Join(dir, name+ext)
 		if _, err := os.Stat(p); err == nil {
 			if err := os.Remove(p); err != nil {
-				return nil, fmt.Errorf("hapus %s: %v", p, err)
+				return nil, fmt.Errorf("remove %s: %v", p, err)
 			}
 			removed = append(removed, p)
 		}
 	}
 	sidecar := filepath.Join(dir, name+suffixSidecar)
 	if err := os.Remove(sidecar); err != nil {
-		return nil, fmt.Errorf("hapus sidecar: %v", err)
+		return nil, fmt.Errorf("remove sidecar: %v", err)
 	}
 	removed = append(removed, sidecar)
 	return removed, nil

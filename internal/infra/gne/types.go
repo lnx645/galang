@@ -1,10 +1,11 @@
-// Package gne memuat ekstensi native GaLang (GaLang Native Extension):
-// berkas .so/.dylib/.dll yang mengekspor gne_module_init sesuai include/gne.h.
+// Package gne loads native GaLang extensions (GaLang Native Extension):
+// .so/.dylib/.dll files exporting gne_module_init per include/gne.h.
 //
-// Pembagian tanggung jawab: paket ini murni mekanik C-ABI (dlopen, tabel
-// handle, jembatan panggilan). Semantik bahasa (membuat Builtin, galat
-// catchable, memanggil closure GaLang) disuntikkan lewat Hooks dari sisi
-// interpreter, sehingga arah import tetap domain → usecase → infra.
+// Responsibility split: this package is pure C-ABI mechanics (dlopen, the
+// handle table, the call bridge). Language semantics (creating Builtins,
+// catchable errors, invoking GaLang closures) is injected through Hooks
+// from the interpreter side, keeping the import direction domain →
+// usecase → infra.
 package gne
 
 import (
@@ -13,43 +14,47 @@ import (
 	"galang/internal/domain"
 )
 
-// ABI adalah versi ABI GNE yang didukung build ini. Nilainya WAJIB sama
-// dengan GNE_ABI di include/gne.h (diuji di types_test.go) dan dipakai
-// installer `gar gne` untuk menolak paket yang tidak kompatibel.
-const ABI = 1
+// ABI is the GNE ABI version supported by this build. It MUST equal
+// GNE_ABI in include/gne.h (tested in types_test.go) and is used by the
+// `gar gne` installer to reject incompatible packages. The host still
+// LOADS packages built for an older ABI through a legacy table view
+// (the struct is append-only); only newer-than-host packages are
+// rejected.
+const ABI = 2
 
-// Hooks adalah jembatan semantik dari interpreter. Semua fungsi dipanggil
-// pada goroutine interpreter (kontrak satu-goroutine mesin).
+// Hooks is the semantic bridge from the interpreter. All functions are
+// called on the interpreter's goroutine (single-goroutine machine
+// contract).
 type Hooks struct {
-	// WrapNative membangun domain.Value (Builtin) untuk satu fungsi
-	// native. name sudah berupa "modul.fn". self=0 bila fungsi biasa;
-	// min/max tidak menghitung self (untuk method, argv[0] = self).
+	// WrapNative builds a domain.Value (Builtin) for one native
+	// function. name is already "module.fn". self=0 for a plain
+	// function; min/max do not count self (for methods, argv[0] = self).
 	WrapNative func(name string, min, max int, fnPtr unsafe.Pointer, self uint64, mod *Module) domain.Value
-	// MakeError membangun galat catchable (throw dengan code+status).
+	// MakeError builds a catchable error (throw with code+status).
 	MakeError func(code string, status int, msg string, pos domain.Position) error
-	// MakeBug membangun galat internal engine (errf, tidak catchable).
+	// MakeBug builds an internal engine error (errf, not catchable).
 	MakeBug func(msg string, pos domain.Position) error
-	// CallValue memanggil nilai GaLang (callback dari C).
+	// CallValue invokes a GaLang value (callback from C).
 	CallValue func(fn domain.Value, args []domain.Value, pos domain.Position) (domain.Value, error)
-	// DescribeError memecah error pemanggilan balik menjadi code/status/msg.
+	// DescribeError splits a callback error into code/status/msg.
 	DescribeError func(err error) (code string, status int, msg string)
 }
 
-// hentry adalah satu slot tabel handle: nilai + reference count.
+// hentry is one slot of the handle table: value + reference count.
 type hentry struct {
 	v  domain.Value
 	rc int
 }
 
-// errInvalidRet dipakai bila *ret menunjuk handle yang sudah tidak ada.
+// errInvalidRet is used when *ret points at a handle that no longer exists.
 var errInvalidRet = &retErr{}
 
 type retErr struct{}
 
-func (*retErr) Error() string { return "handle hasil tidak valid" }
+func (*retErr) Error() string { return "invalid result handle" }
 
-// Registry berstate per-Interp: tabel handle + cache modul yang sudah
-// dimuat. Satu registry hanya disentuh oleh goroutine interp-nya.
+// Registry holds per-Interp state: the handle table + a cache of loaded
+// modules. A registry is only touched by its interp goroutine.
 type Registry struct {
 	hooks  Hooks
 	values map[uint64]*hentry
@@ -58,23 +63,24 @@ type Registry struct {
 	byPath map[string]*Module
 }
 
-// Module adalah satu ekstensi yang sudah dimuat: namespace + konteks C.
+// Module is one loaded extension: namespace + C context.
 type Module struct {
 	reg  *Registry
 	ns   *domain.Obj
 	name string
 	path string
 	id   uint64
-	// ctx adalah *C.gne_ctx yang dialokasikan C (bukan memori Go),
-	// disimpan sebagai unsafe.Pointer supaya tipe ini tetap bisa
-	// dipakai oleh kode interpreter yang tidak memakai cgo.
+	// ctx is *C.gne_ctx allocated by C (not Go memory), stored as
+	// unsafe.Pointer so this type stays usable from interpreter code
+	// built without cgo.
 	ctx unsafe.Pointer
-	// temps mengumpulkan handle yang dibuat selama satu call; dilepas
-	// host setelah cfunc selesai (kecuali *ret atau yang di-retain).
+	// temps collects handles created during one call; released by
+	// the host after the cfunc finishes (unless retained or returned
+	// through *ret).
 	temps []uint64
 }
 
-// NewRegistry membuat registry dengan hooks interpreter.
+// NewRegistry creates a registry with the interpreter's hooks.
 func NewRegistry(h Hooks) *Registry {
 	return &Registry{
 		hooks:  h,
@@ -84,16 +90,16 @@ func NewRegistry(h Hooks) *Registry {
 	}
 }
 
-// Namespace mengembalikan objek namespace modul (untuk diikat oleh use).
+// Namespace returns the module namespace object (to be bound by use).
 func (m *Module) Namespace() *domain.Obj { return m.ns }
 
-// Name mengembalikan nama namespace (mis. "redis").
+// Name returns the namespace name (e.g. "redis").
 func (m *Module) Name() string { return m.name }
 
-// Path mengembalikan path .so yang dimuat.
+// Path returns the path of the loaded .so.
 func (m *Module) Path() string { return m.path }
 
-// ---- tabel handle (murni Go, dipakai sisi cgo dan stub) ----
+// ---- handle table (pure Go, used by both the cgo and stub sides) ----
 
 func (r *Registry) newHandle(v domain.Value) uint64 {
 	r.next++
@@ -118,8 +124,8 @@ func (r *Registry) retain(h uint64) {
 	}
 }
 
-// release mengurangi rc; pada 0 entri dihapus sehingga handle basi
-// terdeteksi sebagai "tidak valid", bukan membaca nilai lain.
+// release decrements rc; at 0 the entry is dropped so a stale handle is
+// detected as "invalid" instead of reading someone else's value.
 func (r *Registry) release(h uint64) {
 	e, ok := r.values[h]
 	if !ok {
@@ -131,16 +137,17 @@ func (r *Registry) release(h uint64) {
 	}
 }
 
-// newTemp membuat handle sementara milik call berjalan (di-release host
-// setelah cfunc selesai, kecuali dikembalikan lewat *ret atau di-retain).
+// newTemp creates a temporary handle owned by the running call (released
+// by the host after the cfunc finishes, unless returned through *ret or
+// retained).
 func (m *Module) newTemp(v domain.Value) uint64 {
 	h := m.reg.newHandle(v)
 	m.temps = append(m.temps, h)
 	return h
 }
 
-// finishCall me-release semua handle sementara kecuali ret, lalu
-// me-referensikan nilai *ret (kepemilikan berpindah dari C ke host).
+// finishCall releases every temporary handle except ret, then
+// dereferences *ret (ownership transfers from C to the host).
 func (m *Module) finishCall(ret uint64) (domain.Value, error) {
 	for _, h := range m.temps {
 		if h == ret {
@@ -153,14 +160,14 @@ func (m *Module) finishCall(ret uint64) (domain.Value, error) {
 		return nil, nil
 	}
 	v, ok := m.reg.lookup(ret)
-	m.reg.release(ret) // satu referensi host dari perpindahan *ret
+	m.reg.release(ret) // one host reference from the *ret transfer
 	if !ok {
 		return nil, errInvalidRet
 	}
 	return v, nil
 }
 
-// resetCall membersihkan state call sebelumnya.
+// resetCall clears state left by the previous call.
 func (m *Module) resetCall(self uint64, pos domain.Position) {
 	for _, h := range m.temps {
 		m.reg.release(h)

@@ -1,12 +1,12 @@
-// smtp-gmail.ga — contoh kirim surel sungguhan ke dadanhidyt@gmail.com
-// lewat ekstensi resmi smtp, dengan TLS dipegang terowongan lokal stunnel
-// (ekstensi kita plain + AUTH LOGIN ke localhost; stunnel mengenkripsi ke
-// smtp.gmail.com:465 dengan verifikasi sertifikat).
+// smtp-gmail.ga — example of sending a real email to dadanhidyt@gmail.com
+// through the official smtp extension, with TLS handled by a local stunnel
+// tunnel (our extension speaks plain + AUTH LOGIN to localhost; stunnel
+// encrypts to smtp.gmail.com:465 with certificate verification).
 //
-// ── Persiapan (sekali) ──────────────────────────────────────────────
-// 1. App password: Akun Google → Keamanan → Verifikasi 2 langkah →
-//    Sandi aplikasi (2FA harus aktif dahulu).
-// 2. Terowongan TLS — tulis /etc/stunnel/gmail.conf:
+// ── Setup (one time) ────────────────────────────────────────────────
+// 1. App password: Google Account → Security → 2-Step Verification →
+//    App passwords (2FA must be enabled first).
+// 2. TLS tunnel — write /etc/stunnel/gmail.conf:
 //
 //      foreground = yes
 //
@@ -21,27 +21,28 @@
 //      setuid = stunnel4
 //      setgid = stunnel4
 //
-//    lalu: apt install stunnel4 && systemctl enable --now stunnel@gmail
-// 3. Ekstensi: gar gne install smtp
-// 4. Ganti <APP_PASSWORD> di bawah, lalu: gar run examples/smtp-gmail.ga
+//    then: apt install stunnel4 && systemctl enable --now stunnel@gmail
+// 3. Extension: gar gne install smtp
+// 4. Replace <APP_PASSWORD> below, then: gar run examples/smtp-gmail.ga
 //
-// ── Hasil tes nyata (2026-10-09) ───────────────────────────────────
-// • Kiriman langsung ke MX Gmail (port 25, tanpa TLS/otentikasi):
-//   dialog diterima sampai RCPT + DATA, lalu DITOLAK kebijakan Google:
+// ── Real test results (2026-10-09) ─────────────────────────────────
+// • Direct delivery to the Gmail MX (port 25, no TLS/authentication):
+//   the dialogue was accepted all the way through RCPT + DATA, then
+//   REJECTED by Google policy:
 //   550 5.7.26 "Gmail requires all senders to authenticate with either
 //   SPF or DKIM."
-// • Jalur submission terautentikasi di atas (TLS via stunnel + AUTH
-//   LOGIN): diterima, 250 — surel masuk inbox.
+// • The authenticated submission path above (TLS via stunnel + AUTH
+//   LOGIN): accepted, 250 — the email landed in the inbox.
 use "smtp"
 
 $s = smtp.connect("127.0.0.1", 2526, 20000)
 $s.auth("dadanhidyt@gmail.com", "<APP_PASSWORD>")
 $s.from("dadanhidyt@gmail.com")
 $s.to("dadanhidyt@gmail.com")
-$s.subject("Tes ekstensi smtp GaLang")
-print("kirim : " + str($s.send(
-  "Halo!\n\n" +
-  "Surel tes dari ekstensi resmi smtp GaLang.\n" +
-  "Alur: use \"smtp\" → stunnel → smtp.gmail.com:465 (TLS).\n"
+$s.subject("GaLang smtp extension test")
+print("send  : " + str($s.send(
+  "Hi!\n\n" +
+  "Test email from the official GaLang smtp extension.\n" +
+  "Path: use \"smtp\" → stunnel → smtp.gmail.com:465 (TLS).\n"
 )))
-print("tutup : " + str($s.close()))
+print("close : " + str($s.close()))

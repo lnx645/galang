@@ -1,54 +1,54 @@
-/* httpclient.c — ekstensi GNE resmi: klien HTTP/1.1 murni C.
+/* httpclient.c — official GNE extension: pure-C HTTP/1.1 client.
  *
- * Gaya pemakaian:
+ * Usage style:
  *
  *   use "httpclient"
  *   $r = httpclient.get("http://127.0.0.1:8868/api/ping")
- *   print($r.status)         //200
+ *   print($r.status)         // 200
  *   print($r.ok)             // true (2xx)
- *   print($r.body)           // isi respons (string, boleh biner)
+ *   print($r.body)           // response payload (string, may be binary)
  *   print($r.header("content-type"))
  *
  *   $r = httpclient.post($url, $json, "application/json")
  *   $r = httpclient.post($url, $json, "application/json", 3000)   // timeout ms
  *
- *   // kontrol penuh: metode, body, header tambahan ("Nama: nilai")
+ *   // full control: method, body, extra headers ("Name: value")
  *   $r = httpclient.request("PUT", $url, $body,
  *          ["Authorization: Bearer " + $t, "X-Id: 1"], 3000)
  *   $r = httpclient.request("DELETE", $url)
  *
- *   // respons: $r.status (int), $r.ok (bool), $r.body (string),
- *   //           $r.url (URL akhir setelah pengalihan), $r.redirects (int),
- *   //           $r.headers (array "Nama: nilai"), $r.header(nama) → string|null
+ *   // response: $r.status (int), $r.ok (bool), $r.body (string),
+ *   //           $r.url (final URL after redirects), $r.redirects (int),
+ *   //           $r.headers (array of "Name: value"), $r.header(name) → string|null
  *
- * Cakupan & keputusan desain:
- *   - HANYA skema http://. https:// DITOLAK dengan pesan jelas — tanpa
- *     dependensi TLS bawaan (sama seperti ekstensi smtp); gunakan
- *     proksi TLS lokal (mis. caddy/stunnel) bila perlu https.
- *   - HTTP/1.1 dengan "Connection: close" (satu permintaan per koneksi;
- *     tanpa keep-alihan, tanpa pipeline — jauh lebih sederhana & aman).
- *   - Pengalihan301/302/303/307/308 diikuti sampai5 hop: 303 (dan
- *    301/302 pada non-GET/HEAD) diubah jadi GET tanpa body — perilaku
- *     peramban. Location absolut, protokol-ganda (//), mutlak-akar (/),
- *     relatif, dan "?query" semuanya didukung.
- *   - Body respons: Content-Length, chunked (didekode), atau baca
- *     sampai EOF (HTTP/1.0). Respons204/304/HEAD tanpa body.
- *   - Kirim "Accept-Encoding: identity" — bila server tetap mengirim
- *     Content-Encoding lain (gzip dll), galat jelas dilempar, bukan
- *     body sampah.
- *   - Status4xx/5xx TIDAK melempar galat (respons normal) — periksa
- *     $r.status / $r.ok. Galat jaringan/protokol yang dilempar:
+ * Scope & design decisions:
+ *   - ONLY the http:// scheme. https:// is REJECTED with a clear message —
+ *     no built-in TLS dependency (same as the smtp extension); use a
+ *     local TLS proxy (e.g. caddy/stunnel) when https is needed.
+ *   - HTTP/1.1 with "Connection: close" (one request per connection;
+ *     no keep-alive, no pipelining — much simpler & safer).
+ *   - Redirects 301/302/303/307/308 are followed up to 5 hops: 303 (and
+ *     301/302 on non-GET/HEAD) are turned into GET without a body —
+ *     browser behavior. Absolute Location, protocol-relative (//),
+ *     absolute-path (/), relative, and "?query" are all supported.
+ *   - Response body: Content-Length, chunked (decoded), or read
+ *     until EOF (HTTP/1.0). 204/304/HEAD responses have no body.
+ *   - Sends "Accept-Encoding: identity" — if the server still sends
+ *     another Content-Encoding (gzip etc.), a clear error is thrown,
+ *     not a garbage body.
+ *   - 4xx/5xx status does NOT throw (normal response) — check
+ *     $r.status / $r.ok. Network/protocol errors that are thrown:
  *
- * Galat (catchable try/catch):
- *   - argumen/url/header tak sah, https ditolak → "type_error" 500
- *   - gagal terhubung / server menutup / terpotong → "httpclient_error" 502
- *   - waktu tunggu habis → "httpclient_error" 504
- *   - respons rusak, body >64 MiB, >5 pengalihan, kompresi tak
- *     didukung, upgrade (101) → "httpclient_error" 500
+ * Errors (catchable with try/catch):
+ *   - invalid args/url/headers, https rejected → "type_error" 500
+ *   - connect failure / server closed / truncated → "httpclient_error" 502
+ *   - timeout expired → "httpclient_error" 504
+ *   - malformed response, body >64 MiB, >5 redirects, unsupported
+ *     compression, upgrade (101) → "httpclient_error" 500
  *
- * Batas: URL ≤4096, host ≤256, body kirim/terima ≤64 MiB, header
- * respons ≤64 KiB & ≤512 baris, header kirim ≤16 KiB, timeout bawaan
- *5000 ms per operasi jaringan (0 = tanpa batas).
+ * Limits: URL ≤4096, host ≤256, send/receive body ≤64 MiB, response
+ * headers ≤64 KiB & ≤512 lines, request headers ≤16 KiB, default
+ * timeout 5000 ms per network operation (0 = unlimited).
  */
 #include "gne.h"
 
@@ -94,48 +94,48 @@ typedef int hfd_t;
 
 static const gne_host_api *api;
 
-/* ---- batas (dokumentasikan di docs) ---- */
+/* ---- limits (documented in docs) ---- */
 #define HC_TIMEOUT_DEFAULT_MS 5000
 #define HC_MAX_URL 4096
 #define HC_MAX_HOST 256
 #define HC_MAX_METHOD 16
 #define HC_MAX_BODY (64u << 20)    /*64 MiB */
 #define HC_MAX_HDR (64u << 10)     /*64 KiB */
-#define HC_MAX_LINES 512           /* baris header respons */
+#define HC_MAX_LINES 512           /* response header lines */
 #define HC_MAX_REQHDR (16u << 10)  /*16 KiB */
 #define HC_MAX_REDIRECT 5
 #define HC_MAX_INTERIM 8
 
-/* ---- teks galat socket (deterministik, tanpa strerror) ---- */
+/* ---- socket error text (deterministic, no strerror) ---- */
 static const char *sock_text(int e, char *buf, size_t cap)
 {
 	const char *s = NULL;
 #ifdef _WIN32
 	switch (e) {
-	case WSAETIMEDOUT: s = "waktu tunggu habis"; break;
-	case WSAECONNREFUSED: s = "koneksi ditolak"; break;
-	case WSAECONNRESET: s = "koneksi direset"; break;
-	case WSAEHOSTUNREACH: s = "tujuan tak terjangkau"; break;
-	case WSAENETUNREACH: s = "jaringan tak terjangkau"; break;
-	case WSAENOTCONN: s = "koneksi belum terbuka"; break;
+	case WSAETIMEDOUT: s = "timed out"; break;
+	case WSAECONNREFUSED: s = "connection refused"; break;
+	case WSAECONNRESET: s = "connection reset"; break;
+	case WSAEHOSTUNREACH: s = "host unreachable"; break;
+	case WSAENETUNREACH: s = "network unreachable"; break;
+	case WSAENOTCONN: s = "not connected"; break;
 	default: break;
 	}
 #else
 	switch (e) {
-	case ETIMEDOUT: s = "waktu tunggu habis"; break;
-	case ECONNREFUSED: s = "koneksi ditolak"; break;
-	case ECONNRESET: s = "koneksi direset"; break;
-	case EHOSTUNREACH: s = "tujuan tak terjangkau"; break;
-	case ENETUNREACH: s = "jaringan tak terjangkau"; break;
-	case ENOTCONN: s = "koneksi belum terbuka"; break;
-	case EPIPE: s = "pipa tertutup"; break;
+	case ETIMEDOUT: s = "timed out"; break;
+	case ECONNREFUSED: s = "connection refused"; break;
+	case ECONNRESET: s = "connection reset"; break;
+	case EHOSTUNREACH: s = "host unreachable"; break;
+	case ENETUNREACH: s = "network unreachable"; break;
+	case ENOTCONN: s = "not connected"; break;
+	case EPIPE: s = "broken pipe"; break;
 	default: break;
 	}
 #endif
 	if (s)
-		snprintf(buf, cap, "%s (kode %d)", s, e);
+		snprintf(buf, cap, "%s (code %d)", s, e);
 	else
-		snprintf(buf, cap, "galat socket %d", e);
+		snprintf(buf, cap, "socket error %d", e);
 	return buf;
 }
 
@@ -151,7 +151,7 @@ static int is_retry_err(int e)
 
 /* ---- string helper ---- */
 
-/* Perbandingan tanpa memedulikan huruf besar/kecil. */
+/* Case-insensitive comparison. */
 static int ci_n(const char *a, const char *b, size_t n)
 {
 	size_t i;
@@ -183,7 +183,7 @@ static int ci_eq(const char *a, const char *b)
 	return *a == '\0' && *b == '\0';
 }
 
-/* sbuf — buffer string tumbuh. */
+/* sbuf — growable string buffer. */
 typedef struct {
 	char *b;
 	size_t len, cap;
@@ -221,7 +221,7 @@ static int sb_puts(sbuf *s, const char *p)
 	return sb_add(s, p, strlen(p));
 }
 
-/* Daftar string milik C (header tambahan / baris respons). */
+/* List of C-owned strings (extra headers / response lines). */
 typedef struct {
 	char **v;
 	size_t *len;
@@ -245,7 +245,7 @@ static void sl_free(strlist *l)
 	sl_init(l);
 }
 
-/* Salin baris (tanpa CRLF) ke daftar; -1 = gagal alokasi. */
+/* Copy a line (without CRLF) into the list; -1 = allocation failure. */
 static int sl_add(strlist *l, const char *p, size_t n)
 {
 	char *c;
@@ -273,7 +273,7 @@ static int sl_add(strlist *l, const char *p, size_t n)
 	return 0;
 }
 
-/* ---- koneksi ---- */
+/* ---- connection ---- */
 
 enum {
 	BUF_OK = 0,
@@ -290,7 +290,7 @@ typedef struct {
 	size_t rcap, rlen, rpos;
 } hconn;
 
-/* Batas memori buffer baca: header + body + jangkar. */
+/* Read-buffer memory limit: headers + body + slack. */
 static size_t hc_buf_cap(void)
 {
 	return (size_t)HC_MAX_BODY + HC_MAX_HDR + 4096;
@@ -376,7 +376,7 @@ static int buf_refill(hconn *c)
 	}
 }
 
-/* Pastikan ada ≥ n byte dari posisi baca. */
+/* Make sure ≥ n bytes are available from the read position. */
 static int buf_ensure(hconn *c, size_t n)
 {
 	while (c->rlen - c->rpos < n) {
@@ -426,7 +426,7 @@ static int send_all(hfd_t fd, const char *p, size_t n)
 static void set_timeouts(hfd_t fd, int ms)
 {
 	if (ms <= 0)
-		return; /* 0 = tanpa batas (blocking murni) */
+		return; /* 0 = unlimited (fully blocking) */
 #ifdef _WIN32
 	{
 		DWORD t = (DWORD)ms;
@@ -446,7 +446,7 @@ static void set_timeouts(hfd_t fd, int ms)
 #endif
 }
 
-/* Konek nonblocking + select(timeout).0 = sukses; lain = errno/WSA. */
+/* Nonblocking connect + select(timeout). 0 = success; other = errno/WSA. */
 static int conn_dial(hfd_t fd, const struct sockaddr *sa, socklen_t slen,
 		     int timeout_ms)
 {
@@ -561,10 +561,10 @@ typedef struct {
 	char host[HC_MAX_HOST];
 	int port;
 	int ipv6;
-	char path[HC_MAX_URL]; /* path + query, selalu diawali '/' */
+	char path[HC_MAX_URL]; /* path + query, always starting with '/' */
 } url_t;
 
-/*0 = sukses; -1 = salah (pesan di err). */
+/* 0 = success; -1 = error (message in err). */
 static int url_parse(const char *url, size_t ulen, url_t *u, char *err,
 		     size_t errcap)
 {
@@ -574,20 +574,20 @@ static int url_parse(const char *url, size_t ulen, url_t *u, char *err,
 
 	if (ulen >= 8 && ci_n(url, "https://", 8)) {
 		snprintf(err, errcap,
-			 "https belum didukung httpclient (tanpa TLS bawaan, "
-			 "sama seperti smtp) — gunakan proksi TLS lokal untuk https");
+			 "https is not supported by httpclient (no built-in TLS, "
+			 "same as smtp) — use a local TLS proxy for https");
 		return -1;
 	}
 	if (ulen < 7 || !ci_n(url, "http://", 7)) {
-		snprintf(err, errcap, "url harus diawali http://");
+		snprintf(err, errcap, "url must start with http://");
 		return -1;
 	}
 	for (i = 0; i < ulen; i++) {
 		unsigned char ch = (unsigned char)url[i];
 		if (ch < 0x21 || ch > 0x7e) {
 			snprintf(err, errcap,
-				 "url hanya boleh ASCII (spasi/karakter non-ASCII "
-				 "harus %%encoding)");
+				 "url must be ASCII only (spaces/non-ASCII "
+				 "characters must be %%encoded)");
 			return -1;
 		}
 	}
@@ -597,13 +597,13 @@ static int url_parse(const char *url, size_t ulen, url_t *u, char *err,
 		p++;
 	h1 = p;
 	if (h1 == h0) {
-		snprintf(err, errcap, "url tanpa host");
+		snprintf(err, errcap, "url has no host");
 		return -1;
 	}
 	if (p < e && *p == '@') {
 		snprintf(err, errcap,
-			 "info pengguna (user:pass@) di url tidak didukung — "
-			 "kirim lewat header");
+			 "userinfo (user:pass@) in url is not supported — "
+			 "send it via a header");
 		return -1;
 	}
 	/* host + port */
@@ -611,11 +611,11 @@ static int url_parse(const char *url, size_t ulen, url_t *u, char *err,
 	if (*h0 == '[') {
 		const char *rb = memchr(h0, ']', (size_t)(h1 - h0));
 		if (!rb) {
-			snprintf(err, errcap, "host ipv6 tanpa ] penutup");
+			snprintf(err, errcap, "ipv6 host without closing ]");
 			return -1;
 		}
 		if ((size_t)(rb - h0 - 1) >= HC_MAX_HOST) {
-			snprintf(err, errcap, "host terlalu panjang");
+			snprintf(err, errcap, "host too long");
 			return -1;
 		}
 		memcpy(u->host, h0 + 1, (size_t)(rb - h0 - 1));
@@ -623,13 +623,13 @@ static int url_parse(const char *url, size_t ulen, url_t *u, char *err,
 		u->ipv6 = 1;
 		if (rb + 1 < h1) {
 			if (rb[1] != ':') {
-				snprintf(err, errcap, "url host salah");
+				snprintf(err, errcap, "invalid url host");
 				return -1;
 			}
-			colon = 1; /* tanda ada port */
+			colon = 1; /* mark that a port is present */
 			h0 = rb + 2;
 			if (h0 > h1) {
-				snprintf(err, errcap, "port kosong");
+				snprintf(err, errcap, "empty port");
 				return -1;
 			}
 		}
@@ -642,15 +642,15 @@ static int url_parse(const char *url, size_t ulen, url_t *u, char *err,
 			if (memchr(h0 + i + 1, ':',
 				   (size_t)(h1 - h0) - i - 1)) {
 				snprintf(err, errcap,
-					 "url host salah (ipv6 wajib pakai [ ... ])");
+					 "invalid url host (ipv6 must use [ ... ])");
 				return -1;
 			}
 			if ((size_t)colon == 0) {
-				snprintf(err, errcap, "host kosong");
+				snprintf(err, errcap, "empty host");
 				return -1;
 			}
 			if ((size_t)colon >= HC_MAX_HOST) {
-				snprintf(err, errcap, "host terlalu panjang");
+				snprintf(err, errcap, "host too long");
 				return -1;
 			}
 			memcpy(u->host, h0, (size_t)colon);
@@ -658,7 +658,7 @@ static int url_parse(const char *url, size_t ulen, url_t *u, char *err,
 			h0 = h0 + colon + 1;
 		} else {
 			if ((size_t)(h1 - h0) >= HC_MAX_HOST) {
-				snprintf(err, errcap, "host terlalu panjang");
+				snprintf(err, errcap, "host too long");
 				return -1;
 			}
 			memcpy(u->host, h0, (size_t)(h1 - h0));
@@ -669,27 +669,27 @@ static int url_parse(const char *url, size_t ulen, url_t *u, char *err,
 	if (colon >= 0 && (!u->ipv6 || (h1 > h0))) {
 		long v = 0;
 		if (h0 == h1) {
-			snprintf(err, errcap, "port kosong");
+			snprintf(err, errcap, "empty port");
 			return -1;
 		}
 		for (; h0 < h1; h0++) {
 			if (*h0 < '0' || *h0 > '9') {
-				snprintf(err, errcap, "port bukan angka");
+				snprintf(err, errcap, "port is not a number");
 				return -1;
 			}
 			v = v * 10 + (*h0 - '0');
 			if (v > 65535) {
-				snprintf(err, errcap, "port di luar1-65535");
+				snprintf(err, errcap, "port out of range 1-65535");
 				return -1;
 			}
 		}
 		if (v < 1) {
-			snprintf(err, errcap, "port di luar1-65535");
+			snprintf(err, errcap, "port out of range 1-65535");
 			return -1;
 		}
 		u->port = (int)v;
 	}
-	/* path + query (potong fragment) */
+	/* path + query (fragment dropped) */
 	{
 		size_t n = 0;
 		if (p >= e || *p == '#') {
@@ -701,7 +701,7 @@ static int url_parse(const char *url, size_t ulen, url_t *u, char *err,
 			u->path[n++] = '/';
 		while (p < e && *p != '#') {
 			if (n + 1 >= sizeof u->path) {
-				snprintf(err, errcap, "url terlalu panjang");
+				snprintf(err, errcap, "url too long");
 				return -1;
 			}
 			u->path[n++] = *p++;
@@ -711,7 +711,7 @@ static int url_parse(const char *url, size_t ulen, url_t *u, char *err,
 	return 0;
 }
 
-/* Authority (host:port) untuk header Host — ipv6 pakai kurung. */
+/* Authority (host:port) for the Host header — ipv6 uses brackets. */
 static void url_authority(const url_t *u, char *out, size_t cap)
 {
 	if (u->ipv6) {
@@ -727,7 +727,7 @@ static void url_authority(const url_t *u, char *out, size_t cap)
 	}
 }
 
-/* Resolusi nilai Location terhadap URL sekarang.0 = sukses. */
+/* Resolve a Location value against the current URL. 0 = success. */
 static int loc_resolve(const url_t *cur, const char *loc, size_t llen,
 		       char *out, size_t cap)
 {
@@ -741,7 +741,7 @@ static int loc_resolve(const url_t *cur, const char *loc, size_t llen,
 		out[llen] = '\0';
 		return 0;
 	}
-	if (llen >= 2 && loc[0] == '/' && loc[1] == '/') { /* protokol ganda */
+	if (llen >= 2 && loc[0] == '/' && loc[1] == '/') { /* protocol-relative */
 		if (llen + 5 >= cap)
 			return -1;
 		memcpy(out, "http:", 5);
@@ -756,7 +756,7 @@ static int loc_resolve(const url_t *cur, const char *loc, size_t llen,
 		snprintf(out, cap, "http://%s%.*s", auth, (int)llen, loc);
 		return 0;
 	}
-	if (loc[0] == '?') { /* ganti query, pertahankan path */
+	if (loc[0] == '?') { /* replace query, keep path */
 		const char *q = strchr(cur->path, '?');
 		size_t base = q ? (size_t)(q - cur->path) : strlen(cur->path);
 		if (7 + strlen(auth) + base + llen + 1 >= cap)
@@ -765,7 +765,7 @@ static int loc_resolve(const url_t *cur, const char *loc, size_t llen,
 			 cur->path, (int)llen, loc);
 		return 0;
 	}
-	/* relatif: dasar = path sampai terakhir '/' */
+	/* relative: base = path up to the last '/' */
 	{
 		const char *slash = NULL, *q = strchr(cur->path, '?');
 		size_t i;
@@ -790,9 +790,9 @@ static int loc_resolve(const url_t *cur, const char *loc, size_t llen,
 	return 0;
 }
 
-/* ---- argumen ---- */
+/* ---- arguments ---- */
 
-/* String ketat; null → *out=NULL,*len=0 (tanpa galat). */
+/* Strict string; null → *out=NULL, *len=0 (no error). */
 static int opt_str(gne_ctx *ctx, gne_handle h, char **out, size_t *len,
 		   const char *what)
 {
@@ -807,7 +807,7 @@ static int opt_str(gne_ctx *ctx, gne_handle h, char **out, size_t *len,
 		return 0;
 	if (t != GNE_STRING) {
 		char msg[96];
-		snprintf(msg, sizeof msg, "%s harus string atau null", what);
+		snprintf(msg, sizeof msg, "%s must be a string or null", what);
 		api->throw(ctx, "type_error", 500, msg);
 		return -1;
 	}
@@ -816,12 +816,12 @@ static int opt_str(gne_ctx *ctx, gne_handle h, char **out, size_t *len,
 	s = malloc(n + 1);
 	if (!s) {
 		api->throw(ctx, "httpclient_oom", 500,
-			   "gagal mengalokasikan memori");
+			   "failed to allocate memory");
 		return -1;
 	}
 	if (api->str_copy(ctx, h, s, n + 1) < 0) {
 		free(s);
-		api->throw(ctx, "type_error", 500, "argumen string tidak terbaca");
+		api->throw(ctx, "type_error", 500, "string argument could not be read");
 		return -1;
 	}
 	*out = s;
@@ -829,7 +829,7 @@ static int opt_str(gne_ctx *ctx, gne_handle h, char **out, size_t *len,
 	return 0;
 }
 
-/* Integer opsional: null → default; int → nilai; lain → galat. */
+/* Optional integer: null → default; int → value; other → error. */
 static int opt_int(gne_ctx *ctx, gne_handle h, int64_t def, int64_t *out,
 		   const char *what)
 {
@@ -842,19 +842,20 @@ static int opt_int(gne_ctx *ctx, gne_handle h, int64_t def, int64_t *out,
 	}
 	if (t != GNE_INT) {
 		char msg[96];
-		snprintf(msg, sizeof msg, "%s harus angka (milidetik)", what);
+		snprintf(msg, sizeof msg, "%s must be a number (milliseconds)",
+			 what);
 		api->throw(ctx, "type_error", 500, msg);
 		return -1;
 	}
 	api->get_int(ctx, h, out);
 	if (*out > 2147483647LL) {
 		api->throw(ctx, "type_error", 500,
-			   "timeout terlalu besar (maks 2147483647 ms)");
+			   "timeout too large (max 2147483647 ms)");
 		return -1;
 	}
 	if (*out < 0) {
 		api->throw(ctx, "type_error", 500,
-			   "timeout tidak boleh negatif (0 = tanpa batas)");
+			   "timeout must not be negative (0 = unlimited)");
 		return -1;
 	}
 	return 0;
@@ -875,8 +876,8 @@ static int is_token_char(char c)
 	}
 }
 
-/* Kumpulkan header tambahan dari array "Nama: nilai" + validasi anti
- * injeksi CRLF. Kepemilikan pindah ke daftar. */
+/* Collect extra headers from a "Name: value" array + anti-CRLF-
+ * injection validation. Ownership transfers to the list. */
 static int headers_collect(gne_ctx *ctx, gne_handle arr, strlist *out)
 {
 	int32_t t;
@@ -887,7 +888,7 @@ static int headers_collect(gne_ctx *ctx, gne_handle arr, strlist *out)
 		return 0;
 	if (t != GNE_ARRAY) {
 		api->throw(ctx, "type_error", 500,
-			   "headers harus array \"Nama: nilai\" atau null");
+			   "headers must be an array of \"Name: value\" or null");
 		return -1;
 	}
 	if (api->len(ctx, arr, &n) != 0)
@@ -903,31 +904,31 @@ static int headers_collect(gne_ctx *ctx, gne_handle arr, strlist *out)
 			return -1;
 		if (!s) {
 			api->throw(ctx, "type_error", 500,
-				   "header berisi null — harus \"Nama: nilai\"");
+				   "header contains null — must be \"Name: value\"");
 			return -1;
 		}
 		colon = memchr(s, ':', sl);
 		if (!colon || colon == s) {
 			free(s);
 			api->throw(ctx, "type_error", 500,
-				   "header harus berformat \"Nama: nilai\"");
+				   "header must be formatted as \"Name: value\"");
 			return -1;
 		}
 		for (j = 0; j < (size_t)(colon - s); j++) {
 			if (!is_token_char(s[j])) {
 				free(s);
 				api->throw(ctx, "type_error", 500,
-					   "nama header mengandung karakter tak sah");
+					   "header name contains invalid characters");
 				return -1;
 			}
 		}
 		if (strpbrk(s, "\r\n") != NULL) {
 			free(s);
 			api->throw(ctx, "type_error", 500,
-				   "header tidak boleh berisi CR/LF (injeksi)");
+				   "header must not contain CR/LF (injection)");
 			return -1;
 		}
-		/* header terkelola transport tidak boleh ditimpa */
+		/* transport-managed headers must not be overridden */
 		{
 			size_t nl = (size_t)(colon - s);
 			if ((nl == 4 && ci_n(s, "host", 4)) ||
@@ -936,20 +937,20 @@ static int headers_collect(gne_ctx *ctx, gne_handle arr, strlist *out)
 			    (nl == 17 && ci_n(s, "transfer-encoding", 17))) {
 				free(s);
 				api->throw(ctx, "type_error", 500,
-					   "header ini dikelola httpclient dan tidak boleh ditimpa");
+					   "this header is managed by httpclient and must not be overridden");
 				return -1;
 			}
 		}
 		if (sl > HC_MAX_REQHDR) {
 			free(s);
 			api->throw(ctx, "type_error", 500,
-				   "header terlalu panjang");
+				   "header too long");
 			return -1;
 		}
 		if (sl_add(out, s, sl) != 0) {
 			free(s);
 			api->throw(ctx, "httpclient_oom", 500,
-				   "gagal mengalokasikan memori");
+				   "failed to allocate memory");
 			return -1;
 		}
 		free(s);
@@ -969,11 +970,11 @@ static int headers_has(const strlist *l, const char *name, size_t nl)
 	return 0;
 }
 
-/* ---- respons ---- */
+/* ---- response ---- */
 
 typedef struct {
 	int code;
-	strlist lines; /* baris "Nama: nilai" (tanpa CRLF) */
+	strlist lines; /* "Name: value" lines (without CRLF) */
 	char *body;
 	size_t blen;
 	int chunked;
@@ -1003,14 +1004,14 @@ static int fail_io(gne_ctx *ctx, hconn *c, int rc, const char *what)
 {
 	char buf[256];
 	if (rc == BUF_TIMEOUT) {
-		snprintf(buf, sizeof buf, "%s: waktu tunggu %d ms habis", what,
+		snprintf(buf, sizeof buf, "%s: timed out after %d ms", what,
 			 c->timeout_ms);
 		api->throw(ctx, "httpclient_error", 504, buf);
 	} else if (rc == BUF_EOF) {
-		snprintf(buf, sizeof buf, "%s: server menutup koneksi", what);
+		snprintf(buf, sizeof buf, "%s: server closed the connection", what);
 		api->throw(ctx, "httpclient_error", 502, buf);
 	} else if (rc == BUF_TOOLARGE) {
-		snprintf(buf, sizeof buf, "%s: melewati batas ukuran", what);
+		snprintf(buf, sizeof buf, "%s: size limit exceeded", what);
 		api->throw(ctx, "httpclient_error", 500, buf);
 	} else if (rc == BUF_ERR) {
 		int e = SOCK_ERRNO;
@@ -1024,7 +1025,7 @@ static int fail_io(gne_ctx *ctx, hconn *c, int rc, const char *what)
 	return -1;
 }
 
-/* Cari akhir blok header "\r\n\r\n". *end = posisi sesudah blok. */
+/* Find the end of the header block "\r\n\r\n". *end = position after the block. */
 static int hdr_block_end(hconn *c, size_t *end)
 {
 	for (;;) {
@@ -1046,7 +1047,7 @@ static int hdr_block_end(hconn *c, size_t *end)
 	}
 }
 
-/* Baca status + header (melewati respons interim1xx). */
+/* Read status + headers (skipping interim 1xx responses). */
 static int read_head(gne_ctx *ctx, hconn *c, int *code, strlist *lines)
 {
 	int iterasi;
@@ -1057,14 +1058,14 @@ static int read_head(gne_ctx *ctx, hconn *c, int *code, strlist *lines)
 		int rc;
 		if (iterasi > HC_MAX_INTERIM) {
 			api->throw(ctx, "httpclient_error", 500,
-				   "terlalu banyak respons interim");
+				   "too many interim responses");
 			return -1;
 		}
 		rc = hdr_block_end(c, &end);
 		if (rc != BUF_OK)
-			return fail_io(ctx, c, rc, "membaca header respons");
+			return fail_io(ctx, c, rc, "reading response headers");
 		b = c->rbuf + c->rpos;
-		/* baris status */
+		/* status line */
 		for (i = 0; i + 1 < end - c->rpos; i++)
 			if (b[i] == '\r' && b[i + 1] == '\n')
 				break;
@@ -1080,22 +1081,22 @@ static int read_head(gne_ctx *ctx, hconn *c, int *code, strlist *lines)
 		    line[10] < '0' || line[10] > '9' ||
 		    line[11] < '0' || line[11] > '9') {
 			api->throw(ctx, "httpclient_error", 500,
-				   "respons HTTP tidak sah");
+				   "invalid HTTP response");
 			return -1;
 		}
 		*code = (line[9] - '0') * 100 + (line[10] - '0') * 10 +
 			(line[11] - '0');
-		/* potong buffer: buang baris status + blok header */
+		/* trim buffer: discard status line + header block */
 		if (*code >= 100 && *code < 200) {
 			if (*code == 101) {
 				api->throw(ctx, "httpclient_error", 500,
-					   "upgrade protokol (101) tidak didukung");
+					   "protocol upgrade (101) is not supported");
 				return -1;
 			}
-			c->rpos = end; /* interim — lanjut baca berikutnya */
+			c->rpos = end; /* interim — continue with the next one */
 			continue;
 		}
-		/* baris-baris header */
+		/* header lines */
 		{
 			size_t pos = c->rpos + ls + 2;
 			size_t stop = end;
@@ -1111,14 +1112,14 @@ static int read_head(gne_ctx *ctx, hconn *c, int *code, strlist *lines)
 						api->throw(ctx,
 							   "httpclient_oom",
 							   500,
-							   "gagal mengalokasikan memori");
+							   "failed to allocate memory");
 						return -1;
 					}
 					if (lines->n > HC_MAX_LINES) {
 						api->throw(ctx,
 							   "httpclient_error",
 							   500,
-							   "terlalu banyak baris header respons");
+							   "too many response header lines");
 						return -1;
 					}
 				}
@@ -1130,7 +1131,7 @@ static int read_head(gne_ctx *ctx, hconn *c, int *code, strlist *lines)
 	}
 }
 
-/* Pindai baris header → field. */
+/* Scan header lines → fields. */
 static void head_scan(hresp *r)
 {
 	int i;
@@ -1193,14 +1194,14 @@ static void head_scan(hresp *r)
 	}
 }
 
-/* Baca body chunked dari posisi baca. */
+/* Read a chunked body from the read position. */
 static int read_chunked(gne_ctx *ctx, hconn *c, hresp *r)
 {
 	sbuf out = { NULL, 0, 0 };
 	for (;;) {
 		size_t eol = 0, i, size = 0;
 		int rc;
-		/* cari CRLF baris ukuran */
+		/* find the CRLF of the size line */
 		for (;;) {
 			for (i = c->rpos; i + 1 < c->rlen; i++)
 				if (c->rbuf[i] == '\r' &&
@@ -1214,9 +1215,9 @@ static int read_chunked(gne_ctx *ctx, hconn *c, hresp *r)
 				goto rusak;
 			rc = buf_refill(c);
 			if (rc != BUF_OK)
-				return fail_io(ctx, c, rc, "membaca chunk");
+				return fail_io(ctx, c, rc, "reading chunk");
 		}
-		/* parse heksadesimal (abaikan ekstensi ';...') */
+		/* parse hex (ignore extensions ';...') */
 		{
 			size_t k = c->rpos;
 			int ada = 0;
@@ -1245,7 +1246,7 @@ static int read_chunked(gne_ctx *ctx, hconn *c, hresp *r)
 		}
 		c->rpos = eol + 2;
 		if (size == 0) {
-			/* trailer sampai baris kosong */
+			/* trailers until an empty line */
 			for (;;) {
 				size_t te = 0, j;
 				int rc2;
@@ -1260,22 +1261,22 @@ static int read_chunked(gne_ctx *ctx, hconn *c, hresp *r)
 						break;
 					rc2 = buf_refill(c);
 					if (rc2 == BUF_EOF)
-						goto selesai; /* tanpa trailer */
+						goto selesai; /* no trailers */
 					if (rc2 != BUF_OK)
 						return fail_io(ctx, c, rc2,
-							       "membaca trailer");
+							       "reading trailer");
 				}
-				if (te == c->rpos) { /* baris kosong */
+				if (te == c->rpos) { /* empty line */
 					c->rpos = te + 2;
 					goto selesai;
 				}
 				c->rpos = te + 2;
 			}
 		}
-		/* data chunk + CRLF */
+		/* chunk data + CRLF */
 		rc = buf_ensure(c, size + 2);
 		if (rc != BUF_OK)
-			return fail_io(ctx, c, rc, "membaca data chunk");
+			return fail_io(ctx, c, rc, "reading chunk data");
 		if (out.len + size > HC_MAX_BODY)
 			goto besar;
 		if (sb_add(&out, c->rbuf + c->rpos, size) != 0)
@@ -1298,37 +1299,37 @@ selesai:
 rusak:
 	free(out.b);
 	api->throw(ctx, "httpclient_error", 500,
-		   "respons chunked rusak");
+		   "malformed chunked response");
 	return -1;
 besar:
 	free(out.b);
 	api->throw(ctx, "httpclient_error", 500,
-		   "body melebihi batas64 MiB");
+		   "body exceeds the 64 MiB limit");
 	return -1;
 oom:
 	free(out.b);
 oom2:
 	api->throw(ctx, "httpclient_oom", 500,
-		   "gagal mengalokasikan memori");
+		   "failed to allocate memory");
 	return -1;
 }
 
-/* Baca body ber-Content-Length. */
+/* Read a Content-Length body. */
 static int read_clen(gne_ctx *ctx, hconn *c, hresp *r)
 {
 	int rc;
 	if (r->clen > HC_MAX_BODY) {
 		api->throw(ctx, "httpclient_error", 500,
-			   "body melebihi batas64 MiB");
+			   "body exceeds the 64 MiB limit");
 		return -1;
 	}
 	rc = buf_ensure(c, (size_t)r->clen);
 	if (rc != BUF_OK)
-		return fail_io(ctx, c, rc, "membaca body");
+		return fail_io(ctx, c, rc, "reading body");
 	r->body = malloc((size_t)r->clen + 1);
 	if (!r->body) {
 		api->throw(ctx, "httpclient_oom", 500,
-			   "gagal mengalokasikan memori");
+			   "failed to allocate memory");
 		return -1;
 	}
 	memcpy(r->body, c->rbuf + c->rpos, (size_t)r->clen);
@@ -1338,7 +1339,7 @@ static int read_clen(gne_ctx *ctx, hconn *c, hresp *r)
 	return 0;
 }
 
-/* Baca sampai EOF (tanpa Content-Length / chunked). */
+/* Read until EOF (no Content-Length / chunked). */
 static int read_eof(gne_ctx *ctx, hconn *c, hresp *r)
 {
 	for (;;) {
@@ -1346,18 +1347,18 @@ static int read_eof(gne_ctx *ctx, hconn *c, hresp *r)
 		if (rc == BUF_EOF)
 			break;
 		if (rc != BUF_OK)
-			return fail_io(ctx, c, rc, "membaca body");
+			return fail_io(ctx, c, rc, "reading body");
 	}
 	r->blen = c->rlen - c->rpos;
 	if (r->blen > HC_MAX_BODY) {
 		api->throw(ctx, "httpclient_error", 500,
-			   "body melebihi batas64 MiB");
+			   "body exceeds the 64 MiB limit");
 		return -1;
 	}
 	r->body = malloc(r->blen + 1);
 	if (!r->body) {
 		api->throw(ctx, "httpclient_oom", 500,
-			   "gagal mengalokasikan memori");
+			   "failed to allocate memory");
 		return -1;
 	}
 	memcpy(r->body, c->rbuf + c->rpos, r->blen);
@@ -1365,7 +1366,7 @@ static int read_eof(gne_ctx *ctx, hconn *c, hresp *r)
 	return 0;
 }
 
-/* ---- dial + kirim + baca satu kali ---- */
+/* ---- dial + send + read once ---- */
 
 static int dial(gne_ctx *ctx, const url_t *u, int timeout_ms, hfd_t *out,
 		     char *errbuf, size_t errcap)
@@ -1381,7 +1382,7 @@ static int dial(gne_ctx *ctx, const url_t *u, int timeout_ms, hfd_t *out,
 	hints.ai_family = AF_UNSPEC;
 	hints.ai_socktype = SOCK_STREAM;
 	if (getaddrinfo(u->host, ports, &hints, &res) != 0) {
-		snprintf(errbuf, errcap, "gagal memecahkan alamat host %.200s",
+		snprintf(errbuf, errcap, "failed to resolve host address %.200s",
 			 u->host);
 		return -1;
 	}
@@ -1414,16 +1415,16 @@ static int dial(gne_ctx *ctx, const url_t *u, int timeout_ms, hfd_t *out,
 		char txt[96];
 		if (e == ETIMEDOUT || is_timeout_err(e))
 			snprintf(errbuf, errcap,
-				 "gagal terhubung ke %.200s:%d (waktu tunggu %d ms habis)",
+				 "failed to connect to %.200s:%d (timed out after %d ms)",
 				 u->host, u->port, timeout_ms);
 		else
-			snprintf(errbuf, errcap, "gagal terhubung ke %.200s:%d: %s",
+			snprintf(errbuf, errcap, "failed to connect to %.200s:%d: %s",
 				 u->host, u->port, sock_text(e, txt, sizeof txt));
 	}
 	return -1;
 }
 
-/* Susun + kirim permintaan. -1 = sudah throw. */
+/* Build + send the request. -1 = already thrown. */
 static int kirim_permintaan(gne_ctx *ctx, hfd_t fd, const url_t *u,
 			    const char *method, const char *body, size_t blen,
 			    const char *ctype, const strlist *hdrs)
@@ -1467,9 +1468,9 @@ static int kirim_permintaan(gne_ctx *ctx, hfd_t fd, const url_t *u,
 		char buf[160], txt[96];
 		if (is_timeout_err(e))
 			snprintf(buf, sizeof buf,
-				 "mengirim permintaan: waktu tunggu habis");
+				 "sending request: timed out");
 		else
-			snprintf(buf, sizeof buf, "mengirim permintaan: %s",
+			snprintf(buf, sizeof buf, "sending request: %s",
 				 sock_text(e, txt, sizeof txt));
 		api->throw(ctx, "httpclient_error",
 			   is_timeout_err(e) ? 504 : 502, buf);
@@ -1479,7 +1480,7 @@ static int kirim_permintaan(gne_ctx *ctx, hfd_t fd, const url_t *u,
 	goto beres;
 oom:
 	api->throw(ctx, "httpclient_oom", 500,
-		   "gagal mengalokasikan memori");
+		   "failed to allocate memory");
 beres:
 	free(s.b);
 	return rc;
@@ -1488,7 +1489,7 @@ beres:
 static int hc_header(gne_ctx *ctx, int argc, const gne_handle *argv,
 		     gne_handle *ret);
 
-/* ---- inti: satu siklus permintaan + pengalihan ---- */
+/* ---- core: one request + redirect cycle ---- */
 
 static int hc_lakukan(gne_ctx *ctx, const char *method_in, const char *url,
 		      size_t ulen, const char *body, size_t blen,
@@ -1506,17 +1507,17 @@ static int hc_lakukan(gne_ctx *ctx, const char *method_in, const char *url,
 
 	if (ulen == 0 || ulen >= sizeof cururl) {
 		api->throw(ctx, "type_error", 500,
-			   "url kosong atau melebihi4096 karakter");
+			   "url is empty or exceeds 4096 characters");
 		return -1;
 	}
 	memcpy(cururl, url, ulen);
 	cururl[ulen] = '\0';
 
-	/* metode: token, kapital, ≤16 */
+	/* method: token, uppercase, ≤16 */
 	methlen = strlen(method_in);
 	if (methlen == 0 || methlen > HC_MAX_METHOD) {
 		api->throw(ctx, "type_error", 500,
-			   "metode kosong atau terlalu panjang");
+			   "method is empty or too long");
 		return -1;
 	}
 	{
@@ -1525,7 +1526,7 @@ static int hc_lakukan(gne_ctx *ctx, const char *method_in, const char *url,
 			char ch = method_in[i];
 			if (!is_token_char(ch)) {
 				api->throw(ctx, "type_error", 500,
-					   "metode mengandung karakter tak sah");
+					   "method contains invalid characters");
 				return -1;
 			}
 			if (ch >= 'a' && ch <= 'z')
@@ -1536,7 +1537,7 @@ static int hc_lakukan(gne_ctx *ctx, const char *method_in, const char *url,
 	}
 	if (blen > HC_MAX_BODY) {
 		api->throw(ctx, "type_error", 500,
-			   "body melebihi batas64 MiB");
+			   "body exceeds the 64 MiB limit");
 		return -1;
 	}
 	have_body = body != NULL && blen > 0;
@@ -1578,11 +1579,11 @@ static int hc_lakukan(gne_ctx *ctx, const char *method_in, const char *url,
 			hfd_close(c.fd);
 			free(c.rbuf);
 			api->throw(ctx, "httpclient_error", 500,
-				   "respons terkompresi (Content-Encoding) tidak "
-				   "didukung — httpclient sudah meminta identity");
+				   "compressed response (Content-Encoding) is "
+				   "not supported — httpclient already requested identity");
 			goto beres;
 		}
-		/* body (atau tanpa body untuk HEAD/204/304) */
+		/* body (or no body for HEAD/204/304) */
 		if (ci_eq(meth, "HEAD") || code == 204 || code == 304) {
 			resp.body = malloc(1);
 			if (resp.body)
@@ -1608,13 +1609,13 @@ static int hc_lakukan(gne_ctx *ctx, const char *method_in, const char *url,
 		hfd_close(c.fd);
 		free(c.rbuf);
 
-		/* pengalihan? */
+		/* redirect? */
 		if (resp.has_location &&
 		    (code == 301 || code == 302 || code == 303 || code == 307 ||
 		     code == 308)) {
 			if (hop >= HC_MAX_REDIRECT) {
 				api->throw(ctx, "httpclient_error", 500,
-					   "terlalu banyak pengalihan (maksimal5)");
+					   "too many redirects (max 5)");
 				goto beres;
 			}
 			{
@@ -1623,11 +1624,11 @@ static int hc_lakukan(gne_ctx *ctx, const char *method_in, const char *url,
 						strlen(resp.location), next,
 						sizeof next) != 0) {
 					api->throw(ctx, "httpclient_error", 500,
-						   "Location tidak dapat diresolusikan");
+						   "Location could not be resolved");
 					goto beres;
 				}
-				/* 301/302/303: metode selain GET/HEAD diubah jadi GET
-					 * tanpa body (perilaku peramban);307/308 dipertahankan. */
+				/* 301/302/303: methods other than GET/HEAD are changed to
+					 * GET without a body (browser behavior); 307/308 are preserved. */
 				if (code == 301 || code == 302 || code == 303) {
 					if (!ci_eq(meth, "GET") && !ci_eq(meth, "HEAD")) {
 						memcpy(meth, "GET", 4);
@@ -1645,7 +1646,7 @@ static int hc_lakukan(gne_ctx *ctx, const char *method_in, const char *url,
 		break;
 	}
 
-	/* susun objek respons */
+	/* build the response object */
 	{
 		gne_handle obj = api->object(ctx), hv, arr = api->array(ctx);
 		int i;
@@ -1675,7 +1676,7 @@ beres:
 	return rc;
 }
 
-/* Metode respons: header(nama) → nilai string pertama atau null. */
+/* Response method: header(name) → first string value or null. */
 static int hc_header(gne_ctx *ctx, int argc, const gne_handle *argv,
 		     gne_handle *ret)
 {
@@ -1688,11 +1689,11 @@ static int hc_header(gne_ctx *ctx, int argc, const gne_handle *argv,
 	if (api->str_len(ctx, argv[1], &nlen) != 0 || nlen == 0 ||
 	    nlen >= sizeof name) {
 		api->throw(ctx, "type_error", 500,
-			   "nama header harus string1–127 karakter");
+			   "header name must be a string of 1–127 characters");
 		return -1;
 	}
 	if (api->str_copy(ctx, argv[1], name, sizeof name) < 0) {
-		api->throw(ctx, "type_error", 500, "argumen string tidak terbaca");
+		api->throw(ctx, "type_error", 500, "string argument could not be read");
 		return -1;
 	}
 	if (api->obj_get(ctx, argv[0], "headers", &arr) != 0 ||
@@ -1727,7 +1728,7 @@ static int hc_header(gne_ctx *ctx, int argc, const gne_handle *argv,
 	return 0;
 }
 
-/* ---- wajah modul ---- */
+/* ---- module face ---- */
 
 /* httpclient.get(url[, timeout]) */
 static int hc_get(gne_ctx *ctx, int argc, const gne_handle *argv,
@@ -1741,7 +1742,7 @@ static int hc_get(gne_ctx *ctx, int argc, const gne_handle *argv,
 	if (opt_str(ctx, argv[0], &url, &ulen, "url") != 0)
 		return -1;
 	if (!url || ulen == 0) {
-		api->throw(ctx, "type_error", 500, "url harus string");
+		api->throw(ctx, "type_error", 500, "url must be a string");
 		return -1;
 	}
 	if (argc >= 2 && opt_int(ctx, argv[1], HC_TIMEOUT_DEFAULT_MS, &timeout,
@@ -1769,7 +1770,7 @@ static int hc_post(gne_ctx *ctx, int argc, const gne_handle *argv,
 	if (opt_str(ctx, argv[0], &url, &ulen, "url") != 0)
 		return -1;
 	if (!url || ulen == 0) {
-		api->throw(ctx, "type_error", 500, "url harus string");
+		api->throw(ctx, "type_error", 500, "url must be a string");
 		free(url);
 		return -1;
 	}
@@ -1792,7 +1793,7 @@ static int hc_post(gne_ctx *ctx, int argc, const gne_handle *argv,
 	}
 	if (ct && strpbrk(ct, "\r\n")) {
 		api->throw(ctx, "type_error", 500,
-			   "content_type tidak boleh berisi CR/LF");
+			   "content_type must not contain CR/LF");
 		free(url);
 		free(body);
 		free(ct);
@@ -1817,10 +1818,10 @@ static int hc_request(gne_ctx *ctx, int argc, const gne_handle *argv,
 	int64_t timeout = HC_TIMEOUT_DEFAULT_MS;
 	strlist hdrs;
 	int rc;
-	if (opt_str(ctx, argv[0], &method, &mlen, "metode") != 0)
+	if (opt_str(ctx, argv[0], &method, &mlen, "method") != 0)
 		return -1;
 	if (!method || mlen == 0) {
-		api->throw(ctx, "type_error", 500, "metode harus string");
+		api->throw(ctx, "type_error", 500, "method must be a string");
 		free(method);
 		return -1;
 	}
@@ -1829,7 +1830,7 @@ static int hc_request(gne_ctx *ctx, int argc, const gne_handle *argv,
 		return -1;
 	}
 	if (!url || ulen == 0) {
-		api->throw(ctx, "type_error", 500, "url harus string");
+		api->throw(ctx, "type_error", 500, "url must be a string");
 		free(method);
 		free(url);
 		return -1;
@@ -1869,7 +1870,7 @@ int gne_module_init(const gne_host_api *a, gne_ctx *ctx, gne_handle *out)
 {
 	api = a;
 	if (api->abi != GNE_ABI) {
-		api->throw(ctx, "gne_abi", 500, "ABI berbeda");
+		api->throw(ctx, "gne_abi", 500, "ABI mismatch");
 		return 1;
 	}
 #ifdef _WIN32
@@ -1879,7 +1880,7 @@ int gne_module_init(const gne_host_api *a, gne_ctx *ctx, gne_handle *out)
 			WSADATA wsa;
 			if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
 				api->throw(ctx, "httpclient_error", 502,
-					   "WSAStartup gagal");
+					   "WSAStartup failed");
 				return 1;
 			}
 			wsa_done = 1;

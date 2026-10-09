@@ -55,8 +55,8 @@ $scientific = 1.0e3      // float, 1000.0
 
 ```galang
 $nama = "GaLang"
-print("Halo, $nama!")        // identifier interpolation
-print("Halo, ${nama}!")      // expression interpolation: ${...}
+print("Hello, $nama!")       // identifier interpolation
+print("Hello, ${nama}!")     // expression interpolation: ${...}
 print("harga 5$")            // $ without an identifier = safe literal
 
 $raw = `baris literal
@@ -179,7 +179,7 @@ for $i in 3..1 { }      // 3 2 1    — descending, direction follows the sign
 ### Ternary
 
 ```galang
-$status = $n > 0 ? "ok" : "gagal"
+$status = $n > 0 ? "ok" : "failed"
 ```
 
 ### Precedence (low → high)
@@ -294,8 +294,8 @@ print($a[2:])     // [3, 4, 5]     — from index 2
 print($a[:2])     // [1, 2]        — up to index 2
 print($a[:])      // [1, 2, 3, 4, 5] — full copy
 
-$s = "Halo Dunia"
-print($s[0:4])    // "Halo" — string slicing works too
+$s = "Hello World"
+print($s[0:4])    // "Hello" — string slicing works too
 ```
 
 An out-of-bounds index → **runtime error** (not a silent `null`). If you want a
@@ -348,11 +348,11 @@ fn tambah(int $a, int $b) int {
 }
 print(tambah(3, 5))         // 8
 
-fn greet($nama, $sapaan = "Halo") {
+fn greet($nama, $sapaan = "Hello") {
     return "${sapaan}, ${nama}!"
 }
-print(greet("Dadan"))           // Halo, Dadan!
-print(greet("Dadan", "Selamat")) // Selamat, Dadan!
+print(greet("Dadan"))           // Hello, Dadan!
+print(greet("Dadan", "Howdy"))    // Howdy, Dadan!
 ```
 
 - Parameter & return type annotations are **optional**; they are checked at
@@ -393,7 +393,7 @@ message.
 ```galang
 try {
     $u = null
-    if $u == null { throw not_found("user tidak ada") }
+    if $u == null { throw not_found("user not found") }
 } catch e {
     print("Error: ${e.message} (code: ${e.code}, status: ${e.status})")
 }
@@ -402,13 +402,13 @@ try {
 ### Error constructors
 
 ```galang
-throw error("kegagalan umum")     // status 500
+throw error("general failure")     // status 500
 throw bad_request("input salah")  // 400
-throw unauthorized("belum login") // 401
+throw unauthorized("not logged in") // 401
 throw forbidden("dilarang")       // 403
-throw not_found("tidak ada")      // 404
+throw not_found("not found")      // 404
 throw conflict("duplikat")        // 409
-throw server_error("gagal")       // 500
+throw server_error("failed")       // 500
 ```
 
 ### Error values
@@ -457,7 +457,7 @@ resources.
 try {
     $data = file.read("config.json")
 } catch $e {
-    print("gagal baca")
+    print("read failed")
 } finally {
     print("bersihkan di sini")   // always executed
 }
@@ -540,7 +540,7 @@ Two forms are supported:
 ```galang
 print("nilai:", $x)      // call style
 print "nilai:", $x       // statement style
-println("selesai")       // one line
+println("done")       // one line
 println()                // blank line
 println "a", "b"         // statement
 ```

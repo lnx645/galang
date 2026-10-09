@@ -64,14 +64,14 @@ Save it as `hello.ga`:
 ```galang
 // hello.ga
 $name = "GaLang"
-print("Halo, $name!")
+print("Hello, $name!")
 ```
 
 Run it:
 
 ```bash
 gar run hello.ga
-# Halo, GaLang!
+# Hello, GaLang!
 ```
 
 ## Variables and Types
@@ -103,12 +103,12 @@ print(float("1.5"))   // 1.5
 ## Your First Function
 
 ```galang
-fn greet($nama, $sapaan = "Halo") {
+fn greet($nama, $sapaan = "Hello") {
     return "${sapaan}, ${nama}!"
 }
 
-print(greet("Dadan"))            // Halo, Dadan!
-print(greet("Dadan", "Selamat")) // Selamat, Dadan!
+print(greet("Dadan"))            // Hello, Dadan!
+print(greet("Dadan", "Howdy"))    // Howdy, Dadan!
 ```
 
 ## Interactive REPL
@@ -171,7 +171,7 @@ http.listen(8869)
 
 ```blade
 <h1>{{ $title }}</h1>
-<p>Halo dari GaLang.</p>
+<p>Hello from GaLang.</p>
 ```
 
 Run it, then open `http://localhost:8869`:

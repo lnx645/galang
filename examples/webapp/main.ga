@@ -1,12 +1,12 @@
-// Contoh aplikasi web publik GaLang — demo di port 5800.
+// GaLang public web app example — demo on port 5800.
 //
-// Menunjukkan: routing + path parameter, middleware http.use, sesi
-// http.session (cookie HttpOnly), database SQLite nyata (query/exec),
-// Blade template (@extends, @section, @yield, @include, @foreach, @if),
-// file statis CSS/JS, respons JSON otomatis, structured response, dan
-// error berstatus.
+// Shows: routing + path parameters, http.use middleware, http.session
+// sessions (HttpOnly cookie), a real SQLite database (query/exec),
+// Blade templates (@extends, @section, @yield, @include, @foreach, @if),
+// static CSS/JS files, automatic JSON responses, structured responses,
+// and status errors.
 //
-// Jalankan dari direktori ini:
+// Run from this directory:
 //     cd examples/webapp && gar run main.ga
 use "http"
 use "strings"
@@ -14,54 +14,55 @@ use "time"
 use "database"
 use "file"
 
-// Koneksi SQLite + bootstrap idempoten: schema.sql memakai
-// CREATE TABLE IF NOT EXISTS + INSERT OR IGNORE, jadi aman dijalankan
-// setiap start. File demo.db dibuat otomatis (lihat .gitignore).
+// SQLite connection + idempotent bootstrap: schema.sql uses
+// CREATE TABLE IF NOT EXISTS + INSERT OR IGNORE, so it is safe to run on
+// every start. The demo.db file is created automatically (see .gitignore).
 $db = database.connect("sqlite:demo.db")
 $db.exec(file.read("schema.sql"))
 
 http.views("views")
 http.static("/public/", "public")
 
-// Middleware global: berjalan untuk semua rute HTTP sebelum handler.
-// Kode sebelum $next = sebelum; nilai kembali dari $next = respons handler.
-// Hasilnya dicatat ke stdout → jurnal systemd (journalctl -u galang-demo).
+// Global middleware: runs for every HTTP route before the handler.
+// Code before $next = before; the value returned from $next = the handler's
+// response. The result is logged to stdout → systemd journal
+// (journalctl -u galang-demo).
 http.use(fn($req, $next) {
     print($req.method + " " + $req.path)
     return $next($req)
 })
 
-// Data kartu beranda — diiterasi lewat @foreach di template.
+// Home page cards — iterated with @foreach in the template.
 $kartu = [
     {judul: "Blade", teks: "Layout @extends, slot @yield + @yield(\"b\", \"default\"), partial @include."},
-    {judul: "JSON otomatis", teks: "Object/array yang di-return langsung menjadi respons application/json."},
-    {judul: "CSS + JS statis", teks: "http.static menyajikan public/ — halaman ini tanpa CDN."},
-    {judul: "Error berstatus", teks: "throw not_found(...) → 404 dengan body {code, message, status}."}
+    {judul: "Automatic JSON", teks: "A returned object/array becomes an application/json response directly."},
+    {judul: "Static CSS + JS", teks: "http.static serves public/ — this page uses no CDN."},
+    {judul: "Status errors", teks: "throw not_found(...) → 404 with body {code, message, status}."}
 ]
 
-// Data fitur bahasa untuk halaman /fitur.
+// Language feature data for the /fitur page.
 $fitur = [
     {kode: "async", nama: "async / await / gather", kategori: "runtime", populer: true},
     {kode: "spawn", nama: "spawn (fire-and-forget)", kategori: "runtime", populer: false},
     {kode: "promise", nama: "promise + then/catch", kategori: "runtime", populer: true},
-    {kode: "type", nama: "Type hints: ?int, number, bool", kategori: "bahasa", populer: true},
-    {kode: "opt", nama: `Default parameter: $x = 1`, kategori: "bahasa", populer: false},
-    {kode: "ops", nama: "and / or / not + && / || / !", kategori: "bahasa", populer: true},
-    {kode: "match", nama: "switch / case / default", kategori: "bahasa", populer: false},
-    {kode: "try", nama: "try / catch + throw error", kategori: "bahasa", populer: true},
+    {kode: "type", nama: "Type hints: ?int, number, bool", kategori: "language", populer: true},
+    {kode: "opt", nama: `Default parameter: $x = 1`, kategori: "language", populer: false},
+    {kode: "ops", nama: "and / or / not + && / || / !", kategori: "language", populer: true},
+    {kode: "match", nama: "switch / case / default", kategori: "language", populer: false},
+    {kode: "try", nama: "try / catch + throw error", kategori: "language", populer: true},
     {kode: "slice", nama: "Slice [a:b] + method chaining", kategori: "data", populer: false},
     {kode: "destr", nama: `Destructuring: $a, $b = ...`, kategori: "data", populer: false}
 ]
 
 http.GET("/", fn($req) {
-    // Backtick = string raw tanpa interpolasi — aman untuk kode bercontoh $var.
+    // Backtick = raw string without interpolation — safe for sample $var code.
     $kodeContoh = `http.GET("/api/sapa/{nama}", fn($req) {
-    return {sapaan: "Halo, " + $req.params.nama}
+    return {sapaan: "Hello, " + $req.params.nama}
 })
 
-http.listen(5800)   // object → JSON otomatis`
+http.listen(5800)   // object → automatic JSON`
     return http.render("home.blade", {
-        judul: "GaLang — contoh web publik",
+        judul: "GaLang — public web demo",
         kartu: $kartu,
         contoh: $kodeContoh
     })
@@ -69,29 +70,29 @@ http.listen(5800)   // object → JSON otomatis`
 
 http.GET("/fitur", fn($req) {
     return http.render("fitur.blade", {
-        judul: "Fitur bahasa GaLang",
+        judul: "GaLang language features",
         fitur: $fitur,
         total: len($fitur)
     })
 })
 
-// Template sederhana tanpa layout — sapaan personal.
+// Simple template without a layout — a personal greeting.
 http.GET("/halo/{nama}", fn($req) {
     $nama = strings.trim($req.params.nama)
     return http.render("welcome.blade", {
-        title: "Halo, " + $nama,
-        message: "Dirender langsung dari http.render tanpa layout."
+        title: "Hello, " + $nama,
+        message: "Rendered directly by http.render, without a layout."
     })
 })
 
-// ── API JSON ────────────────────────────────────────────────────────────
+// ── JSON API ────────────────────────────────────────────────────────────
 http.GET("/api/sapa/{nama}", fn($req) {
     $nama = strings.trim($req.params.nama)
     if $nama == "" {
-        throw bad_request("nama tidak boleh kosong")
+        throw bad_request("name must not be empty")
     }
     return {
-        sapaan: "Halo, " + strings.upper($nama) + "!",
+        sapaan: "Hello, " + strings.upper($nama) + "!",
         panjang: len($nama),
         waktu_ms: time.now_ms()
     }
@@ -100,29 +101,29 @@ http.GET("/api/sapa/{nama}", fn($req) {
 http.POST("/api/echo", fn($req) {
     $data = json_decode($req.body)
     if $data == null {
-        throw bad_request("body harus berupa JSON yang valid")
+        throw bad_request("body must be valid JSON")
     }
     return {diterima: $data, metode: $req.method, panjang_body: len($req.body)}
 })
 
-// Ambil dari SQLite: baris → objek; tak ada di database → 404.
+// From SQLite: row → object; not in the database → 404.
 http.GET("/api/user/{id}", fn($req) {
     $row = $db.query_first("SELECT id, name, email FROM users WHERE id = ?", [$req.params.id])
     if $row == null {
-        throw not_found("user dengan id " + $req.params.id + " tidak ada")
+        throw not_found("user with id " + $req.params.id + " does not exist")
     }
     return $row
 })
 
-// Respons array → JSON array otomatis.
+// Array response → automatic JSON array.
 http.GET("/api/daftar", fn($req) {
     return $fitur
 })
 
-// Sesi HTTP: hitungan kunjungan per sesi. Server mengirim cookie
-// HttpOnly (galang_session) pada kunjungan pertama yang menulis sesi;
-// penyimpanan in-memory — reset saat service restart. Tambahkan ?reset=1
-// untuk menghancurkan sesi (cookie kedaluwarsa).
+// HTTP sessions: a visit counter per session. The server sends an
+// HttpOnly cookie (galang_session) on the first visit that writes to the
+// session; storage is in-memory — reset when the service restarts. Add
+// ?reset=1 to destroy the session (cookie expires).
 http.GET("/api/kunjungan", fn($req) {
     if $req.query.reset != null {
         http.session_destroy($req)

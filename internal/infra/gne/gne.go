@@ -18,18 +18,19 @@ import (
 	"galang/internal/domain"
 )
 
-// Peta global ctx → modul: ekspor Go dipanggil melewati frame C, jadi dari
-// ctx harus bisa mencapai registry milik interpreter mana pun (bisa ada
-// beberapa Interp pada goroutine berbeda).
+// Global ctx → module map: the Go exports are reached through a C
+// frame, so from ctx we must be able to reach whichever interpreter's
+// registry is running (there may be several Interps on different
+// goroutines).
 var (
 	gmu       sync.RWMutex
 	modByID   = map[uint64]*Module{}
 	nextModID uint64
 )
 
-// Available melaporkan apakah loader native aktif (build dengan CGO).
-// Dipakai installer `gar gne` untuk menolak pemasangan pada binari yang
-// tidak bisa memuat ekstensi sama sekali.
+// Available reports whether the native loader is active (built with
+// CGO). Used by the `gar gne` installer to reject installs on binaries
+// that cannot load extensions at all.
 func Available() bool { return true }
 
 func modFor(ctx *C.gne_ctx) *Module {
@@ -55,8 +56,8 @@ func gneClearErr(ctx *C.gne_ctx) {
 	ctx.status = 0
 }
 
-// gneFail mencatat galat tertunda di ctx; Invoke mengubahnya menjadi
-// galat catchable setelah cfunc selesai.
+// gneFail records a pending error on ctx; Invoke turns it into a
+// catchable error once the cfunc returns.
 func gneFail(ctx *C.gne_ctx, code string, status int, msg string) {
 	gneClearErr(ctx)
 	ctx.failed = 1
@@ -68,7 +69,7 @@ func gneFail(ctx *C.gne_ctx, code string, status int, msg string) {
 	ctx.msg = C.CString(msg)
 }
 
-// takeErr membaca lalu mengosongkan galat tertunda.
+// takeErr reads then clears the pending error.
 func takeErr(ctx *C.gne_ctx) (code string, status int, msg string) {
 	code = C.GoString(ctx.code)
 	msg = C.GoString(ctx.msg)
@@ -77,10 +78,15 @@ func takeErr(ctx *C.gne_ctx) (code string, status int, msg string) {
 	return
 }
 
-// Load membuka berkas .so/.dylib/.dll dan menjalankan gne_module_init.
-// Modul yang sudah dimuat di-cache per path; nama berbeda menunjuk berkas
-// sama akan berbagi satu instance (init hanya sekali).
-func (r *Registry) Load(name, path string) (*Module, error) {
+// Load opens a .so/.dylib/.dll and runs gne_module_init. Modules are
+// cached per path; different names pointing at the same file share one
+// instance (init runs only once).
+//
+// declaredABI is the gne_abi recorded in the package sidecar next to
+// the library (0 = unknown). An older declared ABI gets a legacy table
+// view so extensions built before an ABI bump keep working; the
+// extension's own equality check still rejects anything it cannot run.
+func (r *Registry) Load(name, path string, declaredABI int) (*Module, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		abs = path
@@ -97,20 +103,20 @@ func (r *Registry) Load(name, path string) (*Module, error) {
 	defer C.free(unsafe.Pointer(cPath))
 	dl := C.gne_dl_open(cPath)
 	if dl == nil {
-		return nil, fmt.Errorf("gagal memuat %s: %s", path, C.GoString(C.gne_dl_error()))
+		return nil, fmt.Errorf("cannot load %s: %s", path, C.GoString(C.gne_dl_error()))
 	}
 	cSym := C.CString("gne_module_init")
 	sym := C.gne_dl_sym(dl, cSym)
 	C.free(unsafe.Pointer(cSym))
 	if sym == nil {
-		return nil, fmt.Errorf("%s bukan ekstensi GNE: simbol gne_module_init tidak ditemukan (%s)",
+		return nil, fmt.Errorf("%s is not a GNE extension: symbol gne_module_init not found (%s)",
 			path, C.GoString(C.gne_dl_error()))
 	}
 
 	m := &Module{reg: r, name: name, path: abs}
 	m.ctx = C.calloc(1, C.sizeof_gne_ctx)
 	if m.ctx == nil {
-		return nil, fmt.Errorf("gagal mengalokasikan konteks untuk %s", path)
+		return nil, fmt.Errorf("failed to allocate a context for %s", path)
 	}
 	ctx := (*C.gne_ctx)(m.ctx)
 
@@ -122,10 +128,10 @@ func (r *Registry) Load(name, path string) (*Module, error) {
 	ctx.mod = C.uint64_t(m.id)
 	m.ns = domain.NewObj()
 
-	// Jalankan init. Namespace dibuat lebih dulu sehingga define_fn di
-	// dalam init bisa mendaftar; init boleh mengembalikan handle itu
-	// lewat api->module(ctx), atau 0 (pakai namespace bawaan).
-	api := C.gne_get_host_api()
+	// Run init. The namespace is created first so define_fn inside init
+	// can register; init may return that handle through
+	// api->module(ctx), or 0 (use the default namespace).
+	api := C.gne_get_host_api_abi(C.int32_t(declaredABI))
 	var out C.uint64_t
 	rc := C.gne_invoke_init(sym, api, ctx, &out)
 
@@ -136,18 +142,18 @@ func (r *Registry) Load(name, path string) (*Module, error) {
 	}
 	if rc != 0 {
 		m.abandon()
-		return nil, fmt.Errorf("gne_module_init di %s mengembalikan kode %d", path, int(rc))
+		return nil, fmt.Errorf("gne_module_init in %s returned code %d", path, int(rc))
 	}
 	v, ferr := m.finishCall(uint64(out))
 	if ferr != nil {
 		m.abandon()
-		return nil, fmt.Errorf("gne_module_init di %s tidak mengembalikan handle valid", path)
+		return nil, fmt.Errorf("gne_module_init in %s did not return a valid handle", path)
 	}
 	if v != nil {
 		obj, ok := v.(*domain.Obj)
 		if !ok || obj != m.ns {
 			m.abandon()
-			return nil, fmt.Errorf("gne_module_init di %s harus mengembalikan namespace (api->module(ctx))", path)
+			return nil, fmt.Errorf("gne_module_init in %s must return the namespace (api->module(ctx))", path)
 		}
 	}
 
@@ -156,7 +162,7 @@ func (r *Registry) Load(name, path string) (*Module, error) {
 	return m, nil
 }
 
-// abandon membuang modul yang gagal dimuat.
+// abandon discards a module that failed to load.
 func (m *Module) abandon() {
 	for _, h := range m.temps {
 		m.reg.release(h)
@@ -171,11 +177,12 @@ func (m *Module) abandon() {
 	}
 }
 
-// Invoke memanggil satu fungsi native dari Builtin yang dibuat WrapNative.
-// Konteks direset per call; semua handle sementara dilepas setelah selesai.
+// Invoke calls one native function from a Builtin created by
+// WrapNative. The context is reset per call; all temporary handles are
+// released when it finishes.
 func (m *Module) Invoke(name string, fnPtr unsafe.Pointer, self uint64, args []domain.Value, pos domain.Position) (domain.Value, error) {
 	if m.ctx == nil {
-		return nil, m.reg.hooks.MakeBug(name+": modul GNE tidak aktif", pos)
+		return nil, m.reg.hooks.MakeBug(name+": GNE module is not active", pos)
 	}
 	ctx := (*C.gne_ctx)(m.ctx)
 	gneClearErr(ctx)
@@ -186,7 +193,7 @@ func (m *Module) Invoke(name string, fnPtr unsafe.Pointer, self uint64, args []d
 	argv := make([]C.uint64_t, 0, len(args)+1)
 	if self != 0 {
 		if _, ok := m.reg.lookup(self); !ok {
-			return nil, m.reg.hooks.MakeBug(name+": self sudah dilepas", pos)
+			return nil, m.reg.hooks.MakeBug(name+": self has been released", pos)
 		}
 		argv = append(argv, C.uint64_t(self))
 	}
@@ -200,7 +207,7 @@ func (m *Module) Invoke(name string, fnPtr unsafe.Pointer, self uint64, args []d
 	var ret C.uint64_t
 	rc := C.gne_invoke_fn(fnPtr, ctx, C.int(len(argv)), argvPtr, &ret)
 
-	// Galat tertunda dari api->throw selalu menang.
+	// A pending error from api->throw always wins.
 	if ctx.failed != 0 {
 		code, status, msg := takeErr(ctx)
 		m.releaseTemps()
@@ -209,19 +216,19 @@ func (m *Module) Invoke(name string, fnPtr unsafe.Pointer, self uint64, args []d
 	if rc != 0 {
 		m.releaseTemps()
 		return nil, m.reg.hooks.MakeError("gne_error", 500,
-			fmt.Sprintf("%s(): ekstensi mengembalikan kode error %d", name, int(rc)), pos)
+			fmt.Sprintf("%s(): extension returned error code %d", name, int(rc)), pos)
 	}
 	v, ferr := m.finishCall(uint64(ret))
 	if ferr != nil {
-		return nil, m.reg.hooks.MakeBug(name+": handle hasil tidak valid", pos)
+		return nil, m.reg.hooks.MakeBug(name+": invalid result handle", pos)
 	}
 	if ret == 0 {
-		return nil, m.reg.hooks.MakeBug(name+": ekstensi tidak mengembalikan nilai (*ret)", pos)
+		return nil, m.reg.hooks.MakeBug(name+": extension returned no value (*ret)", pos)
 	}
 	return v, nil
 }
 
-// releaseTemps me-release semua handle sementara tanpa hasil.
+// releaseTemps releases every temporary handle that has no result.
 func (m *Module) releaseTemps() {
 	for _, h := range m.temps {
 		m.reg.release(h)

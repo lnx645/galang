@@ -1,5 +1,5 @@
 -- GaLang Web App Database Schema
--- Jalankan: gar run examples/webapp/migrate.ga
+-- Run: gar run examples/webapp/migrate.ga
 
 -- Users table
 CREATE TABLE IF NOT EXISTS users (
@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS comments (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
--- Sessions table (untuk session management)
+-- Sessions table (for session management)
 CREATE TABLE IF NOT EXISTS sessions (
     id VARCHAR(128) PRIMARY KEY,
     user_id INTEGER NULL,
@@ -58,7 +58,7 @@ CREATE INDEX IF NOT EXISTS idx_comments_user_id ON comments(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_last_activity ON sessions(last_activity);
 
--- Trigger untuk updated_at
+-- Trigger for updated_at
 CREATE TRIGGER IF NOT EXISTS trigger_users_updated_at
 AFTER UPDATE ON users
 BEGIN
@@ -83,6 +83,6 @@ INSERT OR IGNORE INTO users (id, name, email, password_hash, created_at) VALUES
 (2, 'Demo User', 'demo@example.com', 'bcrypt_hash_2', CURRENT_TIMESTAMP);
 
 INSERT OR IGNORE INTO posts (id, user_id, title, content, published, published_at, created_at) VALUES
-(1, 1, 'Selamat Datang di GaLang', '# Selamat Datang di GaLang\n\nIni adalah contoh post pertama di aplikasi GaLang Web App.', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-(2, 1, 'Fitur-fitur GaLang', '# Fitur-fitur GaLang\n\n- HTTP Server cepat\n- Blade Template Engine\n- Async/Await support\n- Database ORM\n- WebSocket and SSE', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-(3, 2, 'Contoh Post User', '# Contoh Post\n\nIni adalah post dari user demo.', 0, NULL, CURRENT_TIMESTAMP);
+(1, 1, 'Welcome to GaLang', '# Welcome to GaLang\n\nThis is the first post in the GaLang Web App example.', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(2, 1, 'GaLang Features', '# GaLang Features\n\n- Fast HTTP Server\n- Blade Template Engine\n- Async/Await support\n- Database ORM\n- WebSocket and SSE', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(3, 2, 'Demo User Post', '# Demo Post\n\nThis is a post from the demo user.', 0, NULL, CURRENT_TIMESTAMP);

@@ -1,17 +1,17 @@
 @extends("layouts/app")
 
-@section("judul", "Demo Web Publik GaLang")
+@section("judul", "GaLang Public Web Demo")
 
 @section("isi")
 <section class="hero">
     <div class="wrap">
         <p class="eyebrow">v0.2.0 &middot; bytecode VM + dual backend</p>
-        <h1>GaLang di browser,<br><span class="accent">bukan cuma di terminal.</span></h1>
-        <p class="lead">Halaman ini dirender <strong>Blade template</strong>, CSS &amp; JS-nya disajikan
-        <code>http.static</code>, dan API-nya balik JSON otomatis — semua dari satu runtime.</p>
+        <h1>GaLang in the browser,<br><span class="accent">not just in the terminal.</span></h1>
+        <p class="lead">This page is rendered with a <strong>Blade template</strong>, its CSS &amp; JS is served by
+        <code>http.static</code>, and its API answers JSON automatically — all from a single runtime.</p>
         <div class="actions">
-            <a class="btn primary" href="#coba">Coba API-nya</a>
-            <a class="btn ghost" href="/fitur">Lihat fitur bahasa</a>
+            <a class="btn primary" href="#coba">Try the API</a>
+            <a class="btn ghost" href="/fitur">See language features</a>
         </div>
     </div>
 </section>
@@ -27,52 +27,52 @@
 
 <section class="wrap split" id="coba">
     <div>
-        <h2>Coba API langsung</h2>
-        <p class="muted">Semua request di bawah dibuat JavaScript polos ke endpoint GaLang.</p>
+        <h2>Try the API live</h2>
+        <p class="muted">Every request below is made with plain JavaScript against the GaLang endpoints.</p>
 
         <form id="form-sapa" class="demo-form" autocomplete="off">
             <label for="inp-nama">GET /api/sapa/{nama}</label>
             <div class="row">
-                <input id="inp-nama" type="text" value="dunia" placeholder="nama" required>
-                <button class="btn primary" type="submit">Kirim</button>
+                <input id="inp-nama" type="text" value="dunia" placeholder="name" required>
+                <button class="btn primary" type="submit">Send</button>
             </div>
         </form>
-        <pre class="hasil" id="hasil-sapa">// menunggu permintaan…</pre>
+        <pre class="hasil" id="hasil-sapa">// waiting for a request…</pre>
 
         <form id="form-echo" class="demo-form" autocomplete="off">
-            <label for="inp-echo">POST /api/echo — body JSON bebas</label>
-            <textarea id="inp-echo" rows="3">{"pesan": "halo dari pengguna", "angka": 42}</textarea>
+            <label for="inp-echo">POST /api/echo — any JSON body</label>
+            <textarea id="inp-echo" rows="3">{"pesan": "hello from the user", "angka": 42}</textarea>
             <div class="row">
-                <button class="btn primary" type="submit">Kirim JSON</button>
+                <button class="btn primary" type="submit">Send JSON</button>
                 <button class="btn ghost" type="button" id="btn-user">GET /api/user/999 (404)</button>
             </div>
         </form>
-        <pre class="hasil" id="hasil-echo">// menunggu permintaan…</pre>
+        <pre class="hasil" id="hasil-echo">// waiting for a request…</pre>
 
         <div class="demo-form">
-            <label>GET /api/kunjungan — sesi via cookie HttpOnly</label>
+            <label>GET /api/kunjungan — session via HttpOnly cookie</label>
             <div class="row">
-                <button class="btn primary" type="button" id="btn-kunjungan">Naikkan hitungan</button>
-                <button class="btn ghost" type="button" id="btn-reset-sesi">Reset sesi</button>
+                <button class="btn primary" type="button" id="btn-kunjungan">Increment counter</button>
+                <button class="btn ghost" type="button" id="btn-reset-sesi">Reset session</button>
             </div>
         </div>
-        <pre class="hasil" id="hasil-kunjungan">// menunggu permintaan…</pre>
+        <pre class="hasil" id="hasil-kunjungan">// waiting for a request…</pre>
 
-        <p class="muted">Endpoint lain: <code>GET /api/daftar</code> (array → JSON array) &middot;
-        <code>GET /halo/Nama</code> (template tanpa layout)</p>
+        <p class="muted">Other endpoints: <code>GET /api/daftar</code> (array → JSON array) &middot;
+        <code>GET /halo/Name</code> (template without a layout)</p>
     </div>
     <div>
-        <h2>Kode servernya</h2>
+        <h2>The server code</h2>
         @include("partials/kode", {judul: "main.ga", isi: $contoh})
-        <p class="muted">Cukup <code>return</code> — string jadi HTML, object/array jadi JSON,
-        object dengan <code>body</code> jadi respons terstruktur.</p>
+        <p class="muted">Just <code>return</code> — a string becomes HTML, an object/array becomes JSON,
+        an object with a <code>body</code> becomes a structured response.</p>
     </div>
 </section>
 
 <section class="wrap clock">
-    <h2>Waktu klien</h2>
+    <h2>Client-side time</h2>
     <p id="jam" class="big">—</p>
-    <p class="muted">Dihitung JavaScript di halaman ini; <code>time.now_ms()</code> di server bisa
-    kamu bandingkan lewat <code>GET /api/sapa/x</code>.</p>
+    <p class="muted">Computed by JavaScript on this page; the server's <code>time.now_ms()</code>
+    can be compared with it via <code>GET /api/sapa/x</code>.</p>
 </section>
 @endsection

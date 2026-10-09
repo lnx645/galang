@@ -1,21 +1,21 @@
 @extends("layouts/app")
 
-@section("judul", "Fitur bahasa GaLang")
+@section("judul", "GaLang language features")
 
 @section("isi")
 <section class="wrap page-head">
-    <h1>Fitur bahasa</h1>
-    <p class="lead">Data di bawah datang dari handler sebagai object, lalu diiterasi
-    <code>@foreach</code> — termasuk perbandingan <code>$f.kategori == "…"</code> dan
-    aritmetika <code>len($fitur)</code>.</p>
+    <h1>Language features</h1>
+    <p class="lead">The data below comes from the handler as an object, then is iterated
+    with <code>@foreach</code> — including the <code>$f.kategori == "…"</code> comparison and the
+    <code>len($fitur)</code> arithmetic.</p>
 </section>
 
 <section class="wrap">
-    <p class="muted" id="ringkas">{{ $total }} fitur tercantum di bawah.</p>
+    <p class="muted" id="ringkas">{{ $total }} features listed below.</p>
     <div class="tabel-wrap">
         <table class="tabel">
             <thead>
-                <tr><th>Kode</th><th>Fitur</th><th>Kategori</th><th>Status</th></tr>
+                <tr><th>Code</th><th>Feature</th><th>Category</th><th>Status</th></tr>
             </thead>
             <tbody>
                 @foreach($fitur as $f)
@@ -25,11 +25,11 @@
                     <td>{{ $f.kategori }}</td>
                     <td>
                         @if($f.populer)
-                            <span class="pill on">populer</span>
+                            <span class="pill on">popular</span>
                         @elseif($f.kategori == "runtime")
                             <span class="pill">runtime</span>
                         @else
-                            <span class="pill off">lengkap</span>
+                            <span class="pill off">complete</span>
                         @endif
                     </td>
                 </tr>
@@ -40,20 +40,20 @@
 
     <div class="kartu-grid">
         <article class="card">
-            <h3>Definisi &amp; tipe</h3>
+            <h3>Definitions &amp; types</h3>
             <ul>
-                <li><code>$x = 5</code> — tanpa deklarasi</li>
+                <li><code>$x = 5</code> — no declaration</li>
                 <li><code>?int</code>, <code>number</code>, <code>bool</code>, <code>array</code></li>
                 <li>Default parameter <code>$x = 1</code></li>
                 <li>Destructuring <code>$a, $b = $pair</code></li>
             </ul>
         </article>
         <article class="card">
-            <h3>Kontrol</h3>
+            <h3>Control flow</h3>
             <ul>
                 <li><code>if / else if / else</code></li>
                 <li><code>switch / case / default</code></li>
-                <li><code>and or not</code> dan <code>&amp;&amp; || !</code></li>
+                <li><code>and or not</code> and <code>&amp;&amp; || !</code></li>
                 <li><code>try / catch / throw</code></li>
             </ul>
         </article>
@@ -61,9 +61,9 @@
             <h3>Async</h3>
             <ul>
                 <li><code>async fn</code> + <code>await</code></li>
-                <li><code>gather(...)</code> paralel</li>
+                <li><code>gather(...)</code> in parallel</li>
                 <li><code>spawn(...)</code> fire-and-forget</li>
-                <li>Promise ringan 64 byte</li>
+                <li>64-byte lightweight promises</li>
             </ul>
         </article>
     </div>

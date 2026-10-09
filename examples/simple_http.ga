@@ -1,5 +1,5 @@
 // Simple HTTP example for GaLang v0.2
-// Jalankan: gar run examples/simple_http.ga
+// Run: gar run examples/simple_http.ga
 
 use "http"
 

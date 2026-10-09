@@ -1,23 +1,23 @@
-/* uuid.c — ekstensi GNE resmi: generator UUID (RFC 9562) murni C.
+/* uuid.c — official GNE extension: pure C UUID generator (RFC 9562).
  *
- * Gaya pemakaian:
+ * Usage style:
  *
  *   use "uuid"
- *   print(uuid.v4())      // acak penuh: 550e8400-e29b-41d4-a716-446655440000
- *   print(uuid.v7())      // berurut waktu: bagian depan = epoch milidetik
+ *   print(uuid.v4())      // fully random: 550e8400-e29b-41d4-a716-446655440000
+ *   print(uuid.v7())      // time-ordered: front part = epoch milliseconds
  *   print(uuid.is_valid("550e8400-e29b-41d4-a716-446655440000"))  // true
  *
- * Sumber angka acak: /dev/urandom (POSIX) atau BCryptGenRandom
- * (Windows) — BUKAN rand() biasa, supaya token/pratinjau id tidak bisa
- * ditebak. Tanpa dependensi ekstra, seluruhnya C standar + OS API.
+ * Random source: /dev/urandom (POSIX) or BCryptGenRandom
+ * (Windows) — NOT plain rand(), so tokens/ID previews cannot be
+ * guessed. No extra dependencies, entirely standard C + OS APIs.
  *
- * Galat (catchable try/catch):
- *   - argumen salah tipe        → "type_error" 500
- *   - sumber acak OS tak bisa   → "uuid_error" 500
+ * Errors (catchable with try/catch):
+ *   - wrong argument type       → "type_error" 500
+ *   - OS random source fails    → "uuid_error" 500
  *
- * is_valid menerima heksadesimal besar atau kecil, tetapi WAJIB format
- * kanonik 8-4-4-4-12 dengan varian RFC (8/9/a/b) dan versi 0–8.
- * Format lain (braces, URN, tanpa strip) ditolak.
+ * is_valid accepts uppercase or lowercase hex, but REQUIRES the canonical
+ * 8-4-4-4-12 format with RFC variant (8/9/a/b) and version 0–8.
+ * Other formats (braces, URN, without dashes) are rejected.
  */
 #include "gne.h"
 
@@ -40,9 +40,9 @@
 
 static const gne_host_api *api;
 
-/* ---- angka acak aman ---- */
+/* ---- secure random numbers ---- */
 
-/* 0 = sukses, -1 = gagal. */
+/* 0 = success, -1 = failure. */
 static int acak(unsigned char *buf, size_t n)
 {
 #ifdef _WIN32
@@ -63,7 +63,7 @@ static int acak(unsigned char *buf, size_t n)
 			close(fd);
 			return -1;
 		}
-		if (k == 0) { /* EOF dini — tidak normal untuk urandom */
+		if (k == 0) { /* premature EOF — not normal for urandom */
 			close(fd);
 			return -1;
 		}
@@ -74,7 +74,7 @@ static int acak(unsigned char *buf, size_t n)
 #endif
 }
 
-/* Epoch milidetik sekarang (untuk UUID v7). */
+/* Current epoch in milliseconds (for UUID v7). */
 static unsigned long long epoch_ms(void)
 {
 #ifdef _WIN32
@@ -83,7 +83,7 @@ static unsigned long long epoch_ms(void)
 	GetSystemTimeAsFileTime(&ft);
 	t = ((unsigned long long)ft.dwHighDateTime << 32) |
 	    (unsigned long long)ft.dwLowDateTime;
-	/* FILETIME:100 ns sejak1601-01-01 → Unix epoch (116444736000000000). */
+	/* FILETIME: 100 ns since 1601-01-01 → Unix epoch (116444736000000000). */
 	return (t - 116444736000000000ULL) / 10000ULL;
 #else
 	struct timespec ts;
@@ -94,7 +94,7 @@ static unsigned long long epoch_ms(void)
 #endif
 }
 
-/* ---- format kanonik 8-4-4-4-12 huruf kecil ---- */
+/* ---- canonical 8-4-4-4-12 format, lowercase ---- */
 static void format_uuid(const unsigned char b[16], char out[37])
 {
 	static const char hex[] = "0123456789abcdef";
@@ -129,17 +129,17 @@ static int uuid_v4(gne_ctx *ctx, int argc, const gne_handle *argv,
 	(void)argv;
 	if (acak(b, sizeof b) != 0) {
 		api->throw(ctx, "uuid_error", 500,
-			   "gagal membaca angka acak aman dari sistem");
+			   "failed to read secure random numbers from the system");
 		return -1;
 	}
-	b[6] = (unsigned char)((b[6] & 0x0f) | 0x40); /* versi 4 */
-	b[8] = (unsigned char)((b[8] & 0x3f) | 0x80); /* varian RFC */
+	b[6] = (unsigned char)((b[6] & 0x0f) | 0x40); /* version 4 */
+	b[8] = (unsigned char)((b[8] & 0x3f) | 0x80); /* RFC variant */
 	format_uuid(b, s);
 	*ret = api->string(ctx, s, 36);
 	return 0;
 }
 
-/* ---- uuid.v7() — bagian depan = waktu (urut untuk indeks DB) ---- */
+/* ---- uuid.v7() — front part = time (ordered for DB indexes) ---- */
 static int uuid_v7(gne_ctx *ctx, int argc, const gne_handle *argv,
 		   gne_handle *ret)
 {
@@ -151,14 +151,14 @@ static int uuid_v7(gne_ctx *ctx, int argc, const gne_handle *argv,
 	(void)argv;
 	if (acak(b, sizeof b) != 0) {
 		api->throw(ctx, "uuid_error", 500,
-			   "gagal membaca angka acak aman dari sistem");
+			   "failed to read secure random numbers from the system");
 		return -1;
 	}
-	for (i = 0; i < 6; i++) { /*48-bit waktu besar-endian */
+	for (i = 0; i < 6; i++) { /* 48-bit time, big-endian */
 		b[i] = (unsigned char)((ms >> (40 - 8 * i)) & 0xff);
 	}
-	b[6] = (unsigned char)((b[6] & 0x0f) | 0x70); /* versi 7 */
-	b[8] = (unsigned char)((b[8] & 0x3f) | 0x80); /* varian RFC */
+	b[6] = (unsigned char)((b[6] & 0x0f) | 0x70); /* version 7 */
+	b[8] = (unsigned char)((b[8] & 0x3f) | 0x80); /* RFC variant */
 	format_uuid(b, s);
 	*ret = api->string(ctx, s, 36);
 	return 0;
@@ -176,15 +176,15 @@ static int uuid_is_valid(gne_ctx *ctx, int argc, const gne_handle *argv,
 	if (api->type_of(ctx, argv[0], &t) != 0 || t != GNE_STRING ||
 	    api->str_len(ctx, argv[0], &n) != 0) {
 		api->throw(ctx, "type_error", 500,
-			   "argumen harus string");
+			   "argument must be a string");
 		return -1;
 	}
-	if (n != 36) { /* cepat: panjang salah langsung false */
+	if (n != 36) { /* fast path: wrong length is immediately false */
 		*ret = api->bool_new(ctx, 0);
 		return 0;
 	}
 	if (api->str_copy(ctx, argv[0], s, sizeof s) < 0) {
-		api->throw(ctx, "type_error", 500, "argumen string tidak terbaca");
+		api->throw(ctx, "type_error", 500, "string argument could not be read");
 		return -1;
 	}
 	for (i = 0; i < 36; i++) {
@@ -198,7 +198,7 @@ static int uuid_is_valid(gne_ctx *ctx, int argc, const gne_handle *argv,
 			return 0;
 		}
 	}
-	/* Versi0–8 pada posisi14; varian 8/9/a/b pada posisi19. */
+	/* Version 0–8 at position 14; variant 8/9/a/b at position 19. */
 	{
 		int ver = hexval(s[14]), var = hexval(s[19]);
 		if (ver < 0 || ver > 8 || var < 8 || var > 11) {
@@ -214,7 +214,7 @@ int gne_module_init(const gne_host_api *a, gne_ctx *ctx, gne_handle *out)
 {
 	api = a;
 	if (api->abi != GNE_ABI) {
-		api->throw(ctx, "gne_abi", 500, "ABI berbeda");
+		api->throw(ctx, "gne_abi", 500, "ABI mismatch");
 		return 1;
 	}
 	api->define_fn(ctx, "v4", 0, 0, uuid_v4);

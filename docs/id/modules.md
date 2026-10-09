@@ -189,168 +189,173 @@ http.listen(8869)
 
 ---
 
-## redis — ekstensi resmi
+## redis — official extension
 
-Klien **Redis** (RESP2) berbasis [GNE](gne.md). Binarnya tidak ikut di
-dalam `gar` — pasang dulu dari aset rilis:
+A **Redis** client (RESP2) built on [GNE](gne.md). Its binary does not
+ship inside `gar` — install it from the release assets first:
 
 ```bash
-gar gne install redis          # rilis terbaru; versi: gar gne install redis@0.6.0
+gar gne install redis          # latest release; pin with gar gne install redis@0.6.0
 ```
 
 ```galang
 use "redis"
 
-$r = redis.connect("127.0.0.1", 6379)         // timeout bawaan 5000 ms
-$r = redis.connect("127.0.0.1", 6379, 1000)   // timeout 1 detik
+$r = redis.connect("127.0.0.1", 6379)         // default timeout 5000 ms
+$r = redis.connect("127.0.0.1", 6379, 1000)   // 1 second timeout
 
 $r.ping()                         // true
 $r.set("user:1", "dadan")         // "OK"
-$r.get("user:1")                  // "dadan" (kunci absen → null)
-$r.incr("visits")                 // number, nilai sesudah +1
+$r.get("user:1")                  // "dadan" (missing key → null)
+$r.incr("visits")                 // number, value after +1
 $r.exists("user:1")               // true / false
-$r.del("user:1")                  // number — jumlah kunci terhapus
-$r.expire("user:1", 60)           // true — kedaluwarsa dalam 60 detik
+$r.del("user:1")                  // number — keys deleted
+$r.expire("user:1", 60)           // true — expires in 60 seconds
 
-$r.hset("profil", "nama", "Ayu")  // 1 = medan baru, 0 = perbarui
-$r.hget("profil", "nama")         // "Ayu" (medan absen → null)
+$r.hset("profil", "nama", "Ayu")  // 1 = new field, 0 = updated
+$r.hget("profil", "nama")         // "Ayu" (missing field → null)
 
-$r.lpush("antrian", "a", "b")     // number — panjang list sesudah push
+$r.lpush("antrian", "a", "b")     // number — list length after push
 $r.lrange("antrian", 0, -1)       // [b, a]
 $r.keys("user:*")                 // [user:1, user:2]
 
-$r.cmd("TTL", "profil")           // balasan diolah otomatis
-$r.close()                        // true; dipanggil lagi → false
+$r.cmd("TTL", "profil")           // reply converted automatically
+$r.close()                        // true; called again → false
 ```
 
-| Method | Argumen | Hasil |
+| Method | Args | Returns |
 |---|---|---|
-| `redis.connect(host, port[, timeout_ms])` | 2–3 | objek koneksi; timeout bawaan 5000 ms |
+| `redis.connect(host, port[, timeout_ms])` | 2–3 | connection object; default timeout 5000 ms |
 | `$r.ping()` | 0 | `true` |
-| `$r.get(k)` | 1 | string, atau `null` bila kunci absen |
-| `$r.set(k, v)` | 2 | balasan server (`"OK"`); `v` berupa string atau number |
-| `$r.del(k)` | 1 | number — jumlah kunci terhapus |
+| `$r.get(k)` | 1 | string, or `null` when the key is missing |
+| `$r.set(k, v)` | 2 | server reply (`"OK"`); `v` is a string or number |
+| `$r.del(k)` | 1 | number — keys deleted |
 | `$r.exists(k)` | 1 | bool |
-| `$r.incr(k)` | 1 | number — nilai sesudah inkrementasi |
-| `$r.expire(k, detik)` | 2 | bool |
-| `$r.hset(k, medan, v)` | 3 | number — `1` medan baru, `0` perbarui |
-| `$r.hget(k, medan)` | 2 | string, atau `null` |
-| `$r.lpush(k, v, ...)` | 2+ | number — panjang list sesudah push |
-| `$r.lrange(k, start, stop)` | 3 | array string (`stop = -1` sampai akhir) |
-| `$r.keys(pola)` | 1 | array string |
-| `$r.cmd(perintah, ...)` | 1+ | balasan diolah sesuai tipenya: simple string → string, integer → number, bulk → string, array → array (rekursif), `$-1`/`*-1` → `null` |
-| `$r.close()` | 0 | `true` sekali, `false` bila diulang (idempoten) |
+| `$r.incr(k)` | 1 | number — value after increment |
+| `$r.expire(k, seconds)` | 2 | bool |
+| `$r.hset(k, field, v)` | 3 | number — `1` new field, `0` updated |
+| `$r.hget(k, field)` | 2 | string, or `null` |
+| `$r.lpush(k, v, ...)` | 2+ | number — list length after push |
+| `$r.lrange(k, start, stop)` | 3 | array of strings (`stop = -1` to the end) |
+| `$r.keys(pattern)` | 1 | array of strings |
+| `$r.cmd(command, ...)` | 1+ | reply converted by type: simple string → string, integer → number, bulk → string, array → array (recursive), `$-1`/`*-1` → `null` |
+| `$r.close()` | 0 | `true` once, `false` when repeated (idempotent) |
 
-- **Galat** (semua bisa ditangkap `try/catch`): balasan error `-ERR` dari
-  server → `redis_error` status 500; koneksi ditolak/putus → 502; waktu
-  tunggu habis → 504. Objek bekas (`setelah close()`, atau slot koneksi
-  yang terpakai ulang oleh `connect` baru) melempar `redis_error` 500
-  "koneksi sudah ditutup atau tidak valid". Argumen selain string/number
-  → `type_error`.
-- Maksimal **64 koneksi** per interpreter; balasan dibatasi ketat
-  (bulk maksimal 64 MiB, kedalaman array 32 tingkat, dan batas jumlah
-  elemen) supaya server nakal tidak bisa menghabiskan memori.
-- **Butuh CGO**: binari `gar` tanpa CGO menolak `use` dengan pesan jelas
-  (tabel platform di [GNE](gne.md#platform)).
+- **Errors** (all catchable with `try/catch`): a `-ERR` reply from the
+  server → `redis_error` status 500; connection refused/dropped → 502;
+  timeout → 504. A stale object (used after `close()`, or whose connection
+  slot was reused by a newer `connect`) throws `redis_error` 500
+  "connection already closed or invalid". Arguments other than
+  string/number → `type_error`.
+- Maximum **64 connections** per interpreter; replies are strictly capped
+  (bulk up to 64 MiB, array depth of 32 levels, element-count limits) so
+  a misbehaving server cannot exhaust memory.
+- **Requires CGO**: a `gar` binary built without CGO rejects `use` with a
+  clear message (platform table in [GNE](gne.md#platforms)).
 
 ---
 
-## smtp — ekstensi resmi
+## smtp — official extension
 
-Klien **SMTP** (RFC 5321/5322) berbasis [GNE](gne.md) untuk mengirim surel
-lewat AUTH LOGIN. Pasang dulu:
+An **SMTP** client (RFC 5321/5322) built on [GNE](gne.md) for sending
+mail over AUTH LOGIN. Install it first:
 
 ```bash
 gar gne install smtp
 ```
 
-Satu surel = satu transaksi `from()` → `to()` (boleh berulang) →
+One mail = one transaction: `from()` → `to()` (repeatable) →
 `send()`/`send_html()`:
 
 ```galang
 use "smtp"
 
-$s = smtp.connect("smtp.internal", 25)   // timeout bawaan 5000 ms
-$s.auth("pengirim@contoh.id", "rahasia") // opsional — AUTH LOGIN
+$s = smtp.connect("smtp.internal", 25)   // default timeout 5000 ms
+$s.auth("pengirim@contoh.id", "rahasia") // optional — AUTH LOGIN
 $s.from("pengirim@contoh.id")
 $s.to("satu@contoh.id")
-$s.to("dua@contoh.id")                   // penerima lain, ulangi sesuai perlu
-$s.subject("Halo dari GaLang")
-$s.send("Baris pertama.\nBaris kedua.")
-$s.close()                               // true; dipanggil lagi → false
+$s.to("dua@contoh.id")                   // more recipients, repeat as needed
+$s.subject("Hello from GaLang")
+$s.send("First line.\nSecond line.")
+$s.close()                               // true; called again → false
 ```
 
-Surel HTML dikirim multipart/alternative (versi teks + HTML) —
-penerima klien lama tetap bisa membaca:
+HTML mail is sent as multipart/alternative (text + HTML versions) so
+older clients can still read it:
 
 ```galang
 $s.from("pengirim@contoh.id")
 $s.to("penerima@contoh.id")
-$s.subject("Kabar")
-$s.send_html("Kabar <b>penting</b> (versi teks)", "<p>Kabar <b>penting</b></p>")
+$s.subject("News")
+$s.send_html("Important <b>news</b> (text version)", "<p>Important <b>news</b></p>")
 ```
 
-| Method | Argumen | Hasil |
+| Method | Args | Returns |
 |---|---|---|
-| `smtp.connect(host, port[, timeout_ms])` | 2–3 | objek sesi; timeout bawaan 5000 ms |
-| `$s.auth(user, pass)` | 2 | `true` setelah server membalas 235 |
-| `$s.from(alamat)` | 1 | `true` — buka transaksi (mengirim `RSET` dulu bila transaksi lama belum terkirim) |
-| `$s.to(alamat)` | 1 | `true` — tambah penerima; maksimal 100 per transaksi |
-| `$s.subject(teks)` | 1 | `true` — maksimal 700 oktet, tanpa CR/LF |
-| `$s.send(body)` | 1 | `true` — kirim sebagai `text/plain` |
-| `$s.send_html(teks, html)` | 2 | `true` — kirim multipart/alternative |
-| `$s.close()` | 0 | `true` sekali, `false` bila diulang (`QUIT` best-effort — tidak pernah melempar galat) |
+| `smtp.connect(host, port[, timeout_ms])` | 2–3 | session object; default timeout 5000 ms |
+| `$s.auth(user, pass)` | 2 | `true` after the server replies 235 |
+| `$s.from(addr)` | 1 | `true` — opens a transaction (sends `RSET` first if one is still open) |
+| `$s.to(addr)` | 1 | `true` — add a recipient; maximum 100 per transaction |
+| `$s.subject(text)` | 1 | `true` — at most 700 bytes, no CR/LF |
+| `$s.send(body)` | 1 | `true` — send as `text/plain` |
+| `$s.send_html(text, html)` | 2 | `true` — send multipart/alternative |
+| `$s.close()` | 0 | `true` once, `false` when repeated (`QUIT` best-effort — never throws) |
 
-- **Urutan wajib**: `from()` lalu minimal satu `to()` sebelum `send()` /
-  `send_html()`. `subject()` dan `auth()` bebas dipanggil kapan saja
-  selama sesi hidup; `subject()` terakhir yang dipakai saat surel dikirim.
-- **Yang dikerjakan otomatis**: dot-stuffing dan normalisasi CRLF pada
-  badan; pemilihan Content-Transfer-Encoding (ASCII murni → `7bit`,
-  non-ASCII + kemampuan `8BITMIME` → `8bit`, selain itu `base64`);
-  subjek non-ASCII diubah menjadi encoded-word RFC 2047
-  (`=?UTF-8?B?...?=`); header `Date` (UTC, tanpa locale) dan `Message-ID`
-  selalu dibuat; header `To:` dilipat bila melebihi 78 oktet.
-- **Batas**: pesan maksimal 32 MiB; alamat harus ASCII cetak 1–320 oktet
-  tanpa spasi dan tanda `<>,`; satu objek sesi = satu koneksi — `close()`
-  dulu bila ingin membuka sesi baru. Setelah `send()` sukses, transaksi
-  ditutup dan daftar penerima dikosongkan — surel berikutnya harus mulai
-  lagi dari `from()` lalu `to()` (memanggil `from()` saat transaksi lama
-  masih berjalan otomatis mengirim `RSET` lebih dulu).
-- **Galat** — kode `smtp_error`: **500** untuk penolakan/protokol/validasi
-  (balasan server seperti `550` penerima atau `535` autentikasi ikut
-  disebut di pesan), **502** koneksi ditolak/putus, **504** waktu tunggu
-  habis. Galat I/O di tengah sesi membuat sesi gugur — method berikutnya
-  melempar 500. Argumen salah bentuk (subjek menyisipkan CR/LF, port
-  bukan angka) → `type_error`.
-- **Batasan yang perlu diketahui — tanpa TLS**: STARTTLS/SSL belum ada di
-  v0.6.0; koneksi dan AUTH LOGIN berjalan **plaintext**. Hanya gunakan
-  untuk server yang memang menerima AUTH tanpa TLS (relay internal, MTA
-  lokal) — jangan mengirim kredensial ke jaringan publik. Kemampuan EHLO
-  dicek lebih dulu: server tanpa EHLO otomatis fallback `HELO`, dan
-  `auth()` akan menolak dengan pesan yang menyebut STARTTLS.
+- **Required order**: `from()` then at least one `to()` before `send()` /
+  `send_html()`. `subject()` and `auth()` can be called at any time while
+  the session is alive; the last `subject()` set wins when the mail is
+  sent.
+- **Handled automatically**: dot-stuffing and CRLF normalization of the
+  body; Content-Transfer-Encoding selection (pure ASCII → `7bit`,
+  non-ASCII with the `8BITMIME` capability → `8bit`, otherwise `base64`);
+  non-ASCII subjects become RFC 2047 encoded-words (`=?UTF-8?B?...?=`);
+  the `Date` header (UTC, locale-free) and `Message-ID` are always
+  generated; the `To:` header is folded past 78 octets.
+- **Limits**: messages up to 32 MiB; addresses must be 1–320 printable
+  ASCII octets with no spaces or `<>,`; one session object = one
+  connection — `close()` first if you want a new session. Once `send()`
+  succeeds the transaction is closed and the recipient list cleared — the
+  next mail must start over with `from()` then `to()` (calling `from()`
+  while a transaction is still open automatically sends `RSET` first).
+- **Errors** — code `smtp_error`: **500** for rejection/protocol/validation
+  (server replies such as `550` on a recipient or `535` on authentication
+  are included in the message), **502** connection refused/dropped, **504**
+  timeout. An I/O failure mid-session kills the session — the next method
+  throws 500. Malformed arguments (a subject smuggling CR/LF, a non-numeric
+  port) → `type_error`.
+- **Known limitation — no TLS**: STARTTLS/SSL are not implemented in
+  v0.6.0; the connection and AUTH LOGIN run in **plaintext**. Only use this
+  against servers that accept AUTH without TLS (internal relays, a local
+  MTA) — never send credentials over the public internet. The EHLO
+  capabilities are checked first: a server without EHLO falls back to
+  `HELO` automatically, and `auth()` will reject with a message mentioning
+  STARTTLS.
 
-### Contoh nyata: Gmail lewat relay TLS lokal
+### Real-world example: Gmail through a local TLS relay
 
-Ekstensi belum punya TLS, sedangkan Gmail menolak kiriman langsung port 25
-dari IP tanpa SPF/DKIM (`550 5.7.26`). Pola yang teruji: `AUTH LOGIN`
-dijalankan ke **localhost** — kredensial tidak menyeberangi jaringan publik
-tanpa enkripsi — dan stunnel mengenkripsi ke `smtp.gmail.com:465` dengan
-verifikasi sertifikat penuh. Bind `127.0.0.1` di bawah disengaja: relay
-hanya boleh diakses dari mesin itu sendiri. Skrip siap pakai:
+The extension has no TLS yet, while Gmail rejects direct delivery on
+port 25 from an IP without SPF/DKIM (`550 5.7.26`). The proven pattern:
+run `AUTH LOGIN` against **localhost** — credentials never cross the
+public network unencrypted — and let stunnel encrypt to
+`smtp.gmail.com:465` with full certificate verification. The `127.0.0.1`
+bind below is intentional: the relay must only be reachable from the
+machine itself. Ready-to-run script:
 [`examples/smtp-gmail.ga`](https://github.com/lnx645/galang/blob/master/examples/smtp-gmail.ga).
 
-1. **Binari + ekstensi.** Unduh `gar-windows-amd64.zip` (Linux: varian
-   sesuai mesin) dari [rilis terbaru](https://github.com/lnx645/galang/releases/latest),
-   taruh `gar.exe`/`gar` di PATH, lalu `gar gne install smtp`. Varian
-   ekstensi: darwin-{amd64,arm64}, linux-{amd64,arm64}, windows-amd64 —
-   di **Windows on ARM** pakai binari amd64 (dijalankan lewat emulasi x64
-   Windows).
-2. **Sandi aplikasi Google**: Akun Google → Keamanan → Verifikasi 2
-   langkah → Sandi aplikasi (16 karakter).
-3. **stunnel**: Windows — unduh `stunnel-latest-win64-installer.exe` dari
-   [stunnel.org](https://www.stunnel.org/downloads.html); Linux —
-   `apt install stunnel4` (nama paket dapat berbeda per distro). Tulis
-   konfigurasi (lokasi berkas default ditampilkan `stunnel -version`):
+1. **Binary + extension.** Download `gar-windows-amd64.zip` (Linux: the
+   variant for your machine) from the
+   [latest release](https://github.com/lnx645/galang/releases/latest),
+   put `gar.exe`/`gar` on PATH, then `gar gne install smtp`. Extension
+   variants: darwin-{amd64,arm64}, linux-{amd64,arm64}, windows-amd64 —
+   on **Windows on ARM**, use the amd64 binary (runs through Windows x64
+   emulation).
+2. **Google app password**: Google Account → Security → 2-Step
+   Verification → App passwords (16 characters).
+3. **stunnel**: Windows — download `stunnel-latest-win64-installer.exe`
+   from [stunnel.org](https://www.stunnel.org/downloads.html); Linux —
+   `apt install stunnel4` (package name may vary per distro). Write the
+   configuration (the default file location is shown by
+   `stunnel -version`):
 
    ```ini
    [gmail-smtps]
@@ -363,34 +368,34 @@ hanya boleh diakses dari mesin itu sendiri. Skrip siap pakai:
    sni = smtp.gmail.com
    ```
 
-   `CAfile` menunjuk bundel CA PEM: Debian Linux memakai
-   `/etc/ssl/certs/ca-certificates.crt`; bila paket Windows tidak
-   menyertakannya, unduh [cacert.pem](https://curl.se/ca/cacert.pem) dan
-   simpan dengan nama itu. Di Windows tulis **path absolut** — terutama
-   bila stunnel dijalankan sebagai layanan.
-4. **Jalankan stunnel.** Windows (prompt admin, dari folder konfigurasi):
-   `stunnel -install stunnel.conf` lalu `stunnel -start` (kendali
-   `-reload`/`-stop`, lepas `-uninstall`). Linux: tulis berkas
-   `/etc/stunnel/gmail.conf` (nama layanan = nama berkas) lalu
+   `CAfile` points to a PEM CA bundle: Debian Linux uses
+   `/etc/ssl/certs/ca-certificates.crt`; if the Windows package does not
+   include one, download [cacert.pem](https://curl.se/ca/cacert.pem) and
+   save it under that name. On Windows use an **absolute path** —
+   especially when stunnel runs as a service.
+4. **Start stunnel.** Windows (admin prompt, from the configuration
+   folder): `stunnel -install stunnel.conf` then `stunnel -start`
+   (manage with `-reload`/`-stop`, remove with `-uninstall`). Linux:
+   write `/etc/stunnel/gmail.conf` (service name = file name) then
    `systemctl enable --now stunnel@gmail`.
-5. **Tes.** Isi `<APP_PASSWORD>` pada contoh, lalu
-   `gar run examples/smtp-gmail.ga`. Yang diharapkan: `kirim : true` dan
-   surel muncul di inbox.
-   - `550 5.7.26 ... unauthenticated` — kiriman melewati relay (stunnel
-     mati atau port salah).
-   - `535` — sandi aplikasi salah atau kedaluwarsa.
+5. **Test.** Fill in `<APP_PASSWORD>` in the example, then
+   `gar run examples/smtp-gmail.ga`. Expected: `kirim : true` and the
+   mail appears in the inbox.
+   - `550 5.7.26 ... unauthenticated` — the mail bypassed the relay
+     (stunnel down or wrong port).
+   - `535` — the app password is wrong or expired.
 
-Hasil tes nyata 2026-10-09: kiriman langsung ke MX Gmail (port 25)
-diterima sampai `RCPT`/`DATA` lalu ditolak kebijakan Google; jalur di
-atas diterima `250` dan masuk inbox. Langkah yang sama berlaku di Linux —
-bedanya hanya pemasangan stunnel.
+Real test of 2026-10-09: direct delivery to the Gmail MX (port 25) was
+accepted through `RCPT`/`DATA` and then rejected by Google's policy; the
+path above was accepted with `250` and reached the inbox. The same steps
+apply on Linux — only the stunnel installation differs.
 
 ---
 
-## uuid — ekstensi resmi
+## uuid — official extension
 
-Pembuat dan pemeriksa **UUID** (RFC 9562) berbasis [GNE](gne.md): v4
-acak statis dan v7 berstempel waktu. Pasang dulu:
+A **UUID** (RFC 9562) generator and checker built on [GNE](gne.md): v4
+random and v7 time-stamped. Install first:
 
 ```bash
 gar gne install uuid
@@ -400,29 +405,29 @@ gar gne install uuid
 use "uuid"
 
 uuid.v4()                 // "f47ac10b-58cc-4372-a567-0e02b2c3d479"
-uuid.v7()                 // "018f1a2b-3c4d-7ef0-..." — awalan stempel waktu
+uuid.v7()                 // "018f1a2b-3c4d-7ef0-..." — time-stamped prefix
 uuid.is_valid(uuid.v4())  // true
-uuid.is_valid("buku")     // false
+uuid.is_valid("book")     // false
 ```
 
-| Fungsi | Argumen | Hasil |
+| Function | Args | Result |
 |---|---|---|
-| `uuid.v4()` | 0 | string kanonik 8-4-4-4-12 (huruf kecil), versi 4, varian RFC |
-| `uuid.v7()` | 0 | idem dengan versi 7 — 48 bit pertama adalah stempel waktu milidetik (epoch Unix), sisanya acak |
-| `uuid.is_valid(s)` | 1 | bool — format kanonik + heksadesimal + versi 0–8 + varian RFC (8/9/a/b); huruf besar dan kecil keduanya diterima |
+| `uuid.v4()` | 0 | canonical 8-4-4-4-12 string (lowercase), version 4, RFC variant |
+| `uuid.v7()` | 0 | same shape with version 7 — the first 48 bits are the millisecond timestamp (Unix epoch), the rest random |
+| `uuid.is_valid(s)` | 1 | bool — canonical format + hexadecimal + version 0–8 + RFC variant (8/9/a/b); both upper and lower case are accepted |
 
-- Angka acak diambil dari `/dev/urandom` (Linux/macOS) atau
-  `BCryptGenRandom` (Windows) — CSPRAN, bukan `rand()`.
-- Galat: argumen selain string → `type_error`. `is_valid` tidak pernah
-  melempar galat untuk string apa pun (kembali `false`).
-- **Butuh CGO** (tabel platform di [GNE](gne.md#platform)).
+- Randomness comes from `/dev/urandom` (Linux/macOS) or
+  `BCryptGenRandom` (Windows) — a CSPRAN, not `rand()`.
+- Errors: non-string argument → `type_error`. `is_valid` never throws
+  for any string (returns `false`).
+- **Requires CGO** (platform table in [GNE](gne.md#platforms)).
 
 ---
 
-## jwt — ekstensi resmi
+## jwt — official extension
 
-**JWT** (RFC 7519) berbasis [GNE](gne.md) dengan tanda tangan HMAC-SHA2:
-HS256/HS384/HS512. Pasang dulu:
+**JWT** (RFC 7519) built on [GNE](gne.md) with HMAC-SHA2 signatures:
+HS256/HS384/HS512. Install first:
 
 ```bash
 gar gne install jwt
@@ -431,41 +436,43 @@ gar gne install jwt
 ```galang
 use "jwt"
 
-$t = jwt.sign("{\"sub\":\"budi\"}", "rahasia")   // HS256 (bawaan)
-$t = jwt.sign("{\"sub\":\"budi\"}", "rahasia", "HS512")
-jwt.verify($t, "rahasia")  // string klaim JSON — signature + exp/nbf lolos
-jwt.decode($t)             // string klaim JSON tanpa verifikasi
+$t = jwt.sign({"sub": "budi"}, "secret")            // object — HS256 (default)
+$t = jwt.sign({"sub": "budi"}, "secret", "HS512")
+$c = jwt.verify($t, "secret")  // claims OBJECT — signature + exp/nbf pass
+print($c.sub)                  // field access on the returned object
+jwt.decode($t)                 // claims OBJECT, unverified
 ```
 
-| Fungsi | Argumen | Hasil |
+| Function | Args | Result |
 |---|---|---|
-| `jwt.sign(claims, secret[, alg])` | 2–3 | string token; `claims` berupa string JSON objek; `alg` salah satu `HS256` (bawaan), `HS384`, `HS512` |
-| `jwt.verify(token, secret)` | 2 | string klaim JSON — signature dicocokkan constant-time, lalu klaim `exp`/`nbf` (bila ada) wajib angka dan terpenuhi |
-| `jwt.decode(token)` | 1 | string klaim JSON tanpa verifikasi — untuk membaca token yang sudah diverifikasi terpisah |
+| `jwt.sign(claims, secret[, alg])` | 2–3 | token string; `claims` is a GaLang **object** (serialized compactly in C — no manual `json_encode`/escaping) or a raw JSON object string; `alg` is `HS256` (default), `HS384`, or `HS512` |
+| `jwt.verify(token, secret)` | 2 | claims **object** — the signature is compared in constant time, then `exp`/`nbf` claims (if present) must be numbers and hold |
+| `jwt.decode(token)` | 1 | claims **object** without verification — for reading tokens verified elsewhere |
 
-- Galat — kode `jwt_error`: **400** struktur rusak (bukan tiga segmen
-  `header.payload.signature`, segmen bukan base64url, header/payload
-  bukan JSON objek, klaim `exp`/`nbf` bukan angka), **401** signature
-  tidak cocok, `alg` di luar allowlist (mis. `none`, `RS256` — tahan
-  alg-confusion), token kedaluwarsa (`exp`) atau belum berlaku (`nbf`).
-  Argumen salah tipe → `type_error`.
-- Urutan pemeriksaan `verify`: format → header → allowlist `alg` →
-  payload sebagai JSON → signature (constant-time) → `exp`/`nbf`.
-  Payload dinilai sebelum signature agar pesan "payload bukan JSON"
-  terbedakan dari "signature tidak valid" — klaim tidak pernah
-  dikembalikan sebelum seluruh pemeriksaan lolos.
-- **Tanpa OpenSSL**: RSA/ECDSA sengaja tidak didukung — menambah
-  OpenSSL mematahkan matriks build (cross mingw + CI macOS). Token
-  dibatasi 2 MiB; `secret` kosong ditolak.
-- **Butuh CGO** (tabel platform di [GNE](gne.md#platform)).
+- Errors — `jwt_error` code: **400** for broken structure (not three
+  `header.payload.signature` segments, a segment that is not base64url,
+  header/payload that are not JSON objects, non-numeric `exp`/`nbf`),
+  **401** for a mismatched signature, an `alg` outside the allowlist
+  (e.g. `none`, `RS256` — alg-confusion resistant), an expired token
+  (`exp`) or one not yet valid (`nbf`). Wrong argument types →
+  `type_error`.
+- `verify` checks in this order: format → header → `alg` allowlist →
+  payload parsed into a JSON **object** → signature (constant time) →
+  `exp`/`nbf`. The payload is parsed before the signature check so
+  "payload is not JSON" is distinguishable from "signature invalid" —
+  the claims object is only returned once every check passes.
+- **No OpenSSL**: RSA/ECDSA are intentionally unsupported — adding
+  OpenSSL would break the build matrix (mingw cross + macOS CI). Tokens
+  are capped at 2 MiB; an empty `secret` is rejected.
+- **Requires CGO** (platform table in [GNE](gne.md#platforms)).
 
 ---
 
-## httpclient — ekstensi resmi
+## httpclient — official extension
 
-Klien **HTTP/1.1** berbasis [GNE](gne.md) — tanpa TLS, sama seperti
-`smtp`. Nama modul `http` sudah dipakai server web bawaan, karena itu
-ekstensi ini bernama `httpclient`. Pasang dulu:
+An **HTTP/1.1** client built on [GNE](gne.md) — without TLS, like
+`smtp`. The module name `http` is taken by the built-in web server,
+hence the name `httpclient`. Install first:
 
 ```bash
 gar gne install httpclient
@@ -476,49 +483,49 @@ use "httpclient"
 
 $r = httpclient.get("http://127.0.0.1:8868/status")
 print($r.status)                // 200
-print($r.ok)                    // true — status 2xx
-print($r.body)                  // isi respons
-print($r.header("content-type")) // case-insensitive; absen → null
+print($r.ok)                    // true — 2xx status
+print($r.body)                  // response body
+print($r.header("content-type")) // case-insensitive; missing → null
 
-$p = httpclient.post("http://api.contoh.id/masuk", "a=1&b=2",
+$p = httpclient.post("http://api.example.com/ingest", "a=1&b=2",
                      "application/x-www-form-urlencoded")
 
-$q = httpclient.request("PUT", "http://api.contoh.id/item/1", "{\"nama\":\"x\"}",
-                        ["X-Api-Key: rahasia"])
+$q = httpclient.request("PUT", "http://api.example.com/item/1", "{\"name\":\"x\"}",
+                        ["X-Api-Key: secret"])
 ```
 
-| Fungsi | Argumen | Hasil |
+| Function | Args | Result |
 |---|---|---|
-| `httpclient.get(url[, timeout_ms])` | 1–2 | objek respons |
-| `httpclient.post(url, body[, content_type[, timeout_ms]])` | 2–4 | objek respons; `content_type` bawaan `application/octet-stream` |
-| `httpclient.request(method, url[, body[, headers[, timeout_ms]]])` | 2–5 | objek respons; `headers` berupa array `"Nama: nilai"` |
-| `$r.header(nama)` | 1 | string nilai pertama (case-insensitive) atau `null` |
+| `httpclient.get(url[, timeout_ms])` | 1–2 | response object |
+| `httpclient.post(url, body[, content_type[, timeout_ms]])` | 2–4 | response object; default `content_type` is `application/octet-stream` |
+| `httpclient.request(method, url[, body[, headers[, timeout_ms]]])` | 2–5 | response object; `headers` is an array of `"Name: value"` strings |
+| `$r.header(name)` | 1 | first-value string (case-insensitive) or `null` |
 
-Objek respons: `$r.status` (number), `$r.ok` (bool — status 2xx),
-`$r.body` (string), `$r.url` (URL final sesudah pengalihan),
-`$r.redirects` (number), `$r.headers` (array `"Nama: nilai"`).
+Response object: `$r.status` (number), `$r.ok` (bool — 2xx status),
+`$r.body` (string), `$r.url` (final URL after redirects),
+`$r.redirects` (number), `$r.headers` (array of `"Name: value"`).
 
-- Timeout bawaan 5000 ms (`0` = tanpa batas) menutupi seluruh siklus:
-  resolusi nama, koneksi, kirim, dan baca.
-- Pengalihan 301/302/303/307/308 diikuti otomatis (maksimal 5); pada
-  301/302/303 metode selain GET/HEAD diubah jadi GET tanpa body
-  (perilaku peramban), sedangkan 307/308 mempertahankan metode dan
-  body. `Connection: close` — satu permintaan = satu koneksi.
-- Respons 4xx/5xx **tidak** dilempar sebagai galat — periksa
-  `$r.status` atau `$r.ok`. Galat — kode `httpclient_error`: **500**
-  respons tidak sah / batas terlampaui (pengalihan, ukuran, header),
-  **502** koneksi ditolak/putus, **504** waktu tunggu habis. Argumen
-  tidak sah → `type_error`: url bukan `http://`, header tambahan
-  berisi CR/LF (injeksi), penimpaan header terkelola (`Host`,
-  `Content-Length`, `Connection`, `Transfer-Encoding`), timeout
-  negatif atau terlalu besar.
-- **https ditolak** — tanpa TLS bawaan (OpenSSL mematahkan matriks
-  build, alasannya sama dengan smtp): gunakan proksi TLS lokal
-  (caddy/stunnel) bila target hanya melayani https. Hanya `http://`
-  yang diterima; url tanpa skema ditolak.
-- Dikirim otomatis: `User-Agent: galang-httpclient`, `Accept: */*`,
+- The default timeout is 5000 ms (`0` = unlimited) and covers the whole
+  cycle: name resolution, connect, send, and read.
+- Redirects 301/302/303/307/308 are followed automatically (at most 5);
+  on 301/302/303 a method other than GET/HEAD becomes GET without a body
+  (browser behavior), while 307/308 keep the method and body.
+  `Connection: close` — one request = one connection.
+- 4xx/5xx responses are **not** thrown — check `$r.status` or `$r.ok`.
+  Errors — `httpclient_error` code: **500** for an invalid response or
+  an exceeded limit (redirects, size, headers), **502** for a
+  refused/broken connection, **504** for a timeout. Invalid arguments →
+  `type_error`: a url that is not `http://`, extra headers containing
+  CR/LF (injection), overwriting a transport-managed header (`Host`,
+  `Content-Length`, `Connection`, `Transfer-Encoding`), a negative or
+  too-large timeout.
+- **https is rejected** — no built-in TLS (OpenSSL would break the build
+  matrix, same reasoning as smtp): use a local TLS proxy (caddy/stunnel)
+  when the target only serves https. Only `http://` is accepted; a url
+  without a scheme is rejected.
+- Sent automatically: `User-Agent: galang-httpclient`, `Accept: */*`,
   `Accept-Encoding: identity`, `Connection: close`.
-- Batas: url 4096 karakter, host 255, port 1–65535, body respons
-  maksimal 64 MiB (Content-Length, chunked, maupun EOF), baris header
-  respons maksimal 64 KiB/512 baris, header permintaan 16 KiB.
-- **Butuh CGO** (tabel platform di [GNE](gne.md#platform)).
+- Limits: url 4096 characters, host 255, port 1–65535, response body up
+  to 64 MiB (Content-Length, chunked, or EOF), response header lines up
+  to 64 KiB/512 lines, request headers 16 KiB.
+- **Requires CGO** (platform table in [GNE](gne.md#platforms)).

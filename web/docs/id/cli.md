@@ -75,63 +75,63 @@ sampai kurawal `}` ditutup — tidak perlu menulis ekspresi dalam satu baris.
 
 Preload `file.ga` berguna untuk menyiapkan fungsi/modul sebelum bereksperimen.
 
-## Pengelola Ekstensi — `gar gne`
+## Extension Manager — `gar gne`
 
-Ekstensi native (GNE) dipasang, didaftar, dan dilepas lewat subperintah
-`gar gne` (tersedia sejak `gar` 0.6.0):
+Native extensions (GNE) are installed, listed, and removed with the
+`gar gne` subcommand (available since `gar` 0.6.0):
 
 ```bash
-gar gne pack <dir-ekstensi> [-o keluaran.zip]     # kemas hasil build jadi paket
-gar gne install <spesifikasi> [--force] [--dir D]  # pasang paket ekstensi
-gar gne list [--dir D]                            # daftar ekstensi terpasang
-gar gne remove <nama> [--dir D]                   # lepas ekstensi
+gar gne pack <extension-dir> [-o output.zip]     # package a build into a zip
+gar gne install <spec> [--force] [--dir D]       # install a package
+gar gne list [--dir D]                           # list installed extensions
+gar gne remove <name> [--dir D]                  # remove an extension
 ```
 
-### Spesifikasi `install`
+### The `install` spec
 
-| Bentuk | Arti |
+| Form | Meaning |
 |---|---|
-| `redis` | shortcut kanal resmi — unduh dari rilis GitHub terbaru |
-| `redis@0.6.0` | shortcut versi tertentu (awalan `v` boleh: `redis@v0.6.0`) |
-| `https://.../redis.zip` | URL HTTPS — HTTP polos ditolak |
-| `./redis.zip` | berkas paket lokal |
+| `redis` | official-channel shortcut — downloaded from the latest GitHub release |
+| `redis@0.6.0` | pinned version (the `v` prefix is accepted: `redis@v0.6.0`) |
+| `https://.../redis.zip` | HTTPS URL — plain HTTP is rejected |
+| `./redis.zip` | local package file |
 
-Ekstensi resmi yang tersedia sebagai aset rilis: **`redis`**, **`smtp`**,
-**`uuid`**, **`jwt`**, dan **`httpclient`** (lihat
-[Modul Standar](modules.md)).
+The official extensions shipped as release assets are **`redis`**,
+**`smtp`**, **`uuid`**, **`jwt`**, and **`httpclient`** (see
+[Standard Modules](modules.md)).
 
 ```bash
-gar gne install redis         # rilis terbaru
-gar gne install smtp@0.6.0    # kunci versi
-gar gne install uuid          # dari rilis terbaru
-gar gne install ./redis.zip   # dari berkas
+gar gne install redis         # latest release
+gar gne install smtp@0.6.0    # pin a version
+gar gne install uuid          # from the latest release
+gar gne install ./redis.zip   # from a file
 gar gne list
 gar gne remove smtp
 ```
 
-### Keamanan pemasangan
+### Install-time safety
 
-- Pemasangan **FLAT** ke `~/.galang/gne/` — `<nama>.so`/`.dylib`/`.dll` plus
-  sidecar `<nama>.gne.json`, persis direktori yang dicari `use "nama"`.
-  `--dir D` mengalihkan tujuan (arahkan `GNE_PATH` ke situ bila di luar
-  default).
-- Paket adalah zip multi-platform: `manifest.json` (nama, versi, `gne_abi`,
-  entri per `GOOS-GOARCH` dengan sha256 + ukuran) dan binari per platform.
-  Pemasang memvalidasi manifest dan ABI, **menghitung ulang sha256 sebelum
-  dan sesudah** tulis ke disk, menolak entri zip-slip/tautan simbolik, dan
-  membatasi ukuran paket 64 MiB.
-- Galat keras bila paket tidak menyediakan binari untuk platform berjalan
-  (daftar platform yang tersedia ikut disebut).
-- `--force` hanya untuk: menimpa instalasi yang sudah ada, memasang di
-  mesin yang binari `gar`-nya dibangun tanpa CGO, atau menyiapkan paket
-  lintas-platform (platform pertama terurut dipilih).
+- Packages install **flat** into `~/.galang/gne/` — the
+  `<name>.so`/`.dylib`/`.dll` binary plus a `<name>.gne.json` sidecar,
+  exactly where `use "name"` looks. `--dir D` changes the target (point
+  `GNE_PATH` there if you use a non-default location).
+- A package is a multi-platform zip: `manifest.json` (name, version,
+  `gne_abi`, one entry per `GOOS-GOARCH` with sha256 + size) plus the
+  per-platform binaries. The installer validates the manifest and ABI,
+  **recomputes sha256 before and after** writing to disk, rejects
+  zip-slip/symlink entries, and caps package size at 64 MiB.
+- It is a hard error when the package provides no binary for the running
+  platform (the available platforms are listed in the message).
+- `--force` only overrides: an existing install, installing on a `gar`
+  binary built without CGO, or preparing a cross-platform install (the
+  first platform in sorted order is chosen).
 
 ### `pack`
 
-`pack` mengemas hasil build yang ada di `ext/<nama>/build/<GOOS-GOARCH>/`:
+`pack` packages the builds found in `ext/<name>/build/<GOOS-GOARCH>/`:
 
 ```bash
-make ext                                  # kompilasi linux/windows/ARM64
+make ext                                  # cross-compile linux/windows/ARM64
 gar gne pack ext/redis -o dist/redis.zip
 ```
 

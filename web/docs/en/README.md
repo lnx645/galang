@@ -10,7 +10,7 @@ benchmark suite.
 use "http"
 
 http.GET("/", fn($req) {
-    return {msg: "Halo dari GaLang!"}
+    return {msg: "Hello from GaLang!"}
 })
 
 http.listen(8869)

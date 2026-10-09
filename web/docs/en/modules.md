@@ -184,7 +184,7 @@ files, SSE, and WebSocket. See the full documentation in
 ```galang
 use "http"
 
-http.GET("/", fn($req) { return "Halo" })
+http.GET("/", fn($req) { return "Hello" })
 http.listen(8869)
 ```
 
@@ -246,7 +246,7 @@ $r.close()                        // true; called again → false
   server → `redis_error` status 500; connection refused/dropped → 502;
   timeout → 504. A stale object (used after `close()`, or whose connection
   slot was reused by a newer `connect`) throws `redis_error` 500
-  "koneksi sudah ditutup atau tidak valid". Arguments other than
+  "connection already closed or invalid". Arguments other than
   string/number → `type_error`.
 - Maximum **64 connections** per interpreter; replies are strictly capped
   (bulk up to 64 MiB, array depth of 32 levels, element-count limits) so
@@ -276,7 +276,7 @@ $s.auth("pengirim@contoh.id", "rahasia") // optional — AUTH LOGIN
 $s.from("pengirim@contoh.id")
 $s.to("satu@contoh.id")
 $s.to("dua@contoh.id")                   // more recipients, repeat as needed
-$s.subject("Halo dari GaLang")
+$s.subject("Hello from GaLang")
 $s.send("First line.\nSecond line.")
 $s.close()                               // true; called again → false
 ```
@@ -437,17 +437,18 @@ gar gne install jwt
 ```galang
 use "jwt"
 
-$t = jwt.sign("{\"sub\":\"budi\"}", "secret")   // HS256 (default)
-$t = jwt.sign("{\"sub\":\"budi\"}", "secret", "HS512")
-jwt.verify($t, "secret")  // claims JSON string — signature + exp/nbf pass
-jwt.decode($t)            // claims JSON string, unverified
+$t = jwt.sign({"sub": "budi"}, "secret")            // object — HS256 (default)
+$t = jwt.sign({"sub": "budi"}, "secret", "HS512")
+$c = jwt.verify($t, "secret")  // claims OBJECT — signature + exp/nbf pass
+print($c.sub)                  // field access on the returned object
+jwt.decode($t)                 // claims OBJECT, unverified
 ```
 
 | Function | Args | Result |
 |---|---|---|
-| `jwt.sign(claims, secret[, alg])` | 2–3 | token string; `claims` is a JSON object string; `alg` is `HS256` (default), `HS384`, or `HS512` |
-| `jwt.verify(token, secret)` | 2 | claims JSON string — the signature is compared in constant time, then `exp`/`nbf` claims (if present) must be numbers and hold |
-| `jwt.decode(token)` | 1 | claims JSON string without verification — for reading tokens verified elsewhere |
+| `jwt.sign(claims, secret[, alg])` | 2–3 | token string; `claims` is a GaLang **object** (serialized compactly in C — no manual `json_encode`/escaping) or a raw JSON object string; `alg` is `HS256` (default), `HS384`, or `HS512` |
+| `jwt.verify(token, secret)` | 2 | claims **object** — the signature is compared in constant time, then `exp`/`nbf` claims (if present) must be numbers and hold |
+| `jwt.decode(token)` | 1 | claims **object** without verification — for reading tokens verified elsewhere |
 
 - Errors — `jwt_error` code: **400** for broken structure (not three
   `header.payload.signature` segments, a segment that is not base64url,
@@ -457,10 +458,10 @@ jwt.decode($t)            // claims JSON string, unverified
   (`exp`) or one not yet valid (`nbf`). Wrong argument types →
   `type_error`.
 - `verify` checks in this order: format → header → `alg` allowlist →
-  payload as JSON → signature (constant time) → `exp`/`nbf`. The payload
-  is parsed before the signature check so "payload is not JSON" is
-  distinguishable from "signature invalid" — claims are never returned
-  before every check passes.
+  payload parsed into a JSON **object** → signature (constant time) →
+  `exp`/`nbf`. The payload is parsed before the signature check so
+  "payload is not JSON" is distinguishable from "signature invalid" —
+  the claims object is only returned once every check passes.
 - **No OpenSSL**: RSA/ECDSA are intentionally unsupported — adding
   OpenSSL would break the build matrix (mingw cross + macOS CI). Tokens
   are capped at 2 MiB; an empty `secret` is rejected.

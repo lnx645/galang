@@ -8,33 +8,33 @@ import (
 	"testing"
 )
 
-// TestGneHelp — `gar gne` tanpa argumen menampilkan bantuan Bahasa
-// Indonesia dan keluar 0.
+// TestGneHelp — `gar gne` with no arguments prints English help
+// and exits 0.
 func TestGneHelp(t *testing.T) {
 	var out, errb bytes.Buffer
 	if code := runGNE(nil, &out, &errb); code != 0 {
-		t.Fatalf("kode = %d", code)
+		t.Fatalf("code = %d", code)
 	}
 	s := out.String()
 	for _, want := range []string{"gar gne", "install", "pack", "list", "remove", "https://"} {
 		if !strings.Contains(s, want) {
-			t.Errorf("help kehilangan %q", want)
+			t.Errorf("help missing %q", want)
 		}
 	}
 }
 
-// TestGneSubTidakDikenal — subperintah asing → exit 2 + pesan.
-func TestGneSubTidakDikenal(t *testing.T) {
+// TestGneUnknownSubcommand — foreign subcommand → exit 2 + message.
+func TestGneUnknownSubcommand(t *testing.T) {
 	var out, errb bytes.Buffer
 	if code := runGNE([]string{"nyasar"}, &out, &errb); code != 2 {
-		t.Errorf("kode = %d, mau 2", code)
+		t.Errorf("code = %d, want 2", code)
 	}
-	if !strings.Contains(errb.String(), "tidak dikenal") {
+	if !strings.Contains(errb.String(), "unknown subcommand") {
 		t.Errorf("stderr = %q", errb.String())
 	}
 }
 
-// TestGneParseOps — flag bebas urutan.
+// TestGneParseOps — flags in any order.
 func TestGneParseOps(t *testing.T) {
 	cases := []struct {
 		args  []string
@@ -60,52 +60,52 @@ func TestGneParseOps(t *testing.T) {
 			t.Errorf("case %d: ops = %+v", i, o)
 		}
 		if strings.Join(pos, ",") != strings.Join(c.pos, ",") {
-			t.Errorf("case %d: pos = %v, mau %v", i, pos, c.pos)
+			t.Errorf("case %d: pos = %v, want %v", i, pos, c.pos)
 		}
 	}
-	// Flag tak dikenal berawal -- → galat.
+	// Unknown flag starting with -- → error.
 	if _, _, err := parseGneOps([]string{"--nyasar"}); err == nil {
-		t.Error("--nyasar harus ditolak")
+		t.Error("--nyasar must be rejected")
 	}
-	// --dir tanpa nilai → galat.
+	// --dir without a value → error.
 	if _, _, err := parseGneOps([]string{"--dir"}); err == nil {
-		t.Error("--dir tanpa nilai harus ditolak")
+		t.Error("--dir without a value must be rejected")
 	}
 }
 
-// TestGneListKosong — list tanpa instalasi → pesan ramah, exit 0.
-func TestGneListKosong(t *testing.T) {
+// TestGneListEmpty — list with nothing installed → friendly message, exit 0.
+func TestGneListEmpty(t *testing.T) {
 	var out, errb bytes.Buffer
 	code := runGNE([]string{"list", "--dir", filepath.Join(t.TempDir(), "kosong")}, &out, &errb)
 	if code != 0 {
-		t.Fatalf("kode = %d, stderr = %q", code, errb.String())
+		t.Fatalf("code = %d, stderr = %q", code, errb.String())
 	}
-	if !strings.Contains(out.String(), "belum ada") {
-		t.Errorf("keluaran = %q", out.String())
+	if !strings.Contains(out.String(), "no extensions installed") {
+		t.Errorf("output = %q", out.String())
 	}
 }
 
-// TestGneInstallTanpaArgumen — arity salah → exit 2.
-func TestGneInstallTanpaArgumen(t *testing.T) {
+// TestGneInstallNoArgs — wrong arity → exit 2.
+func TestGneInstallNoArgs(t *testing.T) {
 	var out, errb bytes.Buffer
 	if code := runGNE([]string{"install"}, &out, &errb); code != 2 {
-		t.Errorf("kode = %d, mau 2", code)
+		t.Errorf("code = %d, want 2", code)
 	}
 	if code := runGNE([]string{"pack"}, &out, &errb); code != 2 {
-		t.Errorf("pack kode = %d, mau 2", code)
+		t.Errorf("pack code = %d, want 2", code)
 	}
 }
 
-// TestGneRemoveKosong — remove nama yang tidak terpasang → exit 1 + pesan.
-func TestGneRemoveKosong(t *testing.T) {
+// TestGneRemoveNotInstalled — remove a name that is not installed → exit 1 + message.
+func TestGneRemoveNotInstalled(t *testing.T) {
 	var out, errb bytes.Buffer
 	dir := filepath.Join(t.TempDir(), "gne")
 	os.MkdirAll(dir, 0o755)
 	code := runGNE([]string{"remove", "tidakada", "--dir", dir}, &out, &errb)
 	if code != 1 {
-		t.Errorf("kode = %d, mau 1", code)
+		t.Errorf("code = %d, want 1", code)
 	}
-	if !strings.Contains(errb.String(), "tidak terpasang") {
+	if !strings.Contains(errb.String(), "gar gne remove:") {
 		t.Errorf("stderr = %q", errb.String())
 	}
 }

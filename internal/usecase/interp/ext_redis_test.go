@@ -2,10 +2,10 @@
 
 package interp
 
-// Uji ekstensi resmi ext/redis: mengompilasi sumber asli (bukan salinan),
-// menjalankannya melalui `use "redis"` di program GaLang nyata, dengan
-// server RESP2 tiruan in-process (tanpa jaringan). Satu uji tambahan
-// memakai redis-server sungguhan bila tersedia (dev-only, auto-skip).
+// Test for the official ext/redis extension: compiles the original source
+// (not a copy), runs it via `use "redis"` in a real GaLang program, with
+// an in-process fake RESP2 server (no network). One extra test uses a
+// real redis-server when available (dev-only, auto-skips).
 
 import (
 	"bufio"
@@ -23,9 +23,9 @@ import (
 	"time"
 )
 
-// ---- server RESP2 tiruan ----
+// ---- fake RESP2 server ----
 
-// storeRESP adalah penyimpanan mini sekelas Redis untuk uji.
+// storeRESP is a Redis-like mini store for the tests.
 type storeRESP struct {
 	kv     map[string]string
 	hashes map[string]map[string]string
@@ -44,10 +44,10 @@ func bulkRESP(v string) string {
 	return fmt.Sprintf("$%d\r\n%s\r\n", len(v), v)
 }
 
-// balasRESP mengeksekusi satu perintah dan menghasilkan balasan RESP mentah.
+// balasRESP executes one command and produces a raw RESP reply.
 func balasRESP(st *storeRESP, cmd []string) string {
 	if len(cmd) == 0 {
-		return "-ERR perintah kosong\r\n"
+		return "-ERR empty command\r\n"
 	}
 	switch strings.ToUpper(cmd[0]) {
 	case "PING":
@@ -246,7 +246,7 @@ func balasRESP(st *storeRESP, cmd []string) string {
 	}
 }
 
-// bacaPerintahRESP membaca satu array RESP (nama perintah + argumen).
+// bacaPerintahRESP reads one RESP array (command name + arguments).
 func bacaPerintahRESP(br *bufio.Reader) ([]string, error) {
 	line, err := br.ReadString('\n')
 	if err != nil {
@@ -254,11 +254,11 @@ func bacaPerintahRESP(br *bufio.Reader) ([]string, error) {
 	}
 	line = strings.TrimRight(line, "\r\n")
 	if !strings.HasPrefix(line, "*") {
-		return nil, fmt.Errorf("bukan array RESP: %q", line)
+		return nil, fmt.Errorf("not a RESP array: %q", line)
 	}
 	n, err := strconv.Atoi(line[1:])
 	if err != nil || n < 0 {
-		return nil, fmt.Errorf("array tidak valid: %q", line)
+		return nil, fmt.Errorf("invalid array: %q", line)
 	}
 	args := make([]string, 0, n)
 	for i := 0; i < n; i++ {
@@ -268,11 +268,11 @@ func bacaPerintahRESP(br *bufio.Reader) ([]string, error) {
 		}
 		hdr = strings.TrimRight(hdr, "\r\n")
 		if !strings.HasPrefix(hdr, "$") {
-			return nil, fmt.Errorf("bulk tidak valid: %q", hdr)
+			return nil, fmt.Errorf("invalid bulk header: %q", hdr)
 		}
 		l, err := strconv.Atoi(hdr[1:])
 		if err != nil || l < 0 {
-			return nil, fmt.Errorf("panjang bulk tidak valid: %q", hdr)
+			return nil, fmt.Errorf("invalid bulk length: %q", hdr)
 		}
 		buf := make([]byte, l+2)
 		if _, err := io.ReadFull(br, buf); err != nil {
@@ -283,8 +283,8 @@ func bacaPerintahRESP(br *bufio.Reader) ([]string, error) {
 	return args, nil
 }
 
-// serverRESP menjalankan server mini in-process dan mengembalikan
-// (host, port) untuk dipakai redis.connect.
+// serverRESP runs a mini in-process server and returns the
+// (host, port) to use with redis.connect.
 func serverRESP(t *testing.T) (string, int) {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -323,7 +323,7 @@ func portDari(ln net.Listener) int {
 	return n
 }
 
-// serverGantung menerima koneksi tapi tidak pernah membalas (uji timeout).
+// serverGantung accepts connections but never replies (timeout test).
 func serverGantung(t *testing.T) (string, int) {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -357,7 +357,7 @@ func serverGantung(t *testing.T) (string, int) {
 	return "127.0.0.1", portDari(ln)
 }
 
-// serverTutupCepat menerima lalu langsung menutup koneksi (uji 502).
+// serverTutupCepat accepts and immediately closes the connection (502 test).
 func serverTutupCepat(t *testing.T) (string, int) {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -377,8 +377,8 @@ func serverTutupCepat(t *testing.T) (string, int) {
 	return "127.0.0.1", portDari(ln)
 }
 
-// portMati mengembalikan port yang tidak melayani (listener dibuka lalu
-// ditutup) untuk uji koneksi ditolak.
+// portMati returns a port that serves nothing (a listener is opened then
+// closed) to test a refused connection.
 func portMati(t *testing.T) int {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -390,12 +390,12 @@ func portMati(t *testing.T) int {
 	return p
 }
 
-// bangunRedisC mengompilasi ext/redis/redis.c (sumber asli) menjadi
-// <dir>/gne/redis.so. Gagal bila gcc tidak ada — ini kode kita, bukan fixture.
+// bangunRedisC compiles ext/redis/redis.c (the original source) into
+// <dir>/gne/redis.so. It fails when gcc is missing — this is our code, not a fixture.
 func bangunRedisC(t *testing.T, dir string) {
 	t.Helper()
 	if _, err := exec.LookPath("gcc"); err != nil {
-		t.Skip("gcc tidak tersedia")
+		t.Skip("gcc not available")
 	}
 	src := filepath.Join("..", "..", "..", "ext", "redis", "redis.c")
 	inc := filepath.Join("..", "..", "..", "include")
@@ -406,13 +406,13 @@ func bangunRedisC(t *testing.T, dir string) {
 	cmd := exec.Command("gcc", "-shared", "-fPIC", "-Wall", "-Wextra",
 		"-I", inc, "-o", out, src)
 	if b, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("gagal mengompilasi ext/redis/redis.c: %v\n%s", err, b)
+		t.Fatalf("failed to compile ext/redis/redis.c: %v\n%s", err, b)
 	}
 }
 
-// TestRedisPenuh menguji seluruh lingkup API + pemetaan tipe + galat
-// protokol dan pemakaian ulang slot koneksi.
-func TestRedisPenuh(t *testing.T) {
+// TestRedisFull covers the whole API scope + type mapping + protocol
+// errors and connection slot reuse.
+func TestRedisFull(t *testing.T) {
 	host, port := serverRESP(t)
 	dir := t.TempDir()
 	bangunRedisC(t, dir)
@@ -444,14 +444,14 @@ print($r.cmd("PING"))
 
 try {
   $r.cmd("NGAWUR")
-  print("tidak")
+  print("no")
 } catch e {
   print(e.code + "/" + str(e.status))
 }
 
 try {
   $r.set("k", true)
-  print("tidak")
+  print("no")
 } catch e {
   print(e.code)
 }
@@ -459,19 +459,19 @@ try {
 print($r.close())
 try {
   $r.get("ku:1")
-  print("tidak")
+  print("no")
 } catch e {
   print(e.message)
 }
 
-// Slot yang sama dipakai koneksi baru; objek lama harus tetap basi.
+// The same slot is taken by a new connection; the old object must stay stale.
 $r2 = redis.connect("%s", %d, 3000)
 print($r2.get("ku:1"))
 try {
   $r.get("ku:1")
-  print("tidak")
+  print("no")
 } catch e {
-  print("basi")
+  print("stale")
 }
 print($r2.close())
 print($r2.close())
@@ -482,77 +482,77 @@ print($r2.close())
 
 	want := strings.Join([]string{
 		"true",   // ping
-		"OK",     // set balas +OK
-		"a",      // get ada
-		"null",   // get absen → null
+		"OK",     // set replies +OK
+		"a",      // get present
+		"null",   // get absent → null
 		"42",     // incr 41 → 42
-		"true",   // exists ada
-		"false",  // exists absen
-		"true",   // expire (kunci ada)
-		"1",      // hset baru
-		"0",      // hset perbarui
-		"w",      // hget sesudah perbarui
-		"null",   // hget medan absen
+		"true",   // exists present
+		"false",  // exists absent
+		"true",   // expire (key present)
+		"1",      // hset new
+		"0",      // hset update
+		"w",      // hget after update
+		"null",   // hget absent field
 		"[b, a]", // lrange 0..-1
 		"[ku:1, ku:2]",
 		"1",               // del
 		"PONG",            // cmd PING
-		"redis_error/500", // -ERR server → throw
-		"type_error",      // argumen bool ditolak
-		"true",            // close pertama
-		"koneksi sudah ditutup atau tidak valid",
-		"a",     // koneksi baru pada slot sama
-		"basi",  // objek lama tetap basi walau slot terpakai ulang
+		"redis_error/500", // -ERR from server → throw
+		"type_error",      // bool argument rejected
+		"true",            // first close
+		"connection already closed or invalid",
+		"a",     // new connection on the same slot
+		"stale", // old object stays stale even though the slot is reused
 		"true",  // close r2
-		"false", // close ulang → idempoten
+		"false", // second close → idempotent
 	}, "\n")
 	if got := strings.TrimRight(out, "\n"); got != want {
-		t.Errorf("keluaran salah:\ngot:\n%s\nwant:\n%s", got, want)
+		t.Errorf("wrong output:\ngot:\n%s\nwant:\n%s", got, want)
 	}
 }
 
-// TestRedisGalatKoneksi menguji tiga jalur galat jaringan: ditolak (502),
-// server menutup di tengah (502), dan timeout (504) — semuanya catchable.
-func TestRedisGalatKoneksi(t *testing.T) {
-	// 1. Koneksi ditolak.
+// TestRedisConnectionError exercises three network error paths: refused (502),
+// server closing mid-way (502), and timeout (504) — all catchable.
+func TestRedisConnectionError(t *testing.T) {
+	// 1. Connection refused.
 	dir := t.TempDir()
 	bangunRedisC(t, dir)
 	out, err := jalankanMain(t, dir, fmt.Sprintf(`
 use "redis"
 try {
   $r = redis.connect("127.0.0.1", %d, 1000)
-  print("tidak")
+  print("no")
 } catch e {
   print(e.code + "/" + str(e.status))
 }
 `, portMati(t)))
 	if err != nil {
-		t.Fatalf("eval ditolak: %v", err)
+		t.Fatalf("eval refused: %v", err)
 	}
 	if got := strings.TrimSpace(out); got != "redis_error/502" {
-		t.Errorf("ditolak = %q, mau redis_error/502", got)
+		t.Errorf("refused = %q, want redis_error/502", got)
 	}
 
-	// 2. Server menutup koneksi segera.
+	// 2. Server closes the connection immediately.
 	host, port := serverTutupCepat(t)
 	out, err = jalankanMain(t, dir, fmt.Sprintf(`
 use "redis"
 try {
   $r = redis.connect("%s", %d, 1000)
   $r.get("x")
-  print("tidak")
+  print("no")
 } catch e {
   print(e.code + "/" + str(e.status))
 }
 `, host, port))
 	if err != nil {
-		t.Fatalf("eval putus: %v", err)
+		t.Fatalf("eval dropped: %v", err)
 	}
 	if got := strings.TrimSpace(out); got != "redis_error/502" {
-		t.Errorf("putus = %q, mau redis_error/502", got)
+		t.Errorf("dropped = %q, want redis_error/502", got)
 	}
 
-	// 3. Server gantung → timeout 504.
+	// 3. Hanging server → timeout 504.
 	host, port = serverGantung(t)
 	out, err = jalankanMain(t, dir, fmt.Sprintf(`
 use "redis"
@@ -560,7 +560,7 @@ $t0 = str(len("x"))
 try {
   $r = redis.connect("%s", %d, 300)
   $r.get("x")
-  print("tidak")
+  print("no")
 } catch e {
   print(e.code + "/" + str(e.status))
 }
@@ -569,20 +569,20 @@ try {
 		t.Fatalf("eval timeout: %v", err)
 	}
 	if got := strings.TrimSpace(out); got != "redis_error/504" {
-		t.Errorf("timeout = %q, mau redis_error/504", got)
+		t.Errorf("timeout = %q, want redis_error/504", got)
 	}
 }
 
-// TestRedisHidup menguji terhadap redis-server sungguhan bila tersedia
-// di mesin (dev-only); otomatis skip pada mesin tanpa redis.
-func TestRedisHidup(t *testing.T) {
+// TestRedisLive tests against a real redis-server when available
+// on the machine (dev-only); it skips automatically when redis is absent.
+func TestRedisLive(t *testing.T) {
 	if _, err := exec.LookPath("redis-server"); err != nil {
-		t.Skip("redis-server tidak tersedia")
+		t.Skip("redis-server not available")
 	}
 	dir := t.TempDir()
 	bangunRedisC(t, dir)
 
-	// Pilih port bebas, lalu jalankan redis-server di port itu.
+	// Pick a free port, then run redis-server on that port.
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -599,14 +599,14 @@ func TestRedisHidup(t *testing.T) {
 		"--logfile", filepath.Join(tmp, "redis.log"),
 	)
 	if err := cmd.Start(); err != nil {
-		t.Skipf("gagal menjalankan redis-server: %v", err)
+		t.Skipf("failed to start redis-server: %v", err)
 	}
 	t.Cleanup(func() {
 		cmd.Process.Kill()
 		cmd.Wait()
 	})
 
-	// Tunggu siap (maks 5 detik).
+	// Wait until ready (max 5 seconds).
 	addr := fmt.Sprintf("127.0.0.1:%d", port)
 	siap := false
 	for i := 0; i < 50; i++ {
@@ -619,7 +619,7 @@ func TestRedisHidup(t *testing.T) {
 	}
 	if !siap {
 		b, _ := os.ReadFile(filepath.Join(tmp, "redis.log"))
-		t.Fatalf("redis-server tidak siap dalam 5 detik:\n%s", b)
+		t.Fatalf("redis-server not ready within 5 seconds:\n%s", b)
 	}
 
 	out, err := jalankanMain(t, dir, fmt.Sprintf(`
@@ -651,6 +651,6 @@ print($r.close())
 		"[b, a]", "PONG", "[p1]", "1", "true", "true",
 	}, "\n")
 	if got := strings.TrimRight(out, "\n"); got != want {
-		t.Errorf("keluaran live salah:\ngot:\n%s\nwant:\n%s", got, want)
+		t.Errorf("wrong live output:\ngot:\n%s\nwant:\n%s", got, want)
 	}
 }

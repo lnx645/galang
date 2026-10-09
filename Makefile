@@ -1,28 +1,28 @@
-# Build, test, dan release untuk GaLang.
+# Build, test, and release for GaLang.
 #
-# Target:
-#   make build       - Build untuk platform saat ini
-#   make release     - Build binari rilis (Linux, Windows, ARM64)
-#   make release-zip - Buat archive zip untuk distribusi
-#   make ext         - Kompilasi ekstensi resmi (ext/*) lintas platform
-#   make pack-ext    - Kemas tiap ekstensi jadi dist/<nama>.zip
-#   make test        - Jalankan semua test
-#   make bench       - Jalankan benchmark
-#   make ref         - Jalankan perbandingan vs PHP
-#   make clean       - Hapus artifacts build
+# Targets:
+#   make build       - Build for the current platform
+#   make release     - Build release binaries (Linux, Windows, ARM64)
+#   make release-zip - Create zip archives for distribution
+#   make ext         - Compile the official extensions (ext/*) cross-platform
+#   make pack-ext    - Pack each extension into dist/<name>.zip
+#   make test        - Run all tests
+#   make bench       - Run benchmarks
+#   make ref         - Run the PHP comparison
+#   make clean       - Remove build artifacts
 
 GO      ?= go
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
-# -X menyuntikkan versi ke symbol cli.Version (main.version TIDAK ada —
-# linker diam-diam mengabaikan -X ke simbol tak dikenal).
+# -X injects the version into the cli.Version symbol (main.version does NOT
+# exist — the linker silently ignores -X for unknown symbols).
 LDFLAGS := -s -w -X galang/internal/delivery/cli.Version=$(patsubst v%,%,$(VERSION))
 BUILD_DIR := bin
 DIST_DIR := dist
 
-# Platform targets — binari rilis. macOS (darwin) sengaja TIDAK ada di
-# sini: cross-build CGO ke darwin mustahil dari Linux, sehingga
-# gar-darwin-* dibangun GitHub Actions (release.yml) dan diunggah
-# sebagai aset rilis.
+# Platform targets — release binaries. macOS (darwin) is deliberately NOT
+# here: cross-building CGO for darwin from Linux is impossible, so
+# gar-darwin-* are built by GitHub Actions (release.yml) and uploaded as
+# release assets.
 PLATFORMS := \
 	linux/amd64 \
 	linux/arm64 \
@@ -33,22 +33,22 @@ PLATFORMS := \
 
 all: build
 
-# Build untuk platform saat ini
+# Build for the current platform
 build:
 	$(GO) build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/gar ./cmd/gar
 
-# Install ke $GOPATH/bin atau /usr/local/bin
+# Install into $GOPATH/bin or /usr/local/bin
 install: build
 	cp $(BUILD_DIR)/gar $(shell go env GOPATH)/bin/gar 2>/dev/null || sudo cp $(BUILD_DIR)/gar /usr/local/bin/gar
 
-# Build untuk semua platform binari rilis (lihat PLATFORMS).
+# Build all release platform binaries (see PLATFORMS).
 #
-# CGO per platform: linux/amd64 (host, gcc) dan windows/amd64 (butuh
-# gcc-mingw-w64-x86-64) dibangun DENGAN CGO sehingga GNE (dlopen/
-# LoadLibrary) dan SQLite aktif. Platform lain cross-build CGO=0 →
-# binari tetap jalan, tetapi `use` ekstensi native dan database
-# menghasilkan galat "butuh CGO" (terdokumentasi di docs/{id,en}).
-# Binari darwin CGO=1 dibangun oleh release.yml di runner macOS.
+# CGO per platform: linux/amd64 (host, gcc) and windows/amd64 (needs
+# gcc-mingw-w64-x86-64) are built WITH CGO so GNE (dlopen/LoadLibrary)
+# and SQLite are active. Other platforms cross-build with CGO=0 → the
+# binaries still run, but `use` for native extensions and databases
+# produce a "requires CGO" error (documented in docs/{id,en}).
+# Darwin CGO=1 binaries are built by release.yml on the macOS runner.
 MINGW ?= x86_64-w64-mingw32-gcc
 
 release:
@@ -74,9 +74,9 @@ release:
 		echo "Built: gar-$$goos-$$goarch (CGO=$$cgo)"; \
 	done
 
-# Buat archive zip untuk distribusi.
-# Tiap zip berisi binari platform + gne.h (header ABI GNE untuk penulis
-# ekstensi — sengaja ditempel di setiap zip agar mudah diambil).
+# Create zip archives for distribution.
+# Each zip contains the platform binary + gne.h (the GNE ABI header for
+# extension authors — deliberately attached to every zip for easy access).
 release-zip: release
 	@cp include/gne.h $(DIST_DIR)/
 	@cd $(DIST_DIR) && \
@@ -87,13 +87,13 @@ release-zip: release
 		echo "Created: $$base.zip"; \
 	done
 
-# ---- Ekstensi resmi (ext/) ----
+# ---- Official extensions (ext/) ----
 #
-# Binari per platform disimpan di ext/<nama>/build/<GOOS-GOARCH>/ lalu
-# dikemas oleh `gar gne pack` (target pack-ext). macOS TIDAK dibangun di
-# sini — cross-CGO ke darwin mustahil dari Linux. .dylib dibangun oleh
-# release.yml di runner macOS dan ditaruh ke build/ lewat unduhan
-# aset ext-darwin-builds.zip sebelum pack-ext dijalankan.
+# Binaries per platform are stored in ext/<name>/build/<GOOS-GOARCH>/ and
+# packed by `gar gne pack` (the pack-ext target). macOS is NOT built here
+# — cross-CGO for darwin is impossible from Linux. The .dylib files are
+# built by release.yml on the macOS runner and placed into build/ via the
+# ext-darwin-builds.zip asset download before pack-ext runs.
 EXTS      ?= redis smtp uuid jwt httpclient
 EXTPLAT   ?= linux/amd64 linux/arm64 windows/amd64
 AARCH64CC ?= aarch64-linux-gnu-gcc
@@ -114,30 +114,30 @@ ext:
 	    mkdir -p $$out; \
 	    $$cc -shared -fPIC -Wall -Wextra -I include -o $$out/$$name$$ext \
 	      ext/$$name/$$name.c $$libs; \
-	    echo "Ekstensi $$name → $$out/$$name$$ext"; \
+	    echo "Extension $$name → $$out/$$name$$ext"; \
 	  done; \
 	done
 
-# Kemas tiap ekstensi jadi zip rilis. Butuh minimal satu binari di
-# build/ (linux/windows dari make ext; darwin dari hasil CI).
+# Pack each extension into a release zip. Requires at least one binary
+# in build/ (linux/windows from make ext; darwin from CI results).
 pack-ext: build
 	@set -e; for name in $(EXTS); do \
 	  $(BUILD_DIR)/gar gne pack ext/$$name -o $(DIST_DIR)/$$name.zip; \
 	done
 
-# Test semua package
+# Run all package tests
 test:
 	$(GO) test ./...
 
-# Benchmark
+# Benchmarks
 bench:
 	$(GO) test -run=XXX -bench=. -benchmem ./internal/usecase/interp/
 
-# Perbandingan vs PHP
+# PHP comparison
 ref:
 	./bench/compare.sh
 
-# Jalankan contoh aplikasi
+# Run the example application
 run:
 	./bin/gar run examples/bahasa.ga
 
@@ -159,10 +159,10 @@ fmt:
 vet:
 	$(GO) vet ./...
 
-# Check semua
+# Everything
 check: fmt vet test
 
-# Development: auto-reload (butuh entr)
+# Development: auto-reload (requires entr)
 dev:
 	entr -r make build run <<< examples/bahasa.ga
 

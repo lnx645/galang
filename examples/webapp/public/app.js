@@ -1,10 +1,10 @@
-// Contoh web GaLang — JavaScript polos, tanpa library.
-// (CSS menangani menu burger; fokus JS di sini: interaksi API + jam.)
+// GaLang web example — plain JavaScript, no libraries.
+// (CSS handles the burger menu; the JS focus here: API interaction + clock.)
 
 (function () {
     "use strict";
 
-    // ── Tandai menu aktif sesuai path halaman ───────────────
+    // ── Mark the active menu item from the page path ────────
     var path = window.location.pathname;
     document.querySelectorAll(".menu a").forEach(function (a) {
         var href = a.getAttribute("href");
@@ -26,7 +26,7 @@
             return res.json().then(function (body) {
                 return { status: res.status, body: body };
             }).catch(function () {
-                return { status: res.status, body: "(bukan JSON)" };
+                return { status: res.status, body: "(not JSON)" };
             });
         });
     }
@@ -42,12 +42,12 @@
             hit("/api/sapa/" + encodeURIComponent(nama)).then(function (r) {
                 show(hasilSapa, r.body, r.status >= 400);
             }).catch(function (err) {
-                show(hasilSapa, "gagal: " + err, true);
+                show(hasilSapa, "failed: " + err, true);
             });
         });
     }
 
-    // ── POST /api/echo + tombol 404 ─────────────────────────
+    // ── POST /api/echo + 404 button ─────────────────────────
     var formEcho = document.getElementById("form-echo");
     if (formEcho) {
         var hasilEcho = document.getElementById("hasil-echo");
@@ -58,7 +58,7 @@
             try {
                 objek = JSON.parse(teks);
             } catch (err) {
-                show(hasilEcho, "JSON tidak valid: " + err, true);
+                show(hasilEcho, "Invalid JSON: " + err, true);
                 return;
             }
             show(hasilEcho, "// POST /api/echo …");
@@ -69,7 +69,7 @@
             }).then(function (r) {
                 show(hasilEcho, r.body, r.status >= 400);
             }).catch(function (err) {
-                show(hasilEcho, "gagal: " + err, true);
+                show(hasilEcho, "failed: " + err, true);
             });
         });
 
@@ -80,13 +80,13 @@
                 hit("/api/user/999").then(function (r) {
                     show(hasilEcho, r.body, r.status >= 400);
                 }).catch(function (err) {
-                    show(hasilEcho, "gagal: " + err, true);
+                    show(hasilEcho, "failed: " + err, true);
                 });
             });
         }
     }
 
-    // ── GET /api/kunjungan + reset sesi ─────────────────────
+    // ── GET /api/kunjungan + session reset ──────────────────
     var btnKunjungan = document.getElementById("btn-kunjungan");
     var hasilKunjungan = document.getElementById("hasil-kunjungan");
     if (btnKunjungan && hasilKunjungan) {
@@ -95,7 +95,7 @@
             hit("/api/kunjungan" + tambahan).then(function (r) {
                 show(hasilKunjungan, r.body, r.status >= 400);
             }).catch(function (err) {
-                show(hasilKunjungan, "gagal: " + err, true);
+                show(hasilKunjungan, "failed: " + err, true);
             });
         };
         btnKunjungan.addEventListener("click", function () { hitung(""); });
@@ -105,11 +105,11 @@
         }
     }
 
-    // ── Jam lokal ───────────────────────────────────────────
+    // ── Local clock ─────────────────────────────────────────
     var jam = document.getElementById("jam");
     if (jam) {
         var tik = function () {
-            jam.textContent = new Date().toLocaleString("id-ID", {
+            jam.textContent = new Date().toLocaleString("en-US", {
                 weekday: "long", year: "numeric", month: "long",
                 day: "numeric", hour: "2-digit", minute: "2-digit",
                 second: "2-digit"

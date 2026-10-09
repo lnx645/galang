@@ -1,5 +1,5 @@
 {
   "name": "smtp",
   "version": "0.6.0",
-  "description": "Klien SMTP: AUTH LOGIN, multi-penerima, multipart HTML, dot-stuffing, dan base64 otomatis tanpa 8BITMIME."
+  "description": "SMTP client: AUTH LOGIN, multiple recipients, multipart HTML, dot-stuffing, and automatic base64 without 8BITMIME."
 }

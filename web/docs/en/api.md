@@ -45,7 +45,7 @@ Same as `print` but ends with a newline. `println()` with no arguments prints
 a blank line.
 
 ```galang
-println("selesai")
+println("done")
 ```
 
 ---
@@ -305,9 +305,9 @@ The constructors create error values; throw them with `throw`:
 
 ```galang
 try {
-    throw not_found("user tidak ada")
+    throw not_found("user not found")
 } catch e {
-    print(e.message)            // user tidak ada
+    print(e.message)            // user not found
     print(e.status)             // 404
     print(e.code)               // http_error
     print(e.is("http_error"))   // true
@@ -335,7 +335,7 @@ as properties (e.g. `$s.len`).
 | `.starts_with($p)` | prefix? | `"abc".starts_with("a")` → true |
 | `.ends_with($s)` | suffix? | `"abc".ends_with("c")` → true |
 | `.replace($old, $new)` | replace all | `"aaa".replace("a", "x")` → `xxx` |
-| `.slice($from, $to)` | slice | `"Halo"[0:4]` also works |
+| `.slice($from, $to)` | slice | `"Hello"[0:4]` also works |
 | `.repeat($n)` | repeat | `"ab".repeat(3)` → `ababab` |
 | `.escape_html()` | escape HTML | `"<b>".escape_html()` → `&lt;b&gt;` |
 | `.reversed()` | reverse | `"abc".reversed()` → `cba` |
@@ -344,13 +344,13 @@ Properties (no parentheses): `.len`, `.upper`, `.lower`, `.trim`,
 `.reversed`.
 
 ```galang
-$s = "Halo Dunia"
-print($s.len)                        // 10
-print($s.upper())                    // HALO DUNIA
-print($s.split(" "))                 // [Halo, Dunia]
-print($s.contains("Dunia"))          // true
-print($s.replace("Halo", "Hi"))      // Hi Dunia
-print($s.reversed())                 // ainuD olaH
+$s = "Hello World"
+print($s.len)                        // 11
+print($s.upper())                    // HELLO WORLD
+print($s.split(" "))                 // [Hello, World]
+print($s.contains("World"))          // true
+print($s.replace("Hello", "Hi"))     // Hi World
+print($s.reversed())                 // dlroW olleH
 ```
 
 Note: methods **do not mutate** the original string (a string's contents cannot

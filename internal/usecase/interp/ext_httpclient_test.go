@@ -2,11 +2,11 @@
 
 package interp
 
-// Uji ekstensi resmi ext/httpclient: mengompilasi sumber asli lalu
-// menjalankannya terhadap server HTTP tiruan in-process (httptest)
-// — metode, header, chunked, pengalihan, status4xx tanpa galat, plus
-// jalur galat: https ditolak, koneksi ditolak (502), timeout (504),
-// injeksi CRLF, dan header terkelola yang tidak boleh ditimpa.
+// Tests the official ext/httpclient extension: compiles the original source
+// and runs it against an in-process fake HTTP server (httptest)
+// — methods, headers, chunked, redirects, 4xx status without errors, plus
+// error paths: https rejected, connection refused (502), timeout (504),
+// CRLF injection, and managed headers that must not be overridden.
 
 import (
 	"bytes"
@@ -22,13 +22,13 @@ import (
 	"time"
 )
 
-// bangunHttpClientC mengompilasi ext/httpclient/httpclient.c (sumber
-// asli) menjadi <dir>/gne/httpclient.so. Gagal bila gcc tidak ada —
-// ini kode kita, bukan fixture.
+// bangunHttpClientC compiles ext/httpclient/httpclient.c (the original
+// source) into <dir>/gne/httpclient.so. Fails if gcc is missing —
+// this is our code, not a fixture.
 func bangunHttpClientC(t *testing.T, dir string) {
 	t.Helper()
 	if _, err := exec.LookPath("gcc"); err != nil {
-		t.Skip("gcc tidak tersedia")
+		t.Skip("gcc not available")
 	}
 	src := filepath.Join("..", "..", "..", "ext", "httpclient", "httpclient.c")
 	inc := filepath.Join("..", "..", "..", "include")
@@ -39,22 +39,22 @@ func bangunHttpClientC(t *testing.T, dir string) {
 	cmd := exec.Command("gcc", "-shared", "-fPIC", "-Wall", "-Wextra",
 		"-I", inc, "-o", out, src)
 	if b, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("gagal mengompilasi ext/httpclient/httpclient.c: %v\n%s", err, b)
+		t.Fatalf("failed to compile ext/httpclient/httpclient.c: %v\n%s", err, b)
 	}
 }
 
-// servicerHTTP membangun server uji dengan rute:
+// servicerHTTP builds a test server with routes:
 //
-//	GET/POST/PUT /echo → metode + header penting + body (cek silang
-//	                     dari sisi server terhadap apa yang dikirim klien)
-//	/chunk            → body ditulis bertahap (Transfer-Encoding chunked)
-//	/besar            →130 KB (melewati ambang baca berhenti di64 KB)
-//	/r1 →302 /r2?a=1  → pengalihan relatif
-//	/r301             →301 (POST berubah jadi GET)
-//	/r307             →307 (POST dipertahankan)
-//	/r2               → metode + query terkini
-//	/loop             →302 ke dirinya sendiri
-//	/lambat           → tidur1,5 detik (uji timeout)
+//	GET/POST/PUT /echo → method + key headers + body (cross-check
+//	                     from the server side against what the client sent)
+//	/chunk            → body written in stages (Transfer-Encoding chunked)
+//	/besar            → 130 KB (past the 64 KB read-stop threshold)
+//	/r1 → 302 /r2?a=1  → relative redirect
+//	/r301             → 301 (POST changed to GET)
+//	/r307             → 307 (POST preserved)
+//	/r2               → method + current query
+//	/loop             → 302 to itself
+//	/lambat           → sleeps 1.5 seconds (timeout test)
 func servicerHTTP(t *testing.T) *httptest.Server {
 	t.Helper()
 	mux := http.NewServeMux()
@@ -71,7 +71,7 @@ func servicerHTTP(t *testing.T) *httptest.Server {
 	})
 	mux.HandleFunc("/chunk", func(w http.ResponseWriter, r *http.Request) {
 		f, ok := w.(http.Flusher)
-		for _, s := range []string{"satudua", "tigalima"} {
+		for _, s := range []string{"onetwo", "threefive"} {
 			io.WriteString(w, s)
 			if ok {
 				f.Flush()
@@ -106,10 +106,10 @@ func servicerHTTP(t *testing.T) *httptest.Server {
 	return srv
 }
 
-// TestHttpClientDasar menguji GET/POST/PUT, ekspresi header terhadap
-// sisi server, default content-type, header case-insensitive, body
-// besar (di atas64 KB), respons chunked, dan status4xx tanpa galat.
-func TestHttpClientDasar(t *testing.T) {
+// TestHttpClientBasic tests GET/POST/PUT, header reflection from the
+// server side, default content-type, case-insensitive headers, large
+// body (over 64 KB), chunked responses, and 4xx status without errors.
+func TestHttpClientBasic(t *testing.T) {
 	srv := servicerHTTP(t)
 	dir := t.TempDir()
 	bangunHttpClientC(t, dir)
@@ -123,11 +123,11 @@ print($g.body)
 print($g.header("content-type"))
 print($g.header("CONTENT-TYPE"))
 print($g.header("x-tidak-ada"))
-$p = httpclient.post("%s/echo", "nama=budi", "text/plain")
+$p = httpclient.post("%s/echo", "name=budi", "text/plain")
 print($p.body)
-$d = httpclient.post("%s/echo", "polos")
+$d = httpclient.post("%s/echo", "plain")
 print($d.body)
-$u = httpclient.request("PUT", "%s/echo", "isi", ["X-Api-Key: rahasia"])
+$u = httpclient.request("PUT", "%s/echo", "content", ["X-Api-Key: secret"])
 print($u.body)
 print($u.status)
 $b = httpclient.get("%s/besar")
@@ -146,29 +146,29 @@ print($nf.ok)
 	want := strings.Join([]string{
 		"200",
 		"true",
-		"GET|galang-httpclient|" + alamat, // UA + Host diterima server
+		"GET|galang-httpclient|" + alamat, // UA + Host accepted by the server
 		"text/plain; charset=utf-8",
 		"text/plain; charset=utf-8", // case-insensitive
-		"null",                      // header absen → null
-		"POST|text/plain|nama=budi",
-		"POST|application/octet-stream|polos", // default content-type
-		"PUT|rahasia|isi",
+		"null",                      // absent header → null
+		"POST|text/plain|name=budi",
+		"POST|application/octet-stream|plain", // default content-type
+		"PUT|secret|content",
 		"200",
-		"133120", // 130 KB utuh (130×1024; di atas ambang baca berhenti64 KB)
-		"satuduatigalima",
+		"133120", // full 130 KB (130×1024; above the 64 KB read-stop threshold)
+		"onetwothreefive",
 		"404",
 		"false",
 	}, "\n")
 	if got := strings.TrimRight(out, "\n"); got != want {
-		t.Errorf("keluaran salah:\ngot:\n%s\nwant:\n%s", got, want)
+		t.Errorf("wrong output:\ngot:\n%s\nwant:\n%s", got, want)
 	}
 }
 
-// TestHttpClientPengalihan menguji resolusi Location relatif, aturan
-// ganti-metode301/302/303 (POST → GET tanpa body),307 yang
-// mempertahankan metode+body, penghitungan redirects, dan batas lima
-// pengalihan.
-func TestHttpClientPengalihan(t *testing.T) {
+// TestHttpClientRedirect tests relative Location resolution, the
+// 301/302/303 method-change rule (POST → GET without body), 307
+// preserving method+body, redirect counting, and the five-redirect
+// limit.
+func TestHttpClientRedirect(t *testing.T) {
 	srv := servicerHTTP(t)
 	dir := t.TempDir()
 	bangunHttpClientC(t, dir)
@@ -179,14 +179,14 @@ $r1 = httpclient.get("%s/r1")
 print($r1.body)
 print($r1.redirects)
 print($r1.url)
-$p3 = httpclient.post("%s/r301", "lama")
+$p3 = httpclient.post("%s/r301", "old")
 print($p3.body)
-$p7 = httpclient.post("%s/r307", "dikirim")
+$p7 = httpclient.post("%s/r307", "sent")
 print($p7.body)
 print($p7.redirects)
 try {
   httpclient.get("%s/loop")
-  print("tidak")
+  print("nope")
 } catch e {
   print(e.code + "/" + str(e.status))
 }
@@ -196,24 +196,24 @@ try {
 	}
 
 	want := strings.Join([]string{
-		"GET|a=1|", // Location relatif terhadap URL permintaan
-		"1",        // satu pengalihan
+		"GET|a=1|", // Location relative to the request URL
+		"1",        // one redirect
 		srv.URL + "/r2?a=1",
-		"GET||",         //301: POST diubah jadi GET, body dibuang
-		"POST||dikirim", //307: metode dan body dipertahankan
+		"GET||",      // 301: POST changed to GET, body dropped
+		"POST||sent", // 307: method and body preserved
 		"1",
-		"httpclient_error/500", // batas5 pengalihan
+		"httpclient_error/500", // 5-redirect limit
 	}, "\n")
 	if got := strings.TrimRight(out, "\n"); got != want {
-		t.Errorf("keluaran salah:\ngot:\n%s\nwant:\n%s", got, want)
+		t.Errorf("wrong output:\ngot:\n%s\nwant:\n%s", got, want)
 	}
 }
 
-// TestHttpClientGalat menguji jalur galat: https ditolak (type_error),
-// koneksi ditolak (502), timeout (504), url bukan http(s), injeksi
-// CRLF pada header tambahan, penimpaan header terkelola, dan timeout
-// tidak sah — semuanya catchable tanpa mematikan proses.
-func TestHttpClientGalat(t *testing.T) {
+// TestHttpClientError tests the error paths: https rejected
+// (type_error), connection refused (502), timeout (504), non-http(s)
+// url, CRLF injection in extra headers, managed-header override, and
+// invalid timeout — all catchable without killing the process.
+func TestHttpClientError(t *testing.T) {
 	srv := servicerHTTP(t)
 	dir := t.TempDir()
 	bangunHttpClientC(t, dir)
@@ -222,43 +222,43 @@ func TestHttpClientGalat(t *testing.T) {
 use "httpclient"
 try {
   httpclient.get("https://contoh.id/")
-  print("tidak")
+  print("nope")
 } catch e {
   print(e.code)
 }
 try {
   httpclient.get("http://127.0.0.1:%d/", 500)
-  print("tidak")
+  print("nope")
 } catch e {
   print(e.code + "/" + str(e.status))
 }
 try {
   httpclient.get("%s/lambat", 300)
-  print("tidak")
+  print("nope")
 } catch e {
   print(e.code + "/" + str(e.status))
 }
 try {
   httpclient.get("bukanurl")
-  print("tidak")
+  print("nope")
 } catch e {
   print(e.code)
 }
 try {
   httpclient.request("GET", "%s/echo", null, ["X-A: b\nX-B: c"])
-  print("tidak")
+  print("nope")
 } catch e {
   print(e.code)
 }
 try {
   httpclient.request("GET", "%s/echo", null, ["Host: jahat"])
-  print("tidak")
+  print("nope")
 } catch e {
   print(e.code)
 }
 try {
   httpclient.get("%s/echo", -5)
-  print("tidak")
+  print("nope")
 } catch e {
   print(e.code)
 }
@@ -268,15 +268,15 @@ try {
 	}
 
 	want := strings.Join([]string{
-		"type_error",           // https ditolak (tanpa TLS bawaan)
-		"httpclient_error/502", // koneksi ditolak
-		"httpclient_error/504", // timeout baca
-		"type_error",           // bukan url http://
-		"type_error",           // injeksi CRLF ditolak
-		"type_error",           // Host dikelola tidak boleh ditimpa
-		"type_error",           // timeout negatif
+		"type_error",           // https rejected (no built-in TLS)
+		"httpclient_error/502", // connection refused
+		"httpclient_error/504", // read timeout
+		"type_error",           // not an http:// url
+		"type_error",           // CRLF injection rejected
+		"type_error",           // managed Host must not be overridden
+		"type_error",           // negative timeout
 	}, "\n")
 	if got := strings.TrimRight(out, "\n"); got != want {
-		t.Errorf("keluaran salah:\ngot:\n%s\nwant:\n%s", got, want)
+		t.Errorf("wrong output:\ngot:\n%s\nwant:\n%s", got, want)
 	}
 }

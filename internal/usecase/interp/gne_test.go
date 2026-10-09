@@ -2,9 +2,10 @@
 
 package interp
 
-// Integrasi GNE: membangun ekstensi C nyata dengan gcc, memuatnya lewat
-// `use`, lalu memverifikasi seluruh permukaan ABI v1 — nilai, method,
-// throw catchable, callback, retain, dan penemuan path.
+// GNE integration: builds a real C extension with gcc, loads it via
+// `use`, then verifies the whole ABI surface — values, methods,
+// catchable throws, callbacks, retain, object key enumeration (ABI 2),
+// and path discovery.
 
 import (
 	"os"
@@ -14,7 +15,7 @@ import (
 	"testing"
 )
 
-// fixtureGNE adalah ekstensi uji lengkap (dibangun dengan -Wall -Wextra).
+// fixtureGNE is a complete test extension (built with -Wall -Wextra).
 const fixtureGNE = `#include "gne.h"
 #include <stdint.h>
 
@@ -43,7 +44,7 @@ static int add(gne_ctx *ctx, int argc, const gne_handle *argv, gne_handle *ret)
 	(void)argc;
 	if (api->get_int(ctx, argv[0], &a) != 0 ||
 	    api->get_int(ctx, argv[1], &b) != 0) {
-		api->throw(ctx, "type_error", 500, "add() butuh dua integer");
+		api->throw(ctx, "type_error", 500, "add() requires two integers");
 		return 1;
 	}
 	call_count++;
@@ -54,7 +55,7 @@ static int add(gne_ctx *ctx, int argc, const gne_handle *argv, gne_handle *ret)
 static int boom(gne_ctx *ctx, int argc, const gne_handle *argv, gne_handle *ret)
 {
 	(void)argc; (void)argv; (void)ret;
-	api->throw(ctx, "hello_error", 418, "sengaja meledak");
+	api->throw(ctx, "hello_error", 418, "deliberate explosion");
 	return 1;
 }
 
@@ -117,12 +118,43 @@ static int calls(gne_ctx *ctx, int argc, const gne_handle *argv, gne_handle *ret
 	return 0;
 }
 
+/* ABI 2 surface: enumerate object keys via api->obj_keys and return
+ * them joined with commas — also proves insertion order is preserved. */
+static int keys(gne_ctx *ctx, int argc, const gne_handle *argv, gne_handle *ret)
+{
+	gne_handle ks;
+	size_t n = 0, i, used = 0;
+	char buf[256];
+	(void)argc;
+	if (api->obj_keys(ctx, argv[0], &ks) != 0) {
+		api->throw(ctx, "type_error", 500, "keys() expects an object");
+		return 1;
+	}
+	api->len(ctx, ks, &n);
+	buf[0] = 0;
+	for (i = 0; i < n; i++) {
+		gne_handle k;
+		size_t len = 0;
+		if (api->arr_get(ctx, ks, i, &k) != 0 ||
+		    api->str_len(ctx, k, &len) != 0)
+			continue;
+		if (used && used + 1 < sizeof(buf))
+			buf[used++] = ',';
+		if (used + len + 1 >= sizeof(buf))
+			break;
+		api->str_copy(ctx, k, buf + used, sizeof(buf) - used);
+		used += len;
+	}
+	*ret = api->string(ctx, buf, used);
+	return 0;
+}
+
 int gne_module_init(const gne_host_api *a, gne_ctx *ctx, gne_handle *out)
 {
 	gne_handle counter, ns;
 	api = a;
 	if (api->abi != GNE_ABI) {
-		api->throw(ctx, "gne_abi", 500, "ABI berbeda");
+		api->throw(ctx, "gne_abi", 500, "ABI mismatch");
 		return 1;
 	}
 	api->define_fn(ctx, "add", 2, 2, add);
@@ -132,6 +164,7 @@ int gne_module_init(const gne_host_api *a, gne_ctx *ctx, gne_handle *out)
 	api->define_fn(ctx, "stash", 1, 1, stash);
 	api->define_fn(ctx, "unstash", 0, 0, unstash);
 	api->define_fn(ctx, "calls", 0, 0, calls);
+	api->define_fn(ctx, "keys", 1, 1, keys);
 
 	counter = api->object(ctx);
 	api->obj_set(ctx, counter, "n", api->int_new(ctx, 0));
@@ -144,12 +177,40 @@ int gne_module_init(const gne_host_api *a, gne_ctx *ctx, gne_handle *out)
 }
 `
 
-// bangunEkstensi mengompilasi fixture menjadi <dir>/<name>.so; skip bila
-// gcc tidak tersedia.
+// fixtureLegacyABI simulates an extension compiled against ABI 1 (the
+// pre-obj_keys header): it checks api->abi with strict equality, exactly
+// as the extensions shipped before the ABI 2 bump did.
+const fixtureLegacyABI = `#include "gne.h"
+#include <stdint.h>
+
+static const gne_host_api *api;
+
+static int ping(gne_ctx *ctx, int argc, const gne_handle *argv, gne_handle *ret)
+{
+	(void)argc; (void)argv;
+	*ret = api->string(ctx, "pong", 4);
+	return 0;
+}
+
+int gne_module_init(const gne_host_api *a, gne_ctx *ctx, gne_handle *out)
+{
+	api = a;
+	if (api->abi != 1) {
+		api->throw(ctx, "gne_abi", 500, "extension expects ABI 1");
+		return 1;
+	}
+	api->define_fn(ctx, "ping", 0, 0, ping);
+	*out = api->module(ctx);
+	return 0;
+}
+`
+
+// bangunEkstensi compiles the fixture into <dir>/<name>.so; skips when
+// gcc is not available.
 func bangunEkstensi(t *testing.T, dir, name, src string) string {
 	t.Helper()
 	if _, err := exec.LookPath("gcc"); err != nil {
-		t.Skip("gcc tidak tersedia")
+		t.Skip("gcc not available")
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
@@ -163,13 +224,14 @@ func bangunEkstensi(t *testing.T, dir, name, src string) string {
 	cmd := exec.Command("gcc", "-shared", "-fPIC", "-Wall", "-Wextra",
 		"-I", inc, "-o", out, cPath)
 	if b, err := cmd.CombinedOutput(); err != nil {
-		t.Skipf("gagal mengompilasi fixture: %v\n%s", err, b)
+		t.Skipf("cannot compile the fixture: %v\n%s", err, b)
 	}
 	return out
 }
 
-// TestGNEPenuh menguji seluruh permukaan ABI lewat program GaLang nyata.
-func TestGNEPenuh(t *testing.T) {
+// TestGNEFull exercises the entire ABI surface through a real GaLang
+// program.
+func TestGNEFull(t *testing.T) {
 	dir := t.TempDir()
 	bangunEkstensi(t, filepath.Join(dir, "gne"), "hello", fixtureGNE)
 
@@ -181,7 +243,7 @@ print(hello.join("a", "b", "c"))
 
 try {
   hello.boom()
-  print("tidak")
+  print("no")
 } catch e {
   print(e.code + "/" + str(e.status) + "/" + e.message)
 }
@@ -189,7 +251,7 @@ try {
 try {
   hello.add("x", 1)
 } catch e {
-  print("tipe:" + e.code)
+  print("type:" + e.code)
 }
 
 $c = hello.counter
@@ -203,6 +265,7 @@ print(hello.twice(fn($x) {
 hello.stash(999)
 print(hello.unstash())
 print(hello.calls())
+print(hello.keys({"b": 1, "a": 2, "c": 3}))
 `)
 	if err != nil {
 		t.Fatalf("eval: %v", err)
@@ -210,20 +273,21 @@ print(hello.calls())
 	want := strings.Join([]string{
 		"62",
 		"abc",
-		"hello_error/418/sengaja meledak",
-		"tipe:type_error",
+		"hello_error/418/deliberate explosion",
+		"type:type_error",
 		"1",
 		"2",
 		"10",
 		"999",
 		"1",
+		"b,a,c", // obj_keys preserves insertion order
 	}, "\n")
 	if strings.TrimSpace(out) != want {
 		t.Errorf("output = %q\nwant %q", strings.TrimSpace(out), want)
 	}
 }
 
-// TestGNEPanggilanTanpaArgumenCukup — galat arity datang dari host, bukan C.
+// TestGNEArityHost — the arity error comes from the host, not from C.
 func TestGNEArityHost(t *testing.T) {
 	dir := t.TempDir()
 	bangunEkstensi(t, filepath.Join(dir, "gne"), "hello", fixtureGNE)
@@ -232,16 +296,16 @@ use "hello"
 hello.add(1)
 `)
 	if err == nil || !strings.Contains(err.Error(), "expects at least 2") {
-		t.Errorf("err = %v, want galat arity host", err)
+		t.Errorf("err = %v, want the host's arity error", err)
 	}
 }
 
-// TestGNEDiscovery — urutan: file .ga menang atas GNE, path eksplisit
-// bekerja, dan GNE_PATH ditemukan bila direktori proyek kosong.
+// TestGNEDiscovery — order: a .ga file wins over GNE, explicit paths
+// work, and GNE_PATH is found when the project directory is empty.
 func TestGNEDiscovery(t *testing.T) {
 	dir := t.TempDir()
 
-	// 1. file .ga menang atas .so dengan nama sama
+	// 1. a .ga file wins over a .so with the same name
 	tulisFile(t, dir, "hello.ga", `fn add($a, $b) { return 111 }`)
 	bangunEkstensi(t, filepath.Join(dir, "gne"), "hello", fixtureGNE)
 	out, err := jalankanMain(t, dir, `
@@ -252,24 +316,24 @@ print(hello.add(1, 2))
 		t.Fatalf("eval: %v", err)
 	}
 	if strings.TrimSpace(out) != "111" {
-		t.Errorf("file .ga harus menang, output = %q", out)
+		t.Errorf("the .ga file must win, output = %q", out)
 	}
 
-	// 2. path eksplisit use "gne/hello.so" (namespace dari basename)
+	// 2. explicit path use "gne/hello.so" (namespace from the basename)
 	tulisFile(t, dir, "main2.ga", "")
 	out, err = jalankanMain(t, dir, `
 use "gne/hello.so"
 print(hello.add(1, 2))
 `)
 	if err != nil {
-		t.Fatalf("eval eksplisit: %v", err)
+		t.Fatalf("explicit eval: %v", err)
 	}
 	if strings.TrimSpace(out) != "3" {
-		t.Errorf("path eksplisit, output = %q", out)
+		t.Errorf("explicit path, output = %q", out)
 	}
 }
 
-// TestGNEPathEnv — $GNE_PATH dipakai bila proyek tidak punya ./gne.
+// TestGNEPathEnv — $GNE_PATH is used when the project has no ./gne.
 func TestGNEPathEnv(t *testing.T) {
 	dir := t.TempDir()
 	extDir := t.TempDir()
@@ -287,9 +351,10 @@ print(hello.add(4, 5))
 	}
 }
 
-// TestGNELokasiLama — lokasi lama ~/.garurda/gne (sebelum rebrand
-// v0.7.0) tetap dicari `use` bila direktori aktif belum berisi ekstensi.
-func TestGNELokasiLama(t *testing.T) {
+// TestGNELegacyDir — the old ~/.garurda/gne location (pre-v0.7.0
+// rebrand) is still searched by `use` when the active directory does
+// not contain the extension yet.
+func TestGNELegacyDir(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	dir := t.TempDir()
@@ -303,50 +368,88 @@ print(hello.add(6, 7))
 		t.Fatalf("eval: %v", err)
 	}
 	if strings.TrimSpace(out) != "13" {
-		t.Errorf("output = %q, want 13 (ekstensi lokasi lama harus termuat)", out)
+		t.Errorf("output = %q, want 13 (the legacy-location extension must load)", out)
 	}
 }
 
-// TestGNETidakDitemukan — pesan galat menyebut semua kandidat GNE.
-func TestGNETidakDitemukan(t *testing.T) {
+// TestGNELegacyABIView — a package whose sidecar declares gne_abi 1 is
+// served a legacy table view (identical layout, older abi number) so
+// extensions built before the ABI bump keep loading after a `gar`
+// upgrade; without a sidecar the host assumes the current ABI and the
+// extension's strict equality check rejects it loudly.
+func TestGNELegacyABIView(t *testing.T) {
+	dir := t.TempDir()
+	gneDir := filepath.Join(dir, "gne")
+	so := bangunEkstensi(t, gneDir, "tua", fixtureLegacyABI)
+	sidecar := strings.TrimSuffix(so, ".so") + ".gne.json"
+	if err := os.WriteFile(sidecar,
+		[]byte(`{"name":"tua","version":"0.0.1","gne_abi":1}`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := jalankanMain(t, dir, `
+use "tua"
+print(tua.ping())
+`)
+	if err != nil {
+		t.Fatalf("eval with a legacy sidecar: %v", err)
+	}
+	if strings.TrimSpace(out) != "pong" {
+		t.Errorf("output = %q, want pong (the legacy view must load ABI 1 extensions)", out)
+	}
+
+	// No sidecar → the host serves the current view; the old
+	// extension's own check must reject it with a clear error.
+	if err := os.Remove(sidecar); err != nil {
+		t.Fatal(err)
+	}
+	_, err = jalankanMain(t, dir, `
+use "tua"
+`)
+	if err == nil || !strings.Contains(err.Error(), "expects ABI 1") {
+		t.Errorf("err = %v, want the extension's own ABI rejection", err)
+	}
+}
+
+// TestGNENotFound — the error message lists every GNE candidate.
+func TestGNENotFound(t *testing.T) {
 	dir := t.TempDir()
 	_, err := jalankanMain(t, dir, `
 use "hilang"
 `)
 	if err == nil || !strings.Contains(err.Error(), filepath.Join("gne", "hilang")) {
-		t.Errorf("err = %v, want menyebut kandidat gne/hilang.so", err)
+		t.Errorf("err = %v, want it to mention the gne/hilang.so candidate", err)
 	}
 }
 
-// TestGNEBukanEkstensi — .so tanpa gne_module_init ditolak dengan jelas.
-func TestGNEBukanEkstensi(t *testing.T) {
+// TestGNENotAnExtension — a .so without gne_module_init is rejected clearly.
+func TestGNENotAnExtension(t *testing.T) {
 	if _, err := exec.LookPath("gcc"); err != nil {
-		t.Skip("gcc tidak tersedia")
+		t.Skip("gcc not available")
 	}
 	dir := t.TempDir()
 	gneDir := filepath.Join(dir, "gne")
 	if err := os.MkdirAll(gneDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// .so valid tapi tanpa simbol gne_module_init
+	// a valid .so but without the gne_module_init symbol
 	cPath := filepath.Join(dir, "kosong.c")
 	if err := os.WriteFile(cPath, []byte("int f(void){return 0;}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if b, err := exec.Command("gcc", "-shared", "-fPIC", "-o",
 		filepath.Join(gneDir, "kosong.so"), cPath).CombinedOutput(); err != nil {
-		t.Skipf("gagal kompilasi: %v\n%s", err, b)
+		t.Skipf("cannot compile: %v\n%s", err, b)
 	}
 	_, err := jalankanMain(t, dir, `
 use "kosong"
 `)
-	if err == nil || !strings.Contains(err.Error(), "bukan ekstensi GNE") {
-		t.Errorf("err = %v, want 'bukan ekstensi GNE'", err)
+	if err == nil || !strings.Contains(err.Error(), "is not a GNE extension") {
+		t.Errorf("err = %v, want 'is not a GNE extension'", err)
 	}
 }
 
-// TestGNEBawaanTetapMenang — `use "strings"` tidak tersentuh GNE.
-func TestGNEBawaanTetapMenang(t *testing.T) {
+// TestGNEBuiltinsStillWin — `use "strings"` is untouched by GNE.
+func TestGNEBuiltinsStillWin(t *testing.T) {
 	dir := t.TempDir()
 	bangunEkstensi(t, filepath.Join(dir, "gne"), "strings", fixtureGNE)
 	out, err := jalankanMain(t, dir, `

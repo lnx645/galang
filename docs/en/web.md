@@ -8,7 +8,7 @@ SSE, and WebSocket.
 use "http"
 
 http.GET("/", fn($req) {
-    return "Halo dari GaLang!"
+    return "Hello from GaLang!"
 })
 
 http.listen(8869)
@@ -166,7 +166,7 @@ Just `return` a value — the runtime determines the status, type, and body:
 
 ```galang
 // String → HTML 200
-return "Halo"
+return "Hello"
 
 // Array/Object → automatic JSON 200
 return ["a", "b"]             // [{"..."}] JSON array
@@ -209,7 +209,7 @@ status** and a JSON body `{code, message, status}`:
 http.GET("/users/{id}", fn($req) {
     $user = cari_user($req.params.id)
     if $user == null {
-        throw not_found("user tidak ada")
+        throw not_found("user not found")
     }
     return $user
 })
@@ -219,7 +219,7 @@ http.GET("/users/{id}", fn($req) {
 HTTP/1.1 404 Not Found
 Content-Type: application/json
 
-{"code":"http_error","message":"user tidak ada","status":404}
+{"code":"http_error","message":"user not found","status":404}
 ```
 
 | Constructor | Response status |

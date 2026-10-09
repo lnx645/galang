@@ -34,6 +34,7 @@ extern int gne_host_obj_get(gne_ctx *ctx, uint64_t obj, char *key,
 			    uint64_t *out);
 extern int gne_host_obj_has(gne_ctx *ctx, uint64_t obj, char *key,
 			    int *out);
+extern int gne_host_obj_keys(gne_ctx *ctx, uint64_t obj, uint64_t *out);
 extern int gne_host_define_fn(gne_ctx *ctx, char *name, int32_t min,
 			      int32_t max, void *fn);
 extern int gne_host_define_method(gne_ctx *ctx, uint64_t obj, char *name,
@@ -50,12 +51,17 @@ extern void *gne_host_get_data(gne_ctx *ctx);
 extern void gne_host_retain(gne_ctx *ctx, uint64_t h);
 extern void gne_host_release(gne_ctx *ctx, uint64_t h);
 
-/* Trampoline & utilitas yang dijalankan dari Go. */
+/* Trampolines & helpers invoked from Go. */
 int gne_invoke_fn(void *fn, gne_ctx *ctx, int argc, uint64_t *argv,
 		  uint64_t *ret);
 int gne_invoke_init(void *fn, const gne_host_api *api, gne_ctx *ctx,
 		    uint64_t *out);
-const gne_host_api *gne_get_host_api(void);
+/* Returns the host API table view for an extension's declared ABI.
+ * declared <= 0 or == GNE_ABI selects the current view; an older
+ * declared ABI selects the legacy view (same layout, older abi number)
+ * so already-installed extensions keep loading after an upgrade.
+ * The returned pointer stays valid for the process lifetime. */
+const gne_host_api *gne_get_host_api_abi(int32_t declared);
 void *gne_dl_open(const char *path);
 void *gne_dl_sym(void *h, const char *name);
 const char *gne_dl_error(void);

@@ -1,49 +1,51 @@
-/* smtp.c — ekstensi GNE resmi: klien SMTP (RFC 5321/5322) murni C.
+/* smtp.c — official GNE extension: pure-C SMTP client (RFC 5321/5322).
  *
- * Gaya pemakaian:
+ * Usage style:
  *
  *   use "smtp"
  *   $s = smtp.connect("127.0.0.1", 1025)          // greeting 220 + EHLO
- *   $s = smtp.connect("smtp.example.id", 587, 3000)  // timeout custom
+ *   $s = smtp.connect("smtp.example.id", 587, 3000)  // custom timeout
  *   $s.auth("user@example.id", "rahasia")          // AUTH LOGIN
  *   $s.from("kirim@example.id")                    // MAIL FROM
- *   $s.to("satu@example.id")                       // RCPT TO (boleh berulang)
+ *   $s.to("satu@example.id")                       // RCPT TO (may repeat)
  *   $s.to("dua@example.id")
- *   $s.subject("Halo dari GaLang")
- *   $s.send("Halo.\nBaris.")                       // DATA text/plain
- *   $s.send_html("Halo", "<p>Halo <b>dunia</b></p>") // multipart/alternative
+ *   $s.subject("Hello from GaLang")
+ *   $s.send("Hello.\nLine.")                       // DATA text/plain
+ *   $s.send_html("Hello", "<p>Hello <b>world</b></p>") // multipart/alternative
  *   $s.close()
  *
- * State: tabel sesi maksimal 64 slot digantungkan lewat api->set_data
- * (aman bila satu .so dipakai beberapa interpreter); tiap objek sesi
- * menyimpan field "id" → slot. Gagal I/O menutup sesi sehingga method
- * berikutnya melempar "koneksi sudah ditutup atau tidak valid".
+ * State: a session table of at most 64 slots is attached via
+ * api->set_data (safe when one .so is used by several interpreters);
+ * each session object stores an "id" field → slot. An I/O failure closes
+ * the session, so the next method throws "connection is already closed
+ * or invalid".
  *
- * Setelah MAIL FROM (from()), transaksi aktif sampai DATA selesai;
- * kirim email berikutnya wajib from() + to() ulang (envelope server
- * reset setelah end-of-data). subject() bertahan antar transaksi.
+ * After MAIL FROM (from()), the transaction stays active until DATA
+ * completes; sending the next email requires from() + to() again (the
+ * server envelope is reset after end-of-data). subject() persists across
+ * transactions.
  *
- * Galat catchable "smtp_error":
- *   status 500 — server menolak / protokol tak terduga / state salah
- *                (mis. send() sebelum from()) / argumen tidak valid
- *   status 502 — gagal terhubung / koneksi terputus
- *   status 504 — waktu tunggu habis (timeout)
+ * Catchable error "smtp_error":
+ *   status 500 — server rejection / unexpected protocol / wrong state
+ *                (e.g. send() before from()) / invalid argument
+ *   status 502 — failed to connect / connection dropped
+ *   status 504 — timeout elapsed
  *
- * BATASAN (jujur, tertulis juga di docs):
- *   - Plain tanpa TLS. STARTTLS/OpenSSL BELUM didukung — server yang
- *     mewajibkan TLS sebelum AUTH akan menolak (pesannya diteruskan
- *     apa adanya). Jangan pakai jalur ini di jaringan publik.
- *   - Mekanisme AUTH hanya LOGIN (bukan PLAIN/CRAM-MD5).
- *   - Alamat hanya-ASCII (tanpa SMTPUTF8); subjek non-ASCII otomatis
- *     dikodekan sebagai encoded-word RFC 2047 (?=UTF-8?B?...?=).
- *   - Body tidak di-fold: baris body >1000 oktet bisa ditolak server
- *     dengan batas line_length ketat (Postfix default 2000).
- *   - NUL dalam pesan ditolak (type_error) — melanggar SMTP.
+ * LIMITATIONS (honest, also written in docs):
+ *   - Plain, no TLS. STARTTLS/OpenSSL is NOT yet supported — a server
+ *     that requires TLS before AUTH will reject (the message is passed
+ *     through as-is). Do not use this path on public networks.
+ *   - The only AUTH mechanism is LOGIN (not PLAIN/CRAM-MD5).
+ *   - ASCII-only addresses (no SMTPUTF8); non-ASCII subjects are
+ *     automatically encoded as RFC 2047 encoded-words (?=UTF-8?B?...?=).
+ *   - The body is not folded: body lines over 1000 octets may be rejected
+ *     by servers with a strict line_length limit (Postfix default 2000).
+ *   - NUL in messages is rejected (type_error) — violates SMTP.
  *
- * Lintas platform: POSIX (fcntl/select) dan Winsock (#ifdef _WIN32).
- * Sinyal SIGPIPE ditahan lewat MSG_NOSIGNAL (Linux) atau
- * SO_NOSIGPIPE (macOS) — ekstensi tidak pernah mengubah handler
- * sinyal proses.
+ * Cross-platform: POSIX (fcntl/select) and Winsock (#ifdef _WIN32).
+ * SIGPIPE is suppressed via MSG_NOSIGNAL (Linux) or
+ * SO_NOSIGPIPE (macOS) — the extension never changes the process's
+ * signal handlers.
  */
 #include "gne.h"
 
@@ -92,77 +94,77 @@ typedef int sfd_t;
 
 static const gne_host_api *api;
 
-/* ---- batas (dokumentasikan di docs) ---- */
+/* ---- limits (documented in docs) ---- */
 #define SMTP_MAX_CONN 64
 #define SMTP_MAX_RCPT 100
 #define SMTP_TIMEOUT_DEFAULT_MS 5000
-#define SMTP_QUIT_WAIT_MS 2000      /* batas tunggu balasan 221 saat close() */
-#define SMTP_MAX_LINE (1u << 20)    /* baris protokol ≤ 1 MiB */
-#define SMTP_MAX_REPLY (64u << 10)  /* total satu balasan multi-baris ≤ 64 KiB */
-#define SMTP_MAX_MSG (32u << 20)    /* pesan keluar ≤ 32 MiB */
-#define SMTP_MAX_ADDR 320           /* path RFC 5321 + sudut */
-#define SMTP_MAX_SUBJECT 700        /* subjek — encoded-word tetap < 998 oktet */
-#define SMTP_CAPS 8192              /* ruang simpan balasan EHLO */
+#define SMTP_QUIT_WAIT_MS 2000      /* wait limit for the 221 reply on close() */
+#define SMTP_MAX_LINE (1u << 20)    /* protocol line ≤ 1 MiB */
+#define SMTP_MAX_REPLY (64u << 10)  /* one multi-line reply total ≤ 64 KiB */
+#define SMTP_MAX_MSG (32u << 20)    /* outgoing message ≤ 32 MiB */
+#define SMTP_MAX_ADDR 320           /* RFC 5321 path + angles */
+#define SMTP_MAX_SUBJECT 700        /* subject — encoded-word stays < 998 octets */
+#define SMTP_CAPS 8192              /* storage for the EHLO reply text */
 
 typedef struct {
-	int fd; /* -1 = slot kosong */
+	int fd; /* -1 = empty slot */
 	int timeout_ms;
-	int64_t gen; /* nomor generasi — menolak objek basi dari siklus close/connect */
+	int64_t gen; /* generation number — rejects stale objects from close/connect cycles */
 	char *rbuf;
 	size_t rcap, rlen, rpos;
-	char me[256];   /* nama host klien (EHLO + Message-ID) */
-	char caps[SMTP_CAPS]; /* teks balasan EHLO, huruf besar-kecil diseragamkan */
-	int in_txn;     /* MAIL FROM aktif, menunggu DATA */
-	char *subject;  /* subjek tersimpan (bertahan antar transaksi) */
-	char *from_addr; /* alamat MAIL FROM terakhir */
+	char me[256];   /* client host name (EHLO + Message-ID) */
+	char caps[SMTP_CAPS]; /* EHLO reply text, case-normalized to uppercase */
+	int in_txn;     /* MAIL FROM active, awaiting DATA */
+	char *subject;  /* stored subject (persists across transactions) */
+	char *from_addr; /* last MAIL FROM address */
 	char *rcpt[SMTP_MAX_RCPT];
 	int nrcpt;
-	unsigned seq; /* nomor urut untuk Message-ID & boundary */
+	unsigned seq; /* sequence number for Message-ID & boundary */
 } smtp_sess;
 
 typedef struct {
 	smtp_sess ss[SMTP_MAX_CONN];
 } smtp_state;
 
-/* Hasil membaca buffer. */
+/* Buffer read results. */
 enum {
 	BUF_OK = 0,
-	BUF_EOF = -1,     /* server menutup koneksi */
-	BUF_TIMEOUT = -2, /* SO_RCVTIMEO tercapai */
-	BUF_ERR = -3,     /* galat socket lain */
-	BUF_TOOLARGE = -4 /* melewati batas ukuran */
+	BUF_EOF = -1,     /* server closed the connection */
+	BUF_TIMEOUT = -2, /* SO_RCVTIMEO reached */
+	BUF_ERR = -3,     /* other socket error */
+	BUF_TOOLARGE = -4 /* size limit exceeded */
 };
 
-/* ---- teks galat socket (deterministik, tanpa strerror) ---- */
+/* ---- socket error text (deterministic, no strerror) ---- */
 static const char *sock_text(int e, char *buf, size_t cap)
 {
 	const char *s = NULL;
 #ifdef _WIN32
 	switch (e) {
-	case WSAETIMEDOUT: s = "waktu tunggu habis"; break;
-	case WSAECONNREFUSED: s = "koneksi ditolak"; break;
-	case WSAECONNRESET: s = "koneksi direset"; break;
-	case WSAEHOSTUNREACH: s = "tujuan tak terjangkau"; break;
-	case WSAENETUNREACH: s = "jaringan tak terjangkau"; break;
-	case WSAENOTCONN: s = "koneksi belum terbuka"; break;
+	case WSAETIMEDOUT: s = "timed out"; break;
+	case WSAECONNREFUSED: s = "connection refused"; break;
+	case WSAECONNRESET: s = "connection reset"; break;
+	case WSAEHOSTUNREACH: s = "host unreachable"; break;
+	case WSAENETUNREACH: s = "network unreachable"; break;
+	case WSAENOTCONN: s = "not connected"; break;
 	default: break;
 	}
 #else
 	switch (e) {
-	case ETIMEDOUT: s = "waktu tunggu habis"; break;
-	case ECONNREFUSED: s = "koneksi ditolak"; break;
-	case ECONNRESET: s = "koneksi direset"; break;
-	case EHOSTUNREACH: s = "tujuan tak terjangkau"; break;
-	case ENETUNREACH: s = "jaringan tak terjangkau"; break;
-	case ENOTCONN: s = "koneksi belum terbuka"; break;
-	case EPIPE: s = "pipa tertutup"; break;
+	case ETIMEDOUT: s = "timed out"; break;
+	case ECONNREFUSED: s = "connection refused"; break;
+	case ECONNRESET: s = "connection reset"; break;
+	case EHOSTUNREACH: s = "host unreachable"; break;
+	case ENETUNREACH: s = "network unreachable"; break;
+	case ENOTCONN: s = "not connected"; break;
+	case EPIPE: s = "broken pipe"; break;
 	default: break;
 	}
 #endif
 	if (s)
-		snprintf(buf, cap, "%s (kode %d)", s, e);
+		snprintf(buf, cap, "%s (code %d)", s, e);
 	else
-		snprintf(buf, cap, "galat socket %d", e);
+		snprintf(buf, cap, "socket error %d", e);
 	return buf;
 }
 
@@ -176,7 +178,7 @@ static int is_retry_err(int e)
 	return e == SOCK_EINTR;
 }
 
-/* ---- buffer baca ---- */
+/* ---- read buffer ---- */
 
 static int buf_grow(smtp_sess *s, size_t need)
 {
@@ -199,7 +201,7 @@ static int buf_grow(smtp_sess *s, size_t need)
 	return BUF_OK;
 }
 
-/* Pindahkan data belum terpakai ke awal buffer. */
+/* Move unconsumed data to the start of the buffer. */
 static void buf_compact(smtp_sess *s)
 {
 	if (s->rpos == 0)
@@ -210,7 +212,7 @@ static void buf_compact(smtp_sess *s)
 	s->rpos = 0;
 }
 
-/* Terima minimal satu byte lagi (setelah compact bila perlu). */
+/* Receive at least one more byte (compacting first if needed). */
 static int buf_refill(smtp_sess *s)
 {
 	int rc;
@@ -268,8 +270,8 @@ static int buf_refill(smtp_sess *s)
 	}
 }
 
-/* Baca satu baris protokol (tanpa CRLF). *out menunjuk ke dalam buffer —
- * SAH hanya sampai operasi baca berikutnya. */
+/* Read one protocol line (without CRLF). *out points into the buffer —
+ * VALID only until the next read operation. */
 static int buf_line(smtp_sess *s, const char **out, size_t *outlen)
 {
 	for (;;) {
@@ -295,19 +297,19 @@ static int buf_line(smtp_sess *s, const char **out, size_t *outlen)
 	}
 }
 
-/* ---- galat I/O ---- */
+/* ---- I/O errors ---- */
 
 static int fail_io(gne_ctx *ctx, smtp_sess *s, int rc, const char *what)
 {
 	char buf[256];
 	if (rc == BUF_TIMEOUT) {
-		snprintf(buf, sizeof buf, "%s: waktu tunggu %d ms habis", what, s->timeout_ms);
+		snprintf(buf, sizeof buf, "%s: timed out after %d ms", what, s->timeout_ms);
 		api->throw(ctx, "smtp_error", 504, buf);
 	} else if (rc == BUF_EOF) {
-		snprintf(buf, sizeof buf, "%s: server menutup koneksi", what);
+		snprintf(buf, sizeof buf, "%s: server closed the connection", what);
 		api->throw(ctx, "smtp_error", 502, buf);
 	} else if (rc == BUF_TOOLARGE) {
-		snprintf(buf, sizeof buf, "%s: balasan melewati batas ukuran", what);
+		snprintf(buf, sizeof buf, "%s: reply exceeded the size limit", what);
 		api->throw(ctx, "smtp_error", 500, buf);
 	} else {
 		int e = SOCK_ERRNO;
@@ -318,14 +320,14 @@ static int fail_io(gne_ctx *ctx, smtp_sess *s, int rc, const char *what)
 	return -1;
 }
 
-/* ---- kumpulan argumen string ---- */
+/* ---- string argument helpers ---- */
 
-/* Konversi satu handle menjadi string; galat tipe → throw. */
+/* Convert one handle to a string; type error → throw. */
 static char *arg_to_str(gne_ctx *ctx, gne_handle h, size_t *len)
 {
 	int32_t t;
 	if (api->type_of(ctx, h, &t) != 0) {
-		api->throw(ctx, "type_error", 500, "argumen tidak valid");
+		api->throw(ctx, "type_error", 500, "invalid argument");
 		return NULL;
 	}
 	switch (t) {
@@ -333,17 +335,17 @@ static char *arg_to_str(gne_ctx *ctx, gne_handle h, size_t *len)
 		size_t n;
 		char *out;
 		if (api->str_len(ctx, h, &n) != 0) {
-			api->throw(ctx, "type_error", 500, "argumen string tidak terbaca");
+			api->throw(ctx, "type_error", 500, "string argument could not be read");
 			return NULL;
 		}
 		out = malloc(n + 1);
 		if (!out) {
-			api->throw(ctx, "smtp_oom", 500, "gagal mengalokasikan memori");
+			api->throw(ctx, "smtp_oom", 500, "failed to allocate memory");
 			return NULL;
 		}
 		if (api->str_copy(ctx, h, out, n + 1) < 0) {
 			free(out);
-			api->throw(ctx, "type_error", 500, "argumen string tidak terbaca");
+			api->throw(ctx, "type_error", 500, "string argument could not be read");
 			return NULL;
 		}
 		*len = n;
@@ -356,7 +358,7 @@ static char *arg_to_str(gne_ctx *ctx, gne_handle h, size_t *len)
 		snprintf(tmp, sizeof tmp, "%" PRId64, v);
 		out = strdup(tmp);
 		if (!out) {
-			api->throw(ctx, "smtp_oom", 500, "gagal mengalokasikan memori");
+			api->throw(ctx, "smtp_oom", 500, "failed to allocate memory");
 			return NULL;
 		}
 		*len = strlen(tmp);
@@ -371,19 +373,19 @@ static char *arg_to_str(gne_ctx *ctx, gne_handle h, size_t *len)
 			snprintf(tmp, sizeof tmp, "%.17g", d);
 		out = strdup(tmp);
 		if (!out) {
-			api->throw(ctx, "smtp_oom", 500, "gagal mengalokasikan memori");
+			api->throw(ctx, "smtp_oom", 500, "failed to allocate memory");
 			return NULL;
 		}
 		*len = strlen(tmp);
 		return out;
 	}
 	default:
-		api->throw(ctx, "type_error", 500, "argumen harus berupa string atau angka");
+		api->throw(ctx, "type_error", 500, "argument must be a string or a number");
 		return NULL;
 	}
 }
 
-/* ---- buffer tulis ---- */
+/* ---- write buffer ---- */
 
 typedef struct {
 	char *b;
@@ -458,16 +460,16 @@ static int send_all(smtp_sess *s, const char *p, size_t n)
 	return 0;
 }
 
-/* ---- sesi ---- */
+/* ---- sessions ---- */
 
-/* Cari sesi dari self objek; galat bila basi/tertutup. */
+/* Look up the session from the self object; error if stale/closed. */
 static smtp_sess *self_sess(gne_ctx *ctx, gne_handle self)
 {
 	smtp_state *st = api->get_data(ctx);
 	gne_handle h;
 	int64_t id, gen;
 	if (!st) {
-		api->throw(ctx, "smtp_error", 500, "state modul SMTP hilang");
+		api->throw(ctx, "smtp_error", 500, "SMTP module state is missing");
 		return NULL;
 	}
 	if (api->obj_get(ctx, self, "id", &h) != 0 ||
@@ -476,7 +478,7 @@ static smtp_sess *self_sess(gne_ctx *ctx, gne_handle self)
 	    api->obj_get(ctx, self, "gen", &h) != 0 ||
 	    api->get_int(ctx, h, &gen) != 0 ||
 	    st->ss[id].fd < 0 || st->ss[id].gen != gen) {
-		api->throw(ctx, "smtp_error", 500, "koneksi sudah ditutup atau tidak valid");
+		api->throw(ctx, "smtp_error", 500, "connection is already closed or invalid");
 		return NULL;
 	}
 	return &st->ss[id];
@@ -502,8 +504,8 @@ static void sess_clear(smtp_sess *s)
 	s->seq = 0;
 }
 
-/* Tutup paksa sesi (dipakai setelah galat I/O): koneksi dianggap rusak,
- * method berikutnya melempar "sudah ditutup". */
+/* Force-close the session (used after an I/O error): the connection is
+ * considered broken; the next method throws "already closed". */
 static void sess_drop(smtp_sess *s)
 {
 	if (s->fd >= 0)
@@ -515,7 +517,7 @@ static void sess_drop(smtp_sess *s)
 static void set_timeouts(sfd_t fd, int ms)
 {
 	if (ms <= 0)
-		return; /* 0 = tanpa batas (blocking murni) */
+		return; /* 0 = no limit (purely blocking) */
 #ifdef _WIN32
 	{
 		DWORD t = (DWORD)ms;
@@ -533,7 +535,7 @@ static void set_timeouts(sfd_t fd, int ms)
 #endif
 }
 
-/* Konek nonblocking + select(timeout). 0 = sukses; nilai lain = errno/WSA. */
+/* Nonblocking connect + select(timeout). 0 = success; other value = errno/WSA. */
 static int conn_dial(sfd_t fd, const struct sockaddr *sa, socklen_t slen, int timeout_ms)
 {
 	int rc;
@@ -638,7 +640,7 @@ static int conn_dial(sfd_t fd, const struct sockaddr *sa, socklen_t slen, int ti
 #endif
 }
 
-/* Cari slot kosong; -1 bila penuh. */
+/* Find a free slot; -1 if full. */
 static int slot_free(smtp_state *st)
 {
 	int i;
@@ -648,9 +650,9 @@ static int slot_free(smtp_state *st)
 	return -1;
 }
 
-/* ---- kirim perintah + baca balasan ---- */
+/* ---- send commands + read replies ---- */
 
-/* Kirim satu baris perintah (tanpa CRLF) + CRLF. Gagal → tutup sesi + throw. */
+/* Send one command line (without CRLF) + CRLF. Failure → close session + throw. */
 static int cmd_line(gne_ctx *ctx, smtp_sess *s, const char *line)
 {
 	sbuf out = { NULL, 0, 0 };
@@ -658,7 +660,7 @@ static int cmd_line(gne_ctx *ctx, smtp_sess *s, const char *line)
 	if (sb_puts(&out, line) != 0 || sb_add(&out, "\r\n", 2) != 0) {
 		free(out.b);
 		sess_drop(s);
-		api->throw(ctx, "smtp_oom", 500, "gagal mengalokasikan memori");
+		api->throw(ctx, "smtp_oom", 500, "failed to allocate memory");
 		return -1;
 	}
 	ok = send_all(s, out.b, out.len) == 0;
@@ -668,20 +670,20 @@ static int cmd_line(gne_ctx *ctx, smtp_sess *s, const char *line)
 		char buf[256], txt[96];
 		sess_drop(s);
 		if (is_timeout_err(e))
-			snprintf(buf, sizeof buf, "mengirim perintah: waktu tunggu %d ms habis", s->timeout_ms);
+			snprintf(buf, sizeof buf, "sending command: timed out after %d ms", s->timeout_ms);
 		else
-			snprintf(buf, sizeof buf, "mengirim perintah: %s", sock_text(e, txt, sizeof txt));
+			snprintf(buf, sizeof buf, "sending command: %s", sock_text(e, txt, sizeof txt));
 		api->throw(ctx, "smtp_error", is_timeout_err(e) ? 504 : 502, buf);
 		return -1;
 	}
 	return 0;
 }
 
-/* Baca satu balasan multi-baris (250-... / 250 ...). *code = kode resmi;
- * *msg = teks semua baris (kode dibuang), diakhiri NUL.
- * 0 = sukses; -1 = gagal. Gagal I/O / protokol = stream tidak dapat
- * dipercaya lagi sehingga sesi ikut dibuang.
- * quiet=1: jangan melempar galat apa pun (dipakai QUIT saat close()). */
+/* Read one multi-line reply (250-... / 250 ...). *code = official code;
+ * *msg = text of all lines (code stripped), NUL-terminated.
+ * 0 = success; -1 = failure. I/O / protocol failure = the stream can no
+ * longer be trusted, so the session is dropped as well.
+ * quiet=1: do not throw any error (used for QUIT during close()). */
 static int read_reply_ex(gne_ctx *ctx, smtp_sess *s, int *code, char *msg,
 			 size_t msgcap, int quiet)
 {
@@ -694,7 +696,7 @@ static int read_reply_ex(gne_ctx *ctx, smtp_sess *s, int *code, char *msg,
 		int rc = buf_line(s, &line, &linelen);
 		if (rc != BUF_OK) {
 			if (!quiet)
-				fail_io(ctx, s, rc, "membaca balasan SMTP");
+				fail_io(ctx, s, rc, "reading SMTP reply");
 			sess_drop(s);
 			return -1;
 		}
@@ -703,7 +705,7 @@ static int read_reply_ex(gne_ctx *ctx, smtp_sess *s, int *code, char *msg,
 		    line[1] < '0' || line[1] > '9' ||
 		    line[2] < '0' || line[2] > '9') {
 			if (!quiet)
-				api->throw(ctx, "smtp_error", 500, "balasan SMTP tidak terduga (bukan kode 3 digit)");
+				api->throw(ctx, "smtp_error", 500, "unexpected SMTP reply (not a 3-digit code)");
 			sess_drop(s);
 			return -1;
 		}
@@ -714,16 +716,16 @@ static int read_reply_ex(gne_ctx *ctx, smtp_sess *s, int *code, char *msg,
 		total += linelen;
 		if (total > SMTP_MAX_REPLY) {
 			if (!quiet)
-				api->throw(ctx, "smtp_error", 500, "balasan SMTP terlalu besar");
+				api->throw(ctx, "smtp_error", 500, "SMTP reply too large");
 			sess_drop(s);
 			return -1;
 		}
-		/* Teks setelah "NNN " atau "NNN-" (kosong bila baris hanya kode). */
+		/* Text after "NNN " or "NNN-" (empty when the line is just the code). */
 		if (linelen > 4) {
 			size_t n = linelen - 4;
 			size_t used = strlen(msg);
 			if (used + n + 2 >= msgcap) {
-				/* Truncate: cukup untuk pesan galat & cek kemampuan. */
+				/* Truncate: enough for the error message & capability check. */
 				k = msgcap - used - 2;
 				if (k > 0) {
 					memcpy(msg + used, line + 4, k);
@@ -737,24 +739,24 @@ static int read_reply_ex(gne_ctx *ctx, smtp_sess *s, int *code, char *msg,
 			}
 		}
 		if (linelen < 4 || line[3] == ' ')
-			return 0; /* baris penutup */
+			return 0; /* terminating line */
 		if (line[3] != '-') {
 			if (!quiet)
-				api->throw(ctx, "smtp_error", 500, "balasan SMTP tidak terduga (pemisah bukan '-' atau ' ')");
+				api->throw(ctx, "smtp_error", 500, "unexpected SMTP reply (separator is neither '-' nor ' ')");
 			sess_drop(s);
 			return -1;
 		}
-		/* lanjut: baris lanjutan "NNN-..." */
+		/* continue: continuation line "NNN-..." */
 	}
 }
 
-/* Varian berisik (lempar galat sesuai kebutuhan). */
+/* Noisy variant (throws errors as needed). */
 static int read_reply(gne_ctx *ctx, smtp_sess *s, int *code, char *msg, size_t msgcap)
 {
 	return read_reply_ex(ctx, s, code, msg, msgcap, 0);
 }
 
-/* Baca balasan lalu cocokkan dengan satu kode yang diharapkan. */
+/* Read a reply then match it against a single expected code. */
 static int expect_code(gne_ctx *ctx, smtp_sess *s, int want, const char *what)
 {
 	int code;
@@ -768,13 +770,13 @@ static int expect_code(gne_ctx *ctx, smtp_sess *s, int want, const char *what)
 		size_t n = strlen(msg);
 		while (n > 0 && (msg[n - 1] == '\n' || msg[n - 1] == ' '))
 			msg[--n] = 0;
-		snprintf(buf, sizeof buf, "%s: server membalas %d %s", what, code, msg);
+		snprintf(buf, sizeof buf, "%s: server replied %d %s", what, code, msg);
 		api->throw(ctx, "smtp_error", 500, buf);
 	}
 	return -1;
 }
 
-/* Baca balasan, terima satu dari dua kode (mis. RCPT: 250/251). */
+/* Read a reply, accept one of two codes (e.g. RCPT: 250/251). */
 static int expect_code2(gne_ctx *ctx, smtp_sess *s, int want, int want2, const char *what)
 {
 	int code;
@@ -788,7 +790,7 @@ static int expect_code2(gne_ctx *ctx, smtp_sess *s, int want, int want2, const c
 		size_t n = strlen(msg);
 		while (n > 0 && (msg[n - 1] == '\n' || msg[n - 1] == ' '))
 			msg[--n] = 0;
-		snprintf(buf, sizeof buf, "%s: server membalas %d %s", what, code, msg);
+		snprintf(buf, sizeof buf, "%s: server replied %d %s", what, code, msg);
 		api->throw(ctx, "smtp_error", 500, buf);
 	}
 	return -1;
@@ -799,8 +801,8 @@ static int expect_code2(gne_ctx *ctx, smtp_sess *s, int want, int want2, const c
 static const char b64tab[] =
 	"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-/* Tulis base64 ke sbuf. wrap>0: sisipkan CRLF setelah tiap `wrap` karakter
- * (baris selesai tidak diakhiri CRLF di sini — pemanggil mengatur). */
+/* Write base64 to sbuf. wrap>0: insert CRLF after every `wrap` characters
+ * (a finished line is not terminated with CRLF here — the caller handles it). */
 static int b64_write(sbuf *out, const unsigned char *in, size_t n, unsigned wrap)
 {
 	size_t i = 0;
@@ -854,9 +856,9 @@ static int b64_write(sbuf *out, const unsigned char *in, size_t n, unsigned wrap
 	return 0;
 }
 
-/* ---- utilitas teks ---- */
+/* ---- text utilities ---- */
 
-/* Ada substring? (memmem tidak portabel di Windows) */
+/* Does the substring exist? (memmem is not portable on Windows) */
 static int has_substr(const char *h, size_t hlen, const char *n)
 {
 	size_t nl = strlen(n), i;
@@ -868,10 +870,10 @@ static int has_substr(const char *h, size_t hlen, const char *n)
 	return 0;
 }
 
-/* ---- validasi argumen ---- */
+/* ---- argument validation ---- */
 
-/* Alamat envelope: ASCII cetak 1–320 oktet, tanpa ruang/kontrol/koma/sudut
- * (mencegah injeksi baris & argumen perintah). */
+/* Envelope address: 1–320 printable-ASCII octets, no space/control/comma/angle
+ * (prevents line injection & command-argument smuggling). */
 static int addr_ok(const char *a, size_t n)
 {
 	size_t i;
@@ -887,8 +889,8 @@ static int addr_ok(const char *a, size_t n)
 	return 1;
 }
 
-/* Subjek: tanpa kontrol CR/LF/NUL (anti injeksi header). Batas 700 oktet
- * membuat encoded-word non-ASCII tetap di bawah 998 oktet per baris. */
+/* Subject: no CR/LF/NUL controls (anti header injection). The 700-octet
+ * limit keeps non-ASCII encoded-words under 998 octets per line. */
 static int subject_ok(const char *a, size_t n)
 {
 	size_t i;
@@ -900,19 +902,19 @@ static int subject_ok(const char *a, size_t n)
 	return 1;
 }
 
-/* Isi pesan bebas NUL (SMTP melarang NUL dalam mail data). */
+/* Message body free of NUL (SMTP forbids NUL in mail data). */
 static int body_check(gne_ctx *ctx, const char *p, size_t n, const char *what)
 {
 	if (memchr(p, 0, n) != NULL) {
 		char buf[160];
-		snprintf(buf, sizeof buf, "%s mengandung karakter NUL yang dilarang SMTP", what);
+		snprintf(buf, sizeof buf, "%s contains NUL characters, forbidden by SMTP", what);
 		api->throw(ctx, "type_error", 500, buf);
 		return -1;
 	}
 	return 0;
 }
 
-/* ---- kemampuan & pilihan CTE ---- */
+/* ---- capabilities & CTE selection ---- */
 
 static int caps_has(const smtp_sess *s, const char *up)
 {
@@ -928,8 +930,8 @@ static int has_highbit(const char *p, size_t n)
 	return 0;
 }
 
-/* Pilih Content-Transfer-Encoding: 7bit untuk ASCII murni; 8bit bila server
- * mengiklankan 8BITMIME; selain itu base64 (selalu sah di mana pun). */
+/* Choose Content-Transfer-Encoding: 7bit for pure ASCII; 8bit if the server
+ * advertises 8BITMIME; otherwise base64 (always valid everywhere). */
 static const char *pick_cte(const smtp_sess *s, const char *body, size_t n, int *use_b64)
 {
 	*use_b64 = 0;
@@ -941,8 +943,8 @@ static const char *pick_cte(const smtp_sess *s, const char *body, size_t n, int 
 	return "base64";
 }
 
-/* ---- tanggal RFC 5322 (UTC; nama hari/bulan Inggris manual, tanpa
- * dependensi locale) ---- */
+/* ---- RFC 5322 date (UTC; manual English day/month names, no
+ * locale dependency) ---- */
 
 static void fmt_date(char *out, size_t cap)
 {
@@ -956,12 +958,12 @@ static void fmt_date(char *out, size_t cap)
 	int64_t rem = now - days * 86400;
 	int64_t era, doe, yoe, yy, doy, mp;
 	int y, m, d, w;
-	if (rem < 0) { /* pembagian lantai buat waktu sebelum 1970 */
+	if (rem < 0) { /* floor division for times before 1970 */
 		rem += 86400;
 		days--;
 	}
-	w = (int)(((days + 4) % 7 + 7) % 7); /* 1970-01-01 = Kamis (indeks 4) */
-	{ /* hari sipil → y/m/d (algoritma civil_from_days) */
+	w = (int)(((days + 4) % 7 + 7) % 7); /* 1970-01-01 = Thursday (index 4) */
+	{ /* civil days → y/m/d (civil_from_days algorithm) */
 		int64_t z = days + 719468;
 		era = (z >= 0 ? z : z - 146096) / 146097;
 		doe = z - era * 146097;                             /* [0, 146096] */
@@ -978,7 +980,7 @@ static void fmt_date(char *out, size_t cap)
 		 (int)(rem / 3600), (int)(rem / 60 % 60), (int)(rem % 60));
 }
 
-/* ---- penyusun konten DATA ---- */
+/* ---- DATA content builders ---- */
 
 static int put_hdr_n(sbuf *out, const char *key, const char *val, size_t vlen)
 {
@@ -993,7 +995,7 @@ static int put_hdr(sbuf *out, const char *key, const char *val)
 	return put_hdr_n(out, key, val, strlen(val));
 }
 
-/* Baris pemisah bagian multipart: "--" + boundary + tail ("", "/--") + CRLF. */
+/* Multipart part delimiter line: "--" + boundary + tail ("", "/--") + CRLF. */
 static int put_boundary(sbuf *out, const char *bnd, const char *tail)
 {
 	if (sb_puts(out, "--") != 0 || sb_puts(out, bnd) != 0 ||
@@ -1002,9 +1004,9 @@ static int put_boundary(sbuf *out, const char *bnd, const char *tail)
 	return 0;
 }
 
-/* Tulis isi pesan: normalisasi akhir baris (\r\n, \n, \r tunggal → \r\n)
- * dan dot-stuffing (baris diawali "." menjadi ".."). Baris terakhir selalu
- * diakhiri CRLF; input kosong menghasilkan tulisan kosong. */
+/* Write the message body: normalize line endings (\r\n, \n, lone \r → \r\n)
+ * and dot-stuffing (lines starting with "." become ".."). The last line is
+ * always terminated with CRLF; empty input produces empty output. */
 static int put_body(sbuf *out, const char *p, size_t n)
 {
 	size_t i, start = 0;
@@ -1019,10 +1021,10 @@ static int put_body(sbuf *out, const char *p, size_t n)
 		if (sb_add(out, "\r\n", 2) != 0)
 			return -1;
 		if (c == '\r' && i + 1 < n && p[i + 1] == '\n')
-			i++; /* lewati LF pasangan CRLF */
+			i++; /* skip the LF of a CRLF pair */
 		start = i + 1;
 	}
-	if (start < n) { /* baris terakhir tanpa terminator */
+	if (start < n) { /* last line without a terminator */
 		if (p[start] == '.' && sb_add(out, ".", 1) != 0)
 			return -1;
 		if (sb_add(out, p + start, n - start) != 0)
@@ -1033,7 +1035,7 @@ static int put_body(sbuf *out, const char *p, size_t n)
 	return 0;
 }
 
-/* Tulis badan pesan sesuai CTE terpilih (mentah / base64). */
+/* Write the message body per the chosen CTE (raw / base64). */
 static int put_payload(sbuf *content, const char *body, size_t n, int use_b64)
 {
 	if (!use_b64)
@@ -1045,8 +1047,8 @@ static int put_payload(sbuf *content, const char *body, size_t n, int use_b64)
 	return sb_add(content, "\r\n", 2);
 }
 
-/* Headers standar untuk DATA. ctype wajib; cte boleh NULL (multipart:
- * Content-Transfer-Encoding ditulis per bagian). */
+/* Standard headers for DATA. ctype is required; cte may be NULL (multipart:
+ * Content-Transfer-Encoding is written per part). */
 static int put_std_headers(sbuf *content, smtp_sess *s,
 			   const char *ctype, const char *cte)
 {
@@ -1057,7 +1059,7 @@ static int put_std_headers(sbuf *content, smtp_sess *s,
 		return -1;
 	if (s->from_addr && put_hdr(content, "From", s->from_addr) != 0)
 		return -1;
-	if (s->nrcpt > 0) { /* To: dilipat di koma bila baris melebihi 78 oktet */
+	if (s->nrcpt > 0) { /* To: folded at commas when the line exceeds 78 octets */
 		size_t linelen;
 		if (sb_puts(content, "To: ") != 0)
 			return -1;
@@ -1115,7 +1117,7 @@ static int put_std_headers(sbuf *content, smtp_sess *s,
 	return 0;
 }
 
-/* Kirim potongan data apa adanya. Gagal → tutup sesi + throw. */
+/* Send a data chunk as-is. Failure → close session + throw. */
 static int send_blob(gne_ctx *ctx, smtp_sess *s, const char *p, size_t n, const char *what)
 {
 	if (send_all(s, p, n) == 0)
@@ -1124,7 +1126,7 @@ static int send_blob(gne_ctx *ctx, smtp_sess *s, const char *p, size_t n, const 
 		int e = SOCK_ERRNO;
 		char buf[320], txt[96];
 		if (is_timeout_err(e))
-			snprintf(buf, sizeof buf, "%s: waktu tunggu %d ms habis", what, s->timeout_ms);
+			snprintf(buf, sizeof buf, "%s: timed out after %d ms", what, s->timeout_ms);
 		else
 			snprintf(buf, sizeof buf, "%s: %s", what, sock_text(e, txt, sizeof txt));
 		sess_drop(s);
@@ -1133,9 +1135,10 @@ static int send_blob(gne_ctx *ctx, smtp_sess *s, const char *p, size_t n, const 
 	return -1;
 }
 
-/* Terminasi konten (pastikan CRLF, lalu "." CRLF), kirim, baca 250, dan
- * reset envelope. Konten diubah tapi tetap milik pemanggil.
- * Gagal I/O/protokol → sesi sudah dibuang pembaca balasan. */
+/* Terminate the content (ensure CRLF, then "." CRLF), send, read 250, and
+ * reset the envelope. The content is modified but stays owned by the caller.
+ * I/O/protocol failure → the session was already dropped by the reply
+ * reader. */
 static int data_transaction(gne_ctx *ctx, smtp_sess *s, sbuf *content)
 {
 	int code;
@@ -1147,11 +1150,11 @@ static int data_transaction(gne_ctx *ctx, smtp_sess *s, sbuf *content)
 	}
 	if (sb_add(content, ".\r\n", 3) != 0)
 		goto oom;
-	if (send_blob(ctx, s, content->b, content->len, "mengirim isi pesan") != 0)
+	if (send_blob(ctx, s, content->b, content->len, "sending the message body") != 0)
 		return -1;
 	if (read_reply(ctx, s, &code, msg, sizeof msg) != 0)
 		return -1;
-	/* Apa pun hasilnya, envelope server sudah mengonsumsi DATA. */
+	/* Whatever the outcome, the server envelope has consumed the DATA. */
 	s->in_txn = 0;
 	while (s->nrcpt > 0) {
 		s->nrcpt--;
@@ -1163,20 +1166,20 @@ static int data_transaction(gne_ctx *ctx, smtp_sess *s, sbuf *content)
 		size_t n = strlen(msg);
 		while (n > 0 && (msg[n - 1] == '\n' || msg[n - 1] == ' '))
 			msg[--n] = 0;
-		snprintf(buf, sizeof buf, "server menolak isi pesan: %d %s", code, msg);
+		snprintf(buf, sizeof buf, "server rejected the message body: %d %s", code, msg);
 		api->throw(ctx, "smtp_error", 500, buf);
 		return -1;
 	}
 	return 0;
 oom:
 	sess_drop(s);
-	api->throw(ctx, "smtp_oom", 500, "gagal mengalokasikan memori");
+	api->throw(ctx, "smtp_oom", 500, "failed to allocate memory");
 	return -1;
 }
 
 /* ---- method ---- */
 
-/* auth(user, pass) → true (235). Mekanisme AUTH LOGIN. */
+/* auth(user, pass) → true (235). AUTH LOGIN mechanism. */
 static int m_auth(gne_ctx *ctx, int argc, const gne_handle *argv, gne_handle *ret)
 {
 	smtp_sess *s = self_sess(ctx, argv[0]);
@@ -1196,51 +1199,51 @@ static int m_auth(gne_ctx *ctx, int argc, const gne_handle *argv, gne_handle *re
 	}
 	if (s->caps[0] == 0) {
 		api->throw(ctx, "smtp_error", 500,
-			   "AUTH tidak tersedia: server tidak mendukung EHLO (kemungkinan perlu TLS — STARTTLS belum didukung)");
+			   "AUTH unavailable: the server does not support EHLO (TLS may be required — STARTTLS is not supported yet)");
 		goto out;
 	}
 	if (!caps_has(s, "AUTH") || !caps_has(s, "LOGIN")) {
 		api->throw(ctx, "smtp_error", 500,
-			   "server tidak melaporkan AUTH LOGIN pada balasan EHLO (klien ini hanya punya mekanisme LOGIN)");
+			   "the server does not advertise AUTH LOGIN in its EHLO reply (this client only supports the LOGIN mechanism)");
 		goto out;
 	}
 	if (cmd_line(ctx, s, "AUTH LOGIN") != 0)
 		goto out;
 	if (expect_code(ctx, s, 334, "AUTH LOGIN") != 0)
 		goto out;
-	{ /* nama pengguna (base64 satu baris) */
+	{ /* username (single-line base64) */
 		sbuf b = { NULL, 0, 0 };
 		if (b64_write(&b, (const unsigned char *)user, ulen, 0) != 0 ||
 		    sb_add(&b, "\r\n", 2) != 0) {
 			free(b.b);
-			sess_drop(s); /* server menunggu baris data — putus */
-			api->throw(ctx, "smtp_oom", 500, "gagal mengalokasikan memori");
+			sess_drop(s); /* the server is waiting for a data line — disconnect */
+			api->throw(ctx, "smtp_oom", 500, "failed to allocate memory");
 			goto out;
 		}
-		if (send_blob(ctx, s, b.b, b.len, "mengirim nama pengguna") != 0) {
+		if (send_blob(ctx, s, b.b, b.len, "sending the username") != 0) {
 			free(b.b);
 			goto out;
 		}
 		free(b.b);
 	}
-	if (expect_code(ctx, s, 334, "AUTH LOGIN (nama pengguna)") != 0)
+	if (expect_code(ctx, s, 334, "AUTH LOGIN (username)") != 0)
 		goto out;
-	{ /* kata sandi */
+	{ /* password */
 		sbuf b = { NULL, 0, 0 };
 		if (b64_write(&b, (const unsigned char *)pass, plen, 0) != 0 ||
 		    sb_add(&b, "\r\n", 2) != 0) {
 			free(b.b);
 			sess_drop(s);
-			api->throw(ctx, "smtp_oom", 500, "gagal mengalokasikan memori");
+			api->throw(ctx, "smtp_oom", 500, "failed to allocate memory");
 			goto out;
 		}
-		if (send_blob(ctx, s, b.b, b.len, "mengirim kata sandi") != 0) {
+		if (send_blob(ctx, s, b.b, b.len, "sending the password") != 0) {
 			free(b.b);
 			goto out;
 		}
 		free(b.b);
 	}
-	if (expect_code(ctx, s, 235, "AUTH LOGIN (kata sandi)") != 0)
+	if (expect_code(ctx, s, 235, "AUTH LOGIN (password)") != 0)
 		goto out;
 	*ret = api->bool_new(ctx, 1);
 	rc = 0;
@@ -1250,8 +1253,8 @@ out:
 	return rc;
 }
 
-/* from(alamat) → true. Memulai transaksi MAIL; transaksi lama di-reset
- * dulu dengan RSET agar urutan pakai tetap ramah. */
+/* from(address) → true. Starts a MAIL transaction; any previous transaction
+ * is reset with RSET first to keep call ordering forgiving. */
 static int m_from(gne_ctx *ctx, int argc, const gne_handle *argv, gne_handle *ret)
 {
 	smtp_sess *s = self_sess(ctx, argv[0]);
@@ -1267,7 +1270,7 @@ static int m_from(gne_ctx *ctx, int argc, const gne_handle *argv, gne_handle *re
 		return -1;
 	if (!addr_ok(addr, alen)) {
 		api->throw(ctx, "type_error", 500,
-			   "alamat tidak valid (ASCII cetak 1–320 oktet, tanpa ruang dan '<>,')");
+			   "invalid address (1–320 printable-ASCII octets, no spaces and '<>,')");
 		goto out;
 	}
 	if (s->in_txn) {
@@ -1291,7 +1294,7 @@ static int m_from(gne_ctx *ctx, int argc, const gne_handle *argv, gne_handle *re
 	free(s->from_addr);
 	s->from_addr = strdup(addr);
 	if (!s->from_addr) {
-		api->throw(ctx, "smtp_oom", 500, "gagal mengalokasikan memori");
+		api->throw(ctx, "smtp_oom", 500, "failed to allocate memory");
 		goto out;
 	}
 	*ret = api->bool_new(ctx, 1);
@@ -1301,7 +1304,7 @@ out:
 	return rc;
 }
 
-/* to(alamat) → true. Menambah penerima (RCPT TO, boleh berulang). */
+/* to(address) → true. Adds a recipient (RCPT TO, may repeat). */
 static int m_to(gne_ctx *ctx, int argc, const gne_handle *argv, gne_handle *ret)
 {
 	smtp_sess *s = self_sess(ctx, argv[0]);
@@ -1317,16 +1320,16 @@ static int m_to(gne_ctx *ctx, int argc, const gne_handle *argv, gne_handle *ret)
 		return -1;
 	if (!addr_ok(addr, alen)) {
 		api->throw(ctx, "type_error", 500,
-			   "alamat tidak valid (ASCII cetak 1–320 oktet, tanpa ruang dan '<>,')");
+			   "invalid address (1–320 printable-ASCII octets, no spaces and '<>,')");
 		goto out;
 	}
 	if (!s->in_txn) {
-		api->throw(ctx, "smtp_error", 500, "panggil from() dulu sebelum to()");
+		api->throw(ctx, "smtp_error", 500, "call from() before to()");
 		goto out;
 	}
 	if (s->nrcpt >= SMTP_MAX_RCPT) {
 		api->throw(ctx, "smtp_error", 500,
-			   "terlalu banyak penerima (maksimal 100 per transaksi)");
+			   "too many recipients (at most 100 per transaction)");
 		goto out;
 	}
 	snprintf(line, sizeof line, "RCPT TO:<%s>", addr);
@@ -1336,7 +1339,7 @@ static int m_to(gne_ctx *ctx, int argc, const gne_handle *argv, gne_handle *ret)
 		goto out;
 	s->rcpt[s->nrcpt] = strdup(addr);
 	if (!s->rcpt[s->nrcpt]) {
-		api->throw(ctx, "smtp_oom", 500, "gagal mengalokasikan memori");
+		api->throw(ctx, "smtp_oom", 500, "failed to allocate memory");
 		goto out;
 	}
 	s->nrcpt++;
@@ -1347,8 +1350,8 @@ out:
 	return rc;
 }
 
-/* subject(teks) → true. Menyimpan subjek untuk send() berikutnya
- * (bertahan antar transaksi; tidak menyentuh protokol). */
+/* subject(text) → true. Stores the subject for the next send()
+ * (persists across transactions; does not touch the protocol). */
 static int m_subject(gne_ctx *ctx, int argc, const gne_handle *argv, gne_handle *ret)
 {
 	smtp_sess *s = self_sess(ctx, argv[0]);
@@ -1362,22 +1365,22 @@ static int m_subject(gne_ctx *ctx, int argc, const gne_handle *argv, gne_handle 
 		return -1;
 	if (!subject_ok(txt, tlen)) {
 		api->throw(ctx, "type_error", 500,
-			   "subjek tidak valid (tanpa kontrol CR/LF, maksimal 700 oktet)");
+			   "invalid subject (no CR/LF controls, at most 700 octets)");
 		free(txt);
 		return -1;
 	}
 	free(s->subject);
-	s->subject = strdup(txt); /* gagal = tanpa subjek; keadaan tetap konsisten */
+	s->subject = strdup(txt); /* failure = no subject; state stays consistent */
 	free(txt);
 	if (!s->subject) {
-		api->throw(ctx, "smtp_oom", 500, "gagal mengalokasikan memori");
+		api->throw(ctx, "smtp_oom", 500, "failed to allocate memory");
 		return -1;
 	}
 	*ret = api->bool_new(ctx, 1);
 	return 0;
 }
 
-/* send(teks) → true. DATA text/plain. */
+/* send(text) → true. DATA text/plain. */
 static int m_send(gne_ctx *ctx, int argc, const gne_handle *argv, gne_handle *ret)
 {
 	smtp_sess *s = self_sess(ctx, argv[0]);
@@ -1391,23 +1394,23 @@ static int m_send(gne_ctx *ctx, int argc, const gne_handle *argv, gne_handle *re
 		return -1;
 	if (!s->in_txn || s->nrcpt == 0) {
 		api->throw(ctx, "smtp_error", 500,
-			   "transaksi belum siap — panggil from() lalu to() minimal sekali sebelum send()");
+			   "transaction not ready — call from() then to() at least once before send()");
 		return -1;
 	}
 	body = arg_to_str(ctx, argv[1], &blen);
 	if (!body)
 		return -1;
-	if (body_check(ctx, body, blen, "isi pesan") != 0)
+	if (body_check(ctx, body, blen, "message body") != 0)
 		goto out;
 	if (blen > SMTP_MAX_MSG) {
-		api->throw(ctx, "smtp_error", 500, "isi pesan melewati batas 32 MiB");
+		api->throw(ctx, "smtp_error", 500, "message body exceeds the 32 MiB limit");
 		goto out;
 	}
 	cte = pick_cte(s, body, blen, &use_b64);
 	if (cmd_line(ctx, s, "DATA") != 0)
-		goto out; /* sesi sudah dibuang */
+		goto out; /* session already dropped */
 	if (expect_code(ctx, s, 354, "DATA") != 0)
-		goto out; /* ditolak: stream masih sinkron */
+		goto out; /* rejected: the stream is still in sync */
 	if (put_std_headers(&content, s, "text/plain; charset=utf-8", cte) != 0 ||
 	    sb_add(&content, "\r\n", 2) != 0 ||
 	    put_payload(&content, body, blen, use_b64) != 0)
@@ -1419,14 +1422,14 @@ static int m_send(gne_ctx *ctx, int argc, const gne_handle *argv, gne_handle *re
 	goto out;
 oom:
 	sess_drop(s);
-	api->throw(ctx, "smtp_oom", 500, "gagal mengalokasikan memori");
+	api->throw(ctx, "smtp_oom", 500, "failed to allocate memory");
 out:
 	free(content.b);
 	free(body);
 	return rc;
 }
 
-/* send_html(teks, html) → true. DATA multipart/alternative. */
+/* send_html(text, html) → true. DATA multipart/alternative. */
 static int m_send_html(gne_ctx *ctx, int argc, const gne_handle *argv, gne_handle *ret)
 {
 	smtp_sess *s = self_sess(ctx, argv[0]);
@@ -1441,7 +1444,7 @@ static int m_send_html(gne_ctx *ctx, int argc, const gne_handle *argv, gne_handl
 		return -1;
 	if (!s->in_txn || s->nrcpt == 0) {
 		api->throw(ctx, "smtp_error", 500,
-			   "transaksi belum siap — panggil from() lalu to() minimal sekali sebelum send_html()");
+			   "transaction not ready — call from() then to() at least once before send_html()");
 		return -1;
 	}
 	text = arg_to_str(ctx, argv[1], &tlen);
@@ -1452,14 +1455,14 @@ static int m_send_html(gne_ctx *ctx, int argc, const gne_handle *argv, gne_handl
 		free(text);
 		return -1;
 	}
-	if (body_check(ctx, text, tlen, "isi teks") != 0 ||
-	    body_check(ctx, html, hlen, "isi HTML") != 0)
+	if (body_check(ctx, text, tlen, "text body") != 0 ||
+	    body_check(ctx, html, hlen, "HTML body") != 0)
 		goto out;
 	if (tlen > SMTP_MAX_MSG || hlen > SMTP_MAX_MSG) {
-		api->throw(ctx, "smtp_error", 500, "isi pesan melewati batas 32 MiB");
+		api->throw(ctx, "smtp_error", 500, "message body exceeds the 32 MiB limit");
 		goto out;
 	}
-	{ /* boundary unik: ulangi bila kebetulan muncul di isi pesan */
+	{ /* unique boundary: retry if it happens to appear in the message body */
 		int tries;
 		for (tries = 0; tries < 8; tries++) {
 			char suf[16];
@@ -1473,7 +1476,7 @@ static int m_send_html(gne_ctx *ctx, int argc, const gne_handle *argv, gne_handl
 				break;
 		}
 		if (tries == 8) {
-			api->throw(ctx, "smtp_error", 500, "gagal membuat boundary multipart unik");
+			api->throw(ctx, "smtp_error", 500, "failed to create a unique multipart boundary");
 			goto out;
 		}
 	}
@@ -1511,7 +1514,7 @@ static int m_send_html(gne_ctx *ctx, int argc, const gne_handle *argv, gne_handl
 	goto out;
 oom:
 	sess_drop(s);
-	api->throw(ctx, "smtp_oom", 500, "gagal mengalokasikan memori");
+	api->throw(ctx, "smtp_oom", 500, "failed to allocate memory");
 out:
 	free(content.b);
 	free(text);
@@ -1519,8 +1522,8 @@ out:
 	return rc;
 }
 
-/* close() → true bila menutup sesi hidup (idempoten; QUIT best-effort —
- * balasan 221 tidak pernah membuat close() melempar galat). */
+/* close() → true when closing a live session (idempotent; QUIT is
+ * best-effort — the 221 reply never makes close() throw an error). */
 static int m_close(gne_ctx *ctx, int argc, const gne_handle *argv, gne_handle *ret)
 {
 	smtp_state *st = api->get_data(ctx);
@@ -1553,7 +1556,7 @@ static int m_close(gne_ctx *ctx, int argc, const gne_handle *argv, gne_handle *r
 			sfd_close(s->fd);
 		s->fd = -1;
 		sess_clear(s);
-		st->ss[id].gen++; /* invalidate objek ini untuk koneksi berikutnya */
+		st->ss[id].gen++; /* invalidate this object for the next connection */
 	}
 	*ret = api->bool_new(ctx, 1);
 	return 0;
@@ -1572,34 +1575,34 @@ static int smtp_connect(gne_ctx *ctx, int argc, const gne_handle *argv, gne_hand
 	gne_handle obj, hv;
 
 	if (!st) {
-		api->throw(ctx, "smtp_error", 500, "state modul SMTP hilang");
+		api->throw(ctx, "smtp_error", 500, "SMTP module state is missing");
 		return -1;
 	}
 	if (argc >= 3 && api->get_int(ctx, argv[2], &timeout) != 0) {
-		api->throw(ctx, "type_error", 500, "timeout harus berupa angka (milidetik)");
+		api->throw(ctx, "type_error", 500, "timeout must be a number (milliseconds)");
 		return -1;
 	}
 	if (timeout < 0) {
-		api->throw(ctx, "type_error", 500, "timeout tidak boleh negatif (0 = tanpa batas)");
+		api->throw(ctx, "type_error", 500, "timeout must not be negative (0 = no limit)");
 		return -1;
 	}
 	if (api->str_len(ctx, argv[0], &hlen) != 0 || hlen == 0 || hlen >= sizeof host) {
-		api->throw(ctx, "type_error", 500, "host harus string 1–255 karakter");
+		api->throw(ctx, "type_error", 500, "host must be a 1–255 character string");
 		return -1;
 	}
 	api->str_copy(ctx, argv[0], host, sizeof host);
 	if (api->get_int(ctx, argv[1], &port) != 0 || port < 1 || port > 65535) {
-		api->throw(ctx, "type_error", 500, "port harus angka 1–65535");
+		api->throw(ctx, "type_error", 500, "port must be a number 1–65535");
 		return -1;
 	}
 	slot = slot_free(st);
 	if (slot < 0) {
 		api->throw(ctx, "smtp_error", 500,
-			   "sesi penuh (maksimal 64 koneksi terbuka; tutup yang tidak dipakai)");
+			   "session table full (at most 64 open connections; close unused ones)");
 		return -1;
 	}
 	s = &st->ss[slot];
-	sess_clear(s); /* bersihkan sisa kehidupan lama pada slot ini */
+	sess_clear(s); /* clear leftovers from a previous life in this slot */
 
 	snprintf(ports, sizeof ports, "%" PRId64, port);
 	memset(&hints, 0, sizeof hints);
@@ -1607,7 +1610,7 @@ static int smtp_connect(gne_ctx *ctx, int argc, const gne_handle *argv, gne_hand
 	hints.ai_socktype = SOCK_STREAM;
 	if (getaddrinfo(host, ports, &hints, &res) != 0) {
 		char msg[320];
-		snprintf(msg, sizeof msg, "gagal memecahkan alamat host %s", host);
+		snprintf(msg, sizeof msg, "failed to resolve host address %s", host);
 		api->throw(ctx, "smtp_error", 502, msg);
 		return -1;
 	}
@@ -1629,7 +1632,7 @@ static int smtp_connect(gne_ctx *ctx, int argc, const gne_handle *argv, gne_hand
 		if (e == 0) {
 			s->fd = (int)fd;
 			s->timeout_ms = (int)timeout;
-			s->gen++; /* siklus hidup baru — invalidasi objek lama */
+			s->gen++; /* new lifecycle — invalidate old objects */
 			freeaddrinfo(res);
 			res = NULL;
 			break;
@@ -1641,38 +1644,38 @@ static int smtp_connect(gne_ctx *ctx, int argc, const gne_handle *argv, gne_hand
 		freeaddrinfo(res);
 		if (e == ETIMEDOUT || is_timeout_err(e))
 			snprintf(msg, sizeof msg,
-				 "gagal terhubung ke %.200s:%" PRId64 " (waktu tunggu %d ms habis)",
+				 "failed to connect to %.200s:%" PRId64 " (timed out after %d ms)",
 				 host, port, (int)timeout);
 		else
-			snprintf(msg, sizeof msg, "gagal terhubung ke %.200s:%" PRId64 ": %s",
+			snprintf(msg, sizeof msg, "failed to connect to %.200s:%" PRId64 ": %s",
 				 host, port, sock_text(e, txt, sizeof txt));
 		api->throw(ctx, "smtp_error", 502, msg);
 		return -1;
 	}
 
-	/* Nama host klien untuk EHLO & Message-ID. */
+	/* Client host name for EHLO & Message-ID. */
 	if (gethostname(s->me, (int)sizeof s->me) != 0)
 		s->me[0] = 0;
 	s->me[sizeof s->me - 1] = 0;
 	if (s->me[0] == 0)
 		snprintf(s->me, sizeof s->me, "localhost");
 
-	/* Sapaan wajib 220. */
-	if (expect_code(ctx, s, 220, "sapaan") != 0) {
+	/* Mandatory 220 greeting. */
+	if (expect_code(ctx, s, 220, "greeting") != 0) {
 		sess_drop(s);
 		return -1;
 	}
 
-	/* EHLO → simpan kemampuan (diseragamkan huruf besar). Bila ditolak,
-	 * fallback HELO tanpa ekstensi (RFC 5321 bagian 4.1.4). */
+	/* EHLO → store capabilities (normalized to uppercase). If rejected,
+	 * fall back to HELO without extensions (RFC 5321 section 4.1.4). */
 	snprintf(ehlo, sizeof ehlo, "EHLO %.200s", s->me);
 	if (cmd_line(ctx, s, ehlo) != 0)
-		return -1; /* sesi sudah dibuang */
+		return -1; /* session already dropped */
 	{
 		int code;
 		char msg[SMTP_CAPS];
 		if (read_reply(ctx, s, &code, msg, sizeof msg) != 0)
-			return -1; /* sesi sudah dibuang pembaca balasan */
+			return -1; /* session already dropped by the reply reader */
 		if (code == 250) {
 			size_t i;
 			for (i = 0; msg[i]; i++)
@@ -1720,7 +1723,7 @@ int gne_module_init(const gne_host_api *a, gne_ctx *ctx, gne_handle *out)
 	int i;
 	api = a;
 	if (api->abi != GNE_ABI) {
-		api->throw(ctx, "gne_abi", 500, "ABI berbeda");
+		api->throw(ctx, "gne_abi", 500, "ABI mismatch");
 		return 1;
 	}
 #ifdef _WIN32
@@ -1729,7 +1732,7 @@ int gne_module_init(const gne_host_api *a, gne_ctx *ctx, gne_handle *out)
 		if (!wsa_done) {
 			WSADATA wsa;
 			if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
-				api->throw(ctx, "smtp_error", 502, "WSAStartup gagal");
+				api->throw(ctx, "smtp_error", 502, "WSAStartup failed");
 				return 1;
 			}
 			wsa_done = 1;
@@ -1738,7 +1741,7 @@ int gne_module_init(const gne_host_api *a, gne_ctx *ctx, gne_handle *out)
 #endif
 	st = calloc(1, sizeof(*st));
 	if (!st) {
-		api->throw(ctx, "smtp_oom", 500, "gagal mengalokasikan state sesi");
+		api->throw(ctx, "smtp_oom", 500, "failed to allocate session state");
 		return 1;
 	}
 	for (i = 0; i < SMTP_MAX_CONN; i++)

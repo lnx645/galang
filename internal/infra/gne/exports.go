@@ -17,13 +17,13 @@ import (
 	"galang/internal/domain"
 )
 
-// gneGuardH/gneGuardI membungkus setiap ekspor dengan pemulihan panik:
-// panik Go tidak boleh melewati frame C (akan mematikan proses), jadi
-// diubah menjadi galat tertunda pada ctx.
+// gneGuardH/gneGuardI wrap every export with panic recovery: a Go panic
+// must not cross a C frame (it would kill the process), so it is turned
+// into a deferred error on ctx.
 func gneGuardH(ctx *C.gne_ctx, fn func() C.gne_handle) (res C.gne_handle) {
 	defer func() {
 		if r := recover(); r != nil {
-			gneFail(ctx, "gne_panic", 500, fmt.Sprintf("panik di host: %v", r))
+			gneFail(ctx, "gne_panic", 500, fmt.Sprintf("host panic: %v", r))
 			res = 0
 		}
 	}()
@@ -33,7 +33,7 @@ func gneGuardH(ctx *C.gne_ctx, fn func() C.gne_handle) (res C.gne_handle) {
 func gneGuardI(ctx *C.gne_ctx, fn func() C.int) (res C.int) {
 	defer func() {
 		if r := recover(); r != nil {
-			gneFail(ctx, "gne_panic", 500, fmt.Sprintf("panik di host: %v", r))
+			gneFail(ctx, "gne_panic", 500, fmt.Sprintf("host panic: %v", r))
 			res = -1
 		}
 	}()
@@ -43,13 +43,13 @@ func gneGuardI(ctx *C.gne_ctx, fn func() C.int) (res C.int) {
 func gneGuardV(ctx *C.gne_ctx, fn func()) {
 	defer func() {
 		if r := recover(); r != nil {
-			gneFail(ctx, "gne_panic", 500, fmt.Sprintf("panik di host: %v", r))
+			gneFail(ctx, "gne_panic", 500, fmt.Sprintf("host panic: %v", r))
 		}
 	}()
 	fn()
 }
 
-// ---- konstruktor ----
+// ---- constructors ----
 
 //export gne_host_null
 func gne_host_null(ctx *C.gne_ctx) C.gne_handle {
@@ -129,7 +129,7 @@ func gne_host_object(ctx *C.gne_ctx) C.gne_handle {
 	})
 }
 
-// ---- aksesor ----
+// ---- accessors ----
 
 func gneTag(t domain.TypeTag) C.int32_t {
 	switch t {
@@ -287,7 +287,7 @@ func gne_host_str_copy(ctx *C.gne_ctx, h C.uint64_t, buf *C.char, bufCap C.size_
 	})
 }
 
-// ---- kontainer ----
+// ---- containers ----
 
 //export gne_host_len
 func gne_host_len(ctx *C.gne_ctx, h C.uint64_t, out *C.size_t) C.int {
@@ -452,7 +452,36 @@ func gne_host_obj_has(ctx *C.gne_ctx, obj C.uint64_t, key *C.char, out *C.int) C
 	})
 }
 
-// ---- pendaftaran fungsi ----
+// gne_host_obj_keys returns an array of string handles holding the
+// object's keys in insertion order (ABI 2). C-owned temporary like the
+// other accessors; -1 when the handle is not an object. Never throws.
+//
+//export gne_host_obj_keys
+func gne_host_obj_keys(ctx *C.gne_ctx, obj C.uint64_t, out *C.uint64_t) C.int {
+	return gneGuardI(ctx, func() C.int {
+		m := modFor(ctx)
+		if m == nil || out == nil {
+			return -1
+		}
+		ov, ok := m.reg.lookup(uint64(obj))
+		if !ok {
+			return -1
+		}
+		o, ok := ov.(*domain.Obj)
+		if !ok {
+			return -1
+		}
+		keys := o.Keys()
+		arr := &domain.Arr{}
+		for _, k := range keys {
+			arr.Append(domain.Str(k))
+		}
+		*out = C.uint64_t(m.newTemp(arr))
+		return 0
+	})
+}
+
+// ---- function registration ----
 
 //export gne_host_define_fn
 func gne_host_define_fn(ctx *C.gne_ctx, name *C.char, min, max C.int32_t, fn unsafe.Pointer) C.int {
@@ -494,7 +523,8 @@ func gne_host_define_method(ctx *C.gne_ctx, obj C.uint64_t, name *C.char, min, m
 		if gn == "" {
 			return -1
 		}
-		// self di-pin host: thunk method harus tetap valid selama modul hidup.
+		// self is pinned by the host: the method thunk must stay valid for
+		// the lifetime of the module.
 		m.reg.retain(uint64(self))
 		full := m.name + "." + gn
 		v := m.reg.hooks.WrapNative(full, int(min), int(max), fn, uint64(self), m)
@@ -514,7 +544,7 @@ func gne_host_module(ctx *C.gne_ctx) C.gne_handle {
 	})
 }
 
-// ---- panggilan balik ----
+// ---- callbacks ----
 
 //export gne_host_call
 func gne_host_call(ctx *C.gne_ctx, fn C.uint64_t, argc C.int, argv *C.uint64_t, out *C.uint64_t) C.int {
@@ -551,7 +581,7 @@ func gne_host_call(ctx *C.gne_ctx, fn C.uint64_t, argc C.int, argv *C.uint64_t, 
 	})
 }
 
-// ---- error, data instance, umur handle ----
+// ---- errors, instance data, handle lifetime ----
 
 //export gne_host_throw
 func gne_host_throw(ctx *C.gne_ctx, code *C.char, status C.int32_t, msg *C.char) {

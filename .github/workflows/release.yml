@@ -87,13 +87,13 @@ jobs:
             '  if uuid.is_valid($u) {' \
             '    print("smoke-uuid ok")' \
             '  } else {' \
-            '    print("smoke-uuid gagal")' \
+            '    print("smoke-uuid failed")' \
             '  }' \
             '} catch e {' \
             '  print("smoke-uuid " + e.code)' \
             '}' \
             'try {' \
-            '  $t = jwt.sign("{\"sub\":\"smoke\"}", "rahasia", "HS256")' \
+            '  $t = jwt.sign({"sub": "smoke"}, "rahasia", "HS256")' \
             '  $c = jwt.verify($t, "rahasia")' \
             '  print("smoke-jwt ok")' \
             '} catch e {' \

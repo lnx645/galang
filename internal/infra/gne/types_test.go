@@ -9,8 +9,8 @@ import (
 	"galang/internal/domain"
 )
 
-// rc dasar: release pertama menghapus entri, retain menahan penghapusan.
-func TestTabelHandleRC(t *testing.T) {
+// Basic RC: the first release removes the entry, retain keeps it alive.
+func TestHandleTableRC(t *testing.T) {
 	r := NewRegistry(Hooks{})
 	h := r.newHandle(domain.Int(7))
 
@@ -19,27 +19,27 @@ func TestTabelHandleRC(t *testing.T) {
 	}
 	r.release(h)
 	if _, ok := r.lookup(h); ok {
-		t.Error("handle harus hilang setelah rc=0")
+		t.Error("handle must be gone once rc=0")
 	}
 	if _, ok := r.lookup(0); ok {
-		t.Error("handle 0 tidak pernah valid")
+		t.Error("handle 0 is never valid")
 	}
 
-	// retain menahan host dari penghapusan (pola argumen yang di-retain C)
+	// retain keeps the host from removing it (C-retained argument pattern)
 	h2 := r.newHandle(domain.Str("x"))
 	r.retain(h2)
-	r.release(h2) // rilis sementara milik host
+	r.release(h2) // transient release owned by the host
 	if _, ok := r.lookup(h2); !ok {
-		t.Error("handle yang di-retain harus bertahan dari rilis host")
+		t.Error("retained handle must survive the host release")
 	}
 	r.release(h2)
 	if _, ok := r.lookup(h2); ok {
-		t.Error("release kedua harus menghapus entri")
+		t.Error("second release must remove the entry")
 	}
 }
 
-// finishCall me-release semua handle sementara kecuali *ret, lalu
-// mengambil nilai *ret (kepemilikan berpindah dari C ke host).
+// finishCall releases every temporary handle except *ret, then takes the
+// value of *ret (ownership moves from C to the host).
 func TestFinishCall(t *testing.T) {
 	r := NewRegistry(Hooks{})
 	m := &Module{reg: r}
@@ -55,42 +55,42 @@ func TestFinishCall(t *testing.T) {
 	if v.(domain.Str) != "hasil" {
 		t.Errorf("v = %v", v)
 	}
-	// dua sementara dilepas, *ret dilepas setelah diambil
+	// both temporaries are released, *ret after it is taken
 	if _, ok := r.lookup(a); ok {
-		t.Error("temp a harus dilepas")
+		t.Error("temp a must be released")
 	}
 	if _, ok := r.lookup(b); ok {
-		t.Error("temp b harus dilepas")
+		t.Error("temp b must be released")
 	}
 	if _, ok := r.lookup(ret); ok {
-		t.Error("referensi host atas *ret harus dilepas")
+		t.Error("host reference to *ret must be released")
 	}
 	if len(m.temps) != 0 {
 		t.Errorf("temps = %d, want 0", len(m.temps))
 	}
 
-	// ret=0: semua dilepas, tidak ada galat
+	// ret=0: everything released, no error
 	m.newTemp(domain.Int(3))
 	if v, err := m.finishCall(0); v != nil || err != nil {
 		t.Errorf("finishCall(0) = %v, %v", v, err)
 	}
 
-	// *ret basi → galat jelas
+	// stale *ret → clear error
 	m.newTemp(domain.Int(4))
 	if _, err := m.finishCall(999999); err == nil {
-		t.Error("ret basi harus menghasilkan galat")
+		t.Error("stale ret must produce an error")
 	}
 }
 
-// ABI di Go harus sinkron dengan GNE_ABI di header publik — sumber
-// kebenaran yang dikompilasi bersama ekstensi pihak ketiga.
-func TestABISinkronHeader(t *testing.T) {
+// The ABI in Go must match GNE_ABI in the public header — the source of
+// truth compiled together with third-party extensions.
+func TestABIMatchesHeader(t *testing.T) {
 	b, err := os.ReadFile("../../../include/gne.h")
 	if err != nil {
-		t.Fatalf("baca gne.h: %v", err)
+		t.Fatalf("read gne.h: %v", err)
 	}
 	want := fmt.Sprintf("#define GNE_ABI %d", ABI)
 	if !strings.Contains(string(b), want) {
-		t.Errorf("gne.h tidak memuat %q sedangkan ABI Go = %d", want, ABI)
+		t.Errorf("gne.h does not contain %q while the Go ABI = %d", want, ABI)
 	}
 }
