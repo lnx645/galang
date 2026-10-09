@@ -38,12 +38,14 @@ perubahan harus lewat revisi dokumen ini dulu — bukan diam-diam di kode.
 | Bawaan: array/object/strconv/json/html-escape | ✅ selesai |
 | Modul: `strings`, `math`, `time` | ✅ selesai |
 | CLI: `gar run`, `gar repl`, `gar version`, `gar help` | ✅ selesai |
-| Server HTTP + routing + `response` | ⬜*v0.2* |
-| Template Blade | ⬜*v0.2* |
-| Async (`async fn`, `await`, `gather`, `spawn`) | ⬜*v0.2* |
-| Database (MySQL/PostgreSQL/Site) | ⬜*v0.3* |
-| WebSocket + SSE | ⬜*v0.3* |
-| SMTP, HTTP client | ⬜*v0.3* |
+| Server HTTP + routing + `response` | ✅ selesai |
+| Template Blade | ✅ selesai |
+| Async (`async fn`, `await`, `gather`, `spawn`) | ✅ selesai |
+| Database (SQLite/MySQL/PostgreSQL) | ✅ selesai |
+| WebSocket + SSE | ✅ selesai |
+| HTTP client | ⬜*v0.3* |
+| GNE — ekstensi native C + `gar gne` (v0.5/v0.6) | ✅ selesai |
+| Ekstensi resmi `redis`, `smtp` (v0.6.0, tanpa TLS) | ✅ selesai |
 | Generic `<T>` | ⬜*v1* (anotasi `array<T>` sudah ada di v0.1) |
 
 ---
@@ -345,7 +347,9 @@ unboxed, jadi kode numerik dengan desimal masih melalui jalur umum.
 - **v0.2** — HTTP server (port 8869), routing, objek `request`/`response`,
   template Blade, `async fn`/`await`/`gather`/`spawn`.
 - **v0.3** — database (SQLite/MySQL/PostgreSQL via `database/sql`), WebSocket,
-  SSE, SMTP, HTTP client, session, upload, `gar test`.
+  SSE, HTTP client, session, upload, `gar test`.
+- **v0.6** — pengelola ekstensi `gar gne` (pack/install/list/remove) dan
+  ekstensi resmi `redis` serta `smtp` (GNE; SMTP masih tanpa TLS).
 - **v1** — generic `<T>` + analyzer tipe statis, bytecode VM + cache opcode
   (padanan `opcache` PHP), perluasan konvensi unboxed ke float dan string.
 - **v2** — class & method, generic pada struct, batasan tipe (`<T: int|string>`),

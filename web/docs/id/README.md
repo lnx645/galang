@@ -46,7 +46,7 @@ Sudah lengkap:
 
 Belum ada (direncanakan):
 
-- SMTP dan unit-test framework
+- Unit-test framework (`gar test`)
 - Generic `<T>` (v1), class & method (v2)
 - Paralelisme I/O async — async saat ini kooperatif
 

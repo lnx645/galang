@@ -10,6 +10,11 @@ strings.upper("hello")    // HELLO
 
 Module list: `strings`, `math`, `time`, `file`, `http`, `database`.
 
+There are also the **official extensions** `redis` and `smtp` — the same
+`use` modules, but their binaries are installed with
+`gar gne install <name>` (requires `gar` 0.6.0+). Their full API is at the
+bottom of this page.
+
 ---
 
 ## strings
@@ -161,10 +166,10 @@ $db.close()
   (status 500) catchable with `try/catch` — `e.code` is `"db_error"`.
   Malformed arguments (e.g. parameters that are not an array) are
   ordinary programming errors.
-- **CGO for SQLite**: `gar-linux-amd64` and `gar-windows-amd64` are
-  built with CGO — SQLite is active in both; the other cross builds
-  (linux/arm64, windows/arm64, darwin) are built without CGO — SQLite
-  is inactive there, but MySQL and PostgreSQL (pure Go) still work.
+- **CGO for SQLite**: `gar-linux-amd64`, `gar-windows-amd64`, and
+  `gar-darwin-*` (CI-built with CGO) — SQLite is active in all three; the
+  other cross builds (linux/arm64, windows/arm64) are built without CGO —
+  SQLite is inactive there, but MySQL and PostgreSQL (pure Go) still work.
   CGO also governs [native extensions (GNE)](gne.md): a CGO-less binary
   rejects extension `use` with a "CGO required" message.
 
@@ -182,3 +187,147 @@ use "http"
 http.GET("/", fn($req) { return "Halo" })
 http.listen(8869)
 ```
+
+---
+
+## redis — official extension
+
+A **Redis** client (RESP2) built on [GNE](gne.md). Its binary does not
+ship inside `gar` — install it from the release assets first:
+
+```bash
+gar gne install redis          # latest release; pin with gar gne install redis@0.6.0
+```
+
+```garurda
+use "redis"
+
+$r = redis.connect("127.0.0.1", 6379)         // default timeout 5000 ms
+$r = redis.connect("127.0.0.1", 6379, 1000)   // 1 second timeout
+
+$r.ping()                         // true
+$r.set("user:1", "dadan")         // "OK"
+$r.get("user:1")                  // "dadan" (missing key → null)
+$r.incr("visits")                 // number, value after +1
+$r.exists("user:1")               // true / false
+$r.del("user:1")                  // number — keys deleted
+$r.expire("user:1", 60)           // true — expires in 60 seconds
+
+$r.hset("profil", "nama", "Ayu")  // 1 = new field, 0 = updated
+$r.hget("profil", "nama")         // "Ayu" (missing field → null)
+
+$r.lpush("antrian", "a", "b")     // number — list length after push
+$r.lrange("antrian", 0, -1)       // [b, a]
+$r.keys("user:*")                 // [user:1, user:2]
+
+$r.cmd("TTL", "profil")           // reply converted automatically
+$r.close()                        // true; called again → false
+```
+
+| Method | Args | Returns |
+|---|---|---|
+| `redis.connect(host, port[, timeout_ms])` | 2–3 | connection object; default timeout 5000 ms |
+| `$r.ping()` | 0 | `true` |
+| `$r.get(k)` | 1 | string, or `null` when the key is missing |
+| `$r.set(k, v)` | 2 | server reply (`"OK"`); `v` is a string or number |
+| `$r.del(k)` | 1 | number — keys deleted |
+| `$r.exists(k)` | 1 | bool |
+| `$r.incr(k)` | 1 | number — value after increment |
+| `$r.expire(k, seconds)` | 2 | bool |
+| `$r.hset(k, field, v)` | 3 | number — `1` new field, `0` updated |
+| `$r.hget(k, field)` | 2 | string, or `null` |
+| `$r.lpush(k, v, ...)` | 2+ | number — list length after push |
+| `$r.lrange(k, start, stop)` | 3 | array of strings (`stop = -1` to the end) |
+| `$r.keys(pattern)` | 1 | array of strings |
+| `$r.cmd(command, ...)` | 1+ | reply converted by type: simple string → string, integer → number, bulk → string, array → array (recursive), `$-1`/`*-1` → `null` |
+| `$r.close()` | 0 | `true` once, `false` when repeated (idempotent) |
+
+- **Errors** (all catchable with `try/catch`): a `-ERR` reply from the
+  server → `redis_error` status 500; connection refused/dropped → 502;
+  timeout → 504. A stale object (used after `close()`, or whose connection
+  slot was reused by a newer `connect`) throws `redis_error` 500
+  "koneksi sudah ditutup atau tidak valid". Arguments other than
+  string/number → `type_error`.
+- Maximum **64 connections** per interpreter; replies are strictly capped
+  (bulk up to 64 MiB, array depth of 32 levels, element-count limits) so
+  a misbehaving server cannot exhaust memory.
+- **Requires CGO**: a `gar` binary built without CGO rejects `use` with a
+  clear message (platform table in [GNE](gne.md#platform)).
+
+---
+
+## smtp — official extension
+
+An **SMTP** client (RFC 5321/5322) built on [GNE](gne.md) for sending
+mail over AUTH LOGIN. Install it first:
+
+```bash
+gar gne install smtp
+```
+
+One mail = one transaction: `from()` → `to()` (repeatable) →
+`send()`/`send_html()`:
+
+```garurda
+use "smtp"
+
+$s = smtp.connect("smtp.internal", 25)   // default timeout 5000 ms
+$s.auth("pengirim@contoh.id", "rahasia") // optional — AUTH LOGIN
+$s.from("pengirim@contoh.id")
+$s.to("satu@contoh.id")
+$s.to("dua@contoh.id")                   // more recipients, repeat as needed
+$s.subject("Halo dari Garurda")
+$s.send("First line.\nSecond line.")
+$s.close()                               // true; called again → false
+```
+
+HTML mail is sent as multipart/alternative (text + HTML versions) so
+older clients can still read it:
+
+```garurda
+$s.from("pengirim@contoh.id")
+$s.to("penerima@contoh.id")
+$s.subject("News")
+$s.send_html("Important <b>news</b> (text version)", "<p>Important <b>news</b></p>")
+```
+
+| Method | Args | Returns |
+|---|---|---|
+| `smtp.connect(host, port[, timeout_ms])` | 2–3 | session object; default timeout 5000 ms |
+| `$s.auth(user, pass)` | 2 | `true` after the server replies 235 |
+| `$s.from(addr)` | 1 | `true` — opens a transaction (sends `RSET` first if one is still open) |
+| `$s.to(addr)` | 1 | `true` — add a recipient; maximum 100 per transaction |
+| `$s.subject(text)` | 1 | `true` — at most 700 bytes, no CR/LF |
+| `$s.send(body)` | 1 | `true` — send as `text/plain` |
+| `$s.send_html(text, html)` | 2 | `true` — send multipart/alternative |
+| `$s.close()` | 0 | `true` once, `false` when repeated (`QUIT` best-effort — never throws) |
+
+- **Required order**: `from()` then at least one `to()` before `send()` /
+  `send_html()`. `subject()` and `auth()` can be called at any time while
+  the session is alive; the last `subject()` set wins when the mail is
+  sent.
+- **Handled automatically**: dot-stuffing and CRLF normalization of the
+  body; Content-Transfer-Encoding selection (pure ASCII → `7bit`,
+  non-ASCII with the `8BITMIME` capability → `8bit`, otherwise `base64`);
+  non-ASCII subjects become RFC 2047 encoded-words (`=?UTF-8?B?...?=`);
+  the `Date` header (UTC, locale-free) and `Message-ID` are always
+  generated; the `To:` header is folded past 78 octets.
+- **Limits**: messages up to 32 MiB; addresses must be 1–320 printable
+  ASCII octets with no spaces or `<>,`; one session object = one
+  connection — `close()` first if you want a new session. Once `send()`
+  succeeds the transaction is closed and the recipient list cleared — the
+  next mail must start over with `from()` then `to()` (calling `from()`
+  while a transaction is still open automatically sends `RSET` first).
+- **Errors** — code `smtp_error`: **500** for rejection/protocol/validation
+  (server replies such as `550` on a recipient or `535` on authentication
+  are included in the message), **502** connection refused/dropped, **504**
+  timeout. An I/O failure mid-session kills the session — the next method
+  throws 500. Malformed arguments (a subject smuggling CR/LF, a non-numeric
+  port) → `type_error`.
+- **Known limitation — no TLS**: STARTTLS/SSL are not implemented in
+  v0.6.0; the connection and AUTH LOGIN run in **plaintext**. Only use this
+  against servers that accept AUTH without TLS (internal relays, a local
+  MTA) — never send credentials over the public internet. The EHLO
+  capabilities are checked first: a server without EHLO falls back to
+  `HELO` automatically, and `auth()` will reject with a message mentioning
+  STARTTLS.

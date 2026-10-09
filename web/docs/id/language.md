@@ -614,4 +614,4 @@ sudah jalan ada di repo
 - Class & method — direncanakan v2
 - Operator compound (`+=`) dan `??`
 - Paralelisme I/O async (async I/O builtin) — async saat ini kooperatif
-- SMTP dan unit-test framework — direncanakan
+- Unit-test framework (`gar test`) — direncanakan

@@ -46,7 +46,7 @@ Already complete:
 
 Not yet available (planned):
 
-- SMTP and a unit-test framework
+- A unit-test framework
 - Generics `<T>` (v1), classes & methods (v2)
 - Async I/O parallelism — async is currently cooperative
 

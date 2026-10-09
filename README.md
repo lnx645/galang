@@ -40,8 +40,12 @@ Halo, Dunia!
   dari `./gne` → `$GNE_PATH` → `~/.garurda/gne` — menulis ekstensi dalam C
   tanpa menyentuh compiler/runtime ([panduan GNE](docs/id/gne.md),
   [contoh](https://github.com/lnx645/garurda-gne-examples))
-- CLI: `gar run`, `gar repl`
-- 80+ test, benchmark dengan `-benchmem`
+- **Ekstensi resmi `redis` & `smtp`** dipasang dari aset rilis lewat
+  `gar gne install redis` / `gar gne install smtp` (pasang, daftar, lepas;
+  juga URL HTTPS atau berkas zip) — API-nya ada di
+  [Modul Standar](docs/id/modules.md)
+- CLI: `gar run`, `gar repl`, `gar gne`
+- 120+ test, benchmark dengan `-benchmem`
 
 Lihat tur lengkap sintaks yang berjalan hari ini:
 
@@ -51,7 +55,7 @@ $ make run
 
 ## Yang belum ada (lihat `docs/SPEC.md`)
 
-SMTP, unit-test framework (`gar test`), HTTP client, operator compound
+Unit-test framework (`gar test`), HTTP client, operator compound
 (`+=`) dan `??`, generic `<T>`, class & method, async I/O. Daftar terbaru:
 [Yang Belum Ada](docs/id/language.md).
 

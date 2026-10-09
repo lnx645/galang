@@ -9,6 +9,51 @@ memanggilnya lewat `dlopen` (Linux/macOS) atau `LoadLibrary` (Windows).
 > [garurda-gne-examples](https://github.com/lnx645/garurda-gne-examples)
 > (`hello` dan `kv`). Syarat: `gar` **0.5.0+** dan gcc.
 
+## Ekstensi resmi — `redis` dan `smtp`
+
+Dua ekstensi resmi dikompilasi dari sumber di repo ini (`ext/redis/`,
+`ext/smtp/`) dan dirilis sebagai aset zip multi-platform. Pasang dari
+kanal resmi (butuh `gar` **0.6.0+**):
+
+```bash
+gar gne install redis          # rilis terbaru
+gar gne install smtp@0.6.0     # kunci versi
+gar gne list                   # nama, versi, ABI, platform
+gar gne remove redis           # lepas binari + sidecar
+```
+
+Spesifikasi lain: `gar gne install ./redis.zip` (berkas lokal) atau
+`gar gne install https://.../redis.zip` (wajib HTTPS). Pemasangan FLAT ke
+`~/.garurda/gne` sehingga langsung dicari `use "redis"` / `use "smtp"` —
+detail perintah di [CLI — Pengelola Ekstensi](cli.md#pengelola-ekstensi--gar-gne),
+API lengkap di [Modul Standar](modules.md).
+
+Keduanya butuh binari `gar` dengan CGO (tabel [Platform](#platform)):
+
+- **`redis`** — klien RESP2 dengan `connect`, `ping`, `get`, `set`, `del`,
+  `exists`, `incr`, `expire`, `hset`, `hget`, `lpush`, `lrange`, `keys`,
+  `cmd`, `close` plus timeout koneksi.
+- **`smtp`** — kirim surel lewat AUTH LOGIN: `connect`, `auth`, `from`,
+  `to`, `subject`, `send`, `send_html`, `close`. STARTTLS/SSL **belum**
+  ada — baca batasannya di [Modul Standar — smtp](modules.md#smtp--ekstensi-resmi).
+
+### Bangun sendiri
+
+Sumber lengkap ada di repo — kompilasi biasa sesuai tabel [Membangun](#membangun)
+di bawah, lalu taruh hasilnya di `./gne/` atau `~/.garurda/gne` (tanpa
+`pack` pun `use` langsung menemukannya). Untuk mengemasnya jadi paket:
+
+```bash
+make ext                    # linux/amd64, linux/arm64, windows/amd64
+make pack-ext               # dist/redis.zip dan dist/smtp.zip
+```
+
+macOS memang tidak bisa di-cross-compile dari Linux (CGO), jadi `.dylib`
+darwin dibangun oleh GitHub Actions pada setiap tag rilis. Dua pilihan:
+kompilasi langsung di Mac Anda (`clang -dynamiclib ...`), atau unduh
+`ext-darwin-builds.zip` dari halaman rilis lalu jalankan `make pack-ext`
+untuk mengemas paket lengkap semua platform.
+
 ## Contoh kilat
 
 ```c
@@ -261,11 +306,14 @@ Pasang ekstensi hanya dari sumber yang Anda percaya.
 |---|---|---|---|
 | `gar-linux-amd64` | ✔ | ✔ | ✔ |
 | `gar-windows-amd64` | ✔ (mingw) | ✔ | ✔ |
-| `gar-linux/arm64`, `gar-windows/arm64`, `gar-darwin-*` | ✘ | stub | ✘ |
+| `gar-darwin-amd64`, `gar-darwin-arm64` | ✔ | ✔ | ✔ |
+| `gar-linux/arm64`, `gar-windows/arm64` | ✘ | stub | ✘ |
 
 Binari `CGO=0` tetap berjalan normal; hanya `use` ekstensi native (dan
-SQLite) yang menolak dengan pesan jelas. Build native di platform
-tersebut (mis. meng-`make build` di macOS sendiri) mendapatkan GNE penuh.
+SQLite) yang menolak dengan pesan jelas. Binari darwin dibangun di GitHub
+Actions dengan CGO=1; untuk `linux/arm64` dan `windows/arm64`, build
+native di platform tersebut (mis. meng-`make build` di mesin ARM)
+mendapatkan GNE penuh.
 
 ## Contoh
 

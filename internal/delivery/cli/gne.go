@@ -81,7 +81,7 @@ Penggunaan:
   gar gne remove <nama> [--dir D]                 lepas ekstensi
 
 Spesifikasi install:
-  redis                    shortcut kanal resmi (rilis terbaru)
+  redis | smtp             shortcut kanal resmi (rilis terbaru)
   redis@0.6.0              shortcut versi tertentu
   https://.../redis.zip    URL HTTPS (wajib HTTPS)
   ./redis.zip              berkas paket lokal

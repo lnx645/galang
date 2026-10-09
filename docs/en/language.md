@@ -619,4 +619,4 @@ repo.
 - Classes & methods — planned for v2
 - Compound assignment (`+=`) and `??`
 - Async I/O parallelism (built-in async I/O) — async is currently cooperative
-- SMTP and a unit-test framework — planned
+- A unit-test framework (`gar test`) — planned

@@ -10,6 +10,55 @@ loaded when `use` reaches them via `dlopen` (Linux/macOS) or `LoadLibrary`
 > [garurda-gne-examples](https://github.com/lnx645/garurda-gne-examples)
 > repo (`hello` and `kv`). Requirements: `gar` **0.5.0+** and gcc.
 
+## Official extensions — `redis` and `smtp`
+
+Two official extensions are compiled from the sources in this repo
+(`ext/redis/`, `ext/smtp/`) and released as multi-platform zip assets.
+Install them from the official channel (requires `gar` **0.6.0+**):
+
+```bash
+gar gne install redis          # latest release
+gar gne install smtp@0.6.0     # pin a version
+gar gne list                   # name, version, ABI, platforms
+gar gne remove redis           # remove binary + sidecar
+```
+
+Other specs: `gar gne install ./redis.zip` (local file) or
+`gar gne install https://.../redis.zip` (HTTPS required). Packages install
+flat into `~/.garurda/gne`, so `use "redis"` / `use "smtp"` finds them
+right away — command details in
+[CLI — Extension Manager](cli.md#extension-manager--gar-gne), full API in
+[Standard Modules](modules.md).
+
+Both require a CGO-enabled `gar` binary (see the [Platforms](#platforms)
+table):
+
+- **`redis`** — a RESP2 client with `connect`, `ping`, `get`, `set`, `del`,
+  `exists`, `incr`, `expire`, `hset`, `hget`, `lpush`, `lrange`, `keys`,
+  `cmd`, `close` plus connection timeouts.
+- **`smtp`** — send mail over AUTH LOGIN: `connect`, `auth`, `from`, `to`,
+  `subject`, `send`, `send_html`, `close`. STARTTLS/SSL are **not**
+  included — read the limitations in
+  [Standard Modules — smtp](modules.md#smtp--official-extension).
+
+### Build them yourself
+
+The full sources are in the repo — compile as in the
+[Building](#building) table below and drop the result into `./gne/` or
+`~/.garurda/gne` (even without `pack`, `use` finds it). To package it as
+a proper zip:
+
+```bash
+make ext                    # linux/amd64, linux/arm64, windows/amd64
+make pack-ext               # dist/redis.zip and dist/smtp.zip
+```
+
+macOS cannot be cross-compiled from Linux (CGO), so darwin `.dylib`
+binaries are built by GitHub Actions on every release tag. Two options:
+compile directly on your Mac (`clang -dynamiclib ...`), or download
+`ext-darwin-builds.zip` from the release page and run `make pack-ext` to
+package the full set.
+
 ## Quick tour
 
 ```c
@@ -259,11 +308,14 @@ Only install extensions from sources you trust.
 |---|---|---|---|
 | `gar-linux-amd64` | ✔ | ✔ | ✔ |
 | `gar-windows-amd64` | ✔ (mingw) | ✔ | ✔ |
-| `gar-linux/arm64`, `gar-windows/arm64`, `gar-darwin-*` | ✘ | stub | ✘ |
+| `gar-darwin-amd64`, `gar-darwin-arm64` | ✔ | ✔ | ✔ |
+| `gar-linux/arm64`, `gar-windows/arm64` | ✘ | stub | ✘ |
 
 `CGO=0` binaries run normally; only native extension `use` (and SQLite)
-is rejected with a clear message. A native build on those platforms
-(e.g. `make build` on your own macOS) gets full GNE.
+is rejected with a clear message. The darwin binaries are built on
+GitHub Actions with CGO=1; for `linux/arm64` and `windows/arm64`, a
+native build on that platform (e.g. `make build` on an ARM machine) gets
+full GNE.
 
 ## Examples
 
