@@ -1,0 +1,133 @@
+# Rilis macOS — satu-satunya platform yang TIDAK bisa dibangun di mesin
+# rilis Linux (cross-CGO ke darwin mustahil), jadi dibangun di runner:
+#
+#   1. gar-darwin-<arch> dengan CGO=1 (GNE dlopen + SQLite aktif)
+#   2. binari ekstensi .dylib per arsitektur (untuk `make pack-ext`)
+#   3. uji asap: pack + install ekstensi + `use` yang melempar galat
+#      terkendali — bukti dlopen jalur GNE benar-benar bekerja di darwin.
+#
+# Job `unggah` menunggu rilis dibuat (make release-zip && gh release
+# create di mesin rilis) lalu menambahkan aset darwin ke rilis itu.
+name: Rilis macOS
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15-intel # amd64; label Intel terakhir s/d Agu 2027
+            arch: amd64
+          - runner: macos-latest # arm64 (Apple Silicon)
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          # go.mod (go 1.19) tetap membatasi tingkat bahasa; Go 1.19 sudah
+          # EOL dan tak lagi diuji terhadap linker Xcode baru, jadi binari
+          # darwin dibangun dengan toolchain stabil yang ikut diuji runner.
+          go-version: stable
+      - name: Bangun gar (CGO=1)
+        run: CGO_ENABLED=1 go build -ldflags "-s -w" -o gar-darwin-${{ matrix.arch }} ./cmd/gar
+      - name: Bangun ekstensi .dylib
+        run: |
+          set -e
+          for name in redis smtp; do
+            out=ext/$name/build/darwin-${{ matrix.arch }}
+            mkdir -p "$out"
+            clang -dynamiclib -Wall -Wextra -I include \
+              -o "$out/$name.dylib" "ext/$name/$name.c"
+            echo "Ekstensi $name → $out/$name.dylib"
+          done
+      - name: Uji asap (pack + install + use)
+        run: |
+          set -e
+          GAR="$PWD/gar-darwin-${{ matrix.arch }}"
+          "$GAR" gne pack ext/redis -o /tmp/redis.zip
+          "$GAR" gne pack ext/smtp -o /tmp/smtp.zip
+          "$GAR" gne install /tmp/redis.zip
+          "$GAR" gne install /tmp/smtp.zip
+          "$GAR" gne list
+          mkdir -p /tmp/smoke
+          printf '%s\n' \
+            'use "redis"' \
+            'use "smtp"' \
+            'try {' \
+            '  $r = redis.connect("127.0.0.1", 65530, 300)' \
+            '  print("tidak")' \
+            '} catch e {' \
+            '  print("asap-redis " + e.code)' \
+            '}' \
+            'try {' \
+            '  $s = smtp.connect("127.0.0.1", 65530, 300)' \
+            '  print("tidak")' \
+            '} catch e {' \
+            '  print("asap-smtp " + e.code)' \
+            '}' \
+            > /tmp/smoke/main.ga
+          cd /tmp/smoke
+          out=$("$GAR" run main.ga)
+          echo "$out"
+          echo "$out" | grep -q 'asap-redis redis_error'
+          echo "$out" | grep -q 'asap-smtp smtp_error'
+          echo "asap lulus di darwin/${{ matrix.arch }}"
+      - name: Siapkan zip aset
+        run: |
+          set -e
+          cp include/gne.h .
+          zip -q gar-darwin-${{ matrix.arch }}.zip gar-darwin-${{ matrix.arch }} gne.h
+          zip -qr ext-dylib-${{ matrix.arch }}.zip ext/redis/build ext/smtp/build
+      - name: Unggah artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ matrix.arch }}
+          path: |
+            gar-darwin-${{ matrix.arch }}.zip
+            ext-dylib-${{ matrix.arch }}.zip
+          if-no-files-found: error
+
+  unggah:
+    needs: macos
+    runs-on: ubuntu-latest
+    steps:
+      - name: Unduh hasil build macOS
+        uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - name: Gabung binari .dylib dua arsitektur
+        run: |
+          set -e
+          unzip -q ext-dylib-amd64.zip
+          unzip -q ext-dylib-arm64.zip
+          zip -qr ext-darwin-builds.zip ext/redis/build ext/smtp/build
+          unzip -l ext-darwin-builds.zip
+      - name: Tunggu rilis lalu unggah aset
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          # Rilis dibuat manual dari mesin rilis (make release-zip &&
+          # gh release create) — tunggu maksimal 20 menit.
+          ok=0
+          for i in $(seq 1 40); do
+            if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+              ok=1
+              break
+            fi
+            sleep 30
+          done
+          if [ "$ok" != 1 ]; then
+            echo "rilis $GITHUB_REF_NAME belum juga dibuat dalam 20 menit" >&2
+            exit 1
+          fi
+          gh release upload "$GITHUB_REF_NAME" \
+            gar-darwin-amd64.zip gar-darwin-arm64.zip ext-darwin-builds.zip --clobber

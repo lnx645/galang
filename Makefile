@@ -2,8 +2,10 @@
 #
 # Target:
 #   make build       - Build untuk platform saat ini
-#   make release     - Build multi-platform (Linux, Windows, macOS, ARM64)
+#   make release     - Build binari rilis (Linux, Windows, ARM64)
 #   make release-zip - Buat archive zip untuk distribusi
+#   make ext         - Kompilasi ekstensi resmi (ext/*) lintas platform
+#   make pack-ext    - Kemas ekstensi jadi dist/redis.zip & dist/smtp.zip
 #   make test        - Jalankan semua test
 #   make bench       - Jalankan benchmark
 #   make ref         - Jalankan perbandingan vs PHP
@@ -15,16 +17,17 @@ LDFLAGS := -s -w -X main.version=$(VERSION)
 BUILD_DIR := build
 DIST_DIR := dist
 
-# Platform targets
+# Platform targets — binari rilis. macOS (darwin) sengaja TIDAK ada di
+# sini: cross-build CGO ke darwin mustahil dari Linux, sehingga
+# gar-darwin-* dibangun GitHub Actions (release.yml) dan diunggah
+# sebagai aset rilis.
 PLATFORMS := \
 	linux/amd64 \
 	linux/arm64 \
 	windows/amd64 \
-	windows/arm64 \
-	darwin/amd64 \
-	darwin/arm64
+	windows/arm64
 
-.PHONY: all build release release-zip test bench ref clean install
+.PHONY: all build release release-zip ext pack-ext test bench ref clean install
 
 all: build
 
@@ -36,13 +39,14 @@ build:
 install: build
 	cp $(BUILD_DIR)/gar $(shell go env GOPATH)/bin/gar 2>/dev/null || sudo cp $(BUILD_DIR)/gar /usr/local/bin/gar
 
-# Build untuk semua platform
+# Build untuk semua platform binari rilis (lihat PLATFORMS).
 #
 # CGO per platform: linux/amd64 (host, gcc) dan windows/amd64 (butuh
 # gcc-mingw-w64-x86-64) dibangun DENGAN CGO sehingga GNE (dlopen/
 # LoadLibrary) dan SQLite aktif. Platform lain cross-build CGO=0 →
 # binari tetap jalan, tetapi `use` ekstensi native dan database
 # menghasilkan galat "butuh CGO" (terdokumentasi di docs/{id,en}).
+# Binari darwin CGO=1 dibangun oleh release.yml di runner macOS.
 MINGW ?= x86_64-w64-mingw32-gcc
 
 release:
@@ -81,6 +85,41 @@ release-zip: release
 		echo "Created: $$base.zip"; \
 	done
 
+# ---- Ekstensi resmi (ext/) ----
+#
+# Binari per platform disimpan di ext/<nama>/build/<GOOS-GOARCH>/ lalu
+# dikemas oleh `gar gne pack` (target pack-ext). macOS TIDAK dibangun di
+# sini — cross-CGO ke darwin mustahil dari Linux. .dylib dibangun oleh
+# release.yml di runner macOS dan ditaruh ke build/ lewat unduhan
+# aset ext-darwin-builds.zip sebelum pack-ext dijalankan.
+EXTS      ?= redis smtp
+EXTPLAT   ?= linux/amd64 linux/arm64 windows/amd64
+AARCH64CC ?= aarch64-linux-gnu-gcc
+
+ext:
+	@set -e; for name in $(EXTS); do \
+	  for platform in $(EXTPLAT); do \
+	    goos=$${platform%/*}; goarch=$${platform#*/}; \
+	    cc=gcc; libs=; ext=.so; \
+	    case "$$goos-$$goarch" in \
+	      linux-arm64) cc=$(AARCH64CC) ;; \
+	      windows-amd64) cc=$(MINGW); libs="-lws2_32"; ext=.dll ;; \
+	    esac; \
+	    out=ext/$$name/build/$$goos-$$goarch; \
+	    mkdir -p $$out; \
+	    $$cc -shared -fPIC -Wall -Wextra -I include -o $$out/$$name$$ext \
+	      ext/$$name/$$name.c $$libs; \
+	    echo "Ekstensi $$name → $$out/$$name$$ext"; \
+	  done; \
+	done
+
+# Kemas tiap ekstensi jadi zip rilis. Butuh minimal satu binari di
+# build/ (linux/windows dari make ext; darwin dari hasil CI).
+pack-ext: build
+	@set -e; for name in $(EXTS); do \
+	  $(BUILD_DIR)/gar gne pack ext/$$name -o $(DIST_DIR)/$$name.zip; \
+	done
+
 # Test semua package
 test:
 	$(GO) test ./...
@@ -104,6 +143,7 @@ repl:
 # Clean artifacts
 clean:
 	rm -rf $(BUILD_DIR) $(DIST_DIR) bin
+	rm -rf ext/*/build
 	$(GO) clean -cache -testcache
 
 # Format code
