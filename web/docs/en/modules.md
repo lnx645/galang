@@ -331,3 +331,62 @@ $s.send_html("Important <b>news</b> (text version)", "<p>Important <b>news</b></
   capabilities are checked first: a server without EHLO falls back to
   `HELO` automatically, and `auth()` will reject with a message mentioning
   STARTTLS.
+
+### Real-world example: Gmail through a local TLS relay
+
+The extension has no TLS yet, while Gmail rejects direct delivery on
+port 25 from an IP without SPF/DKIM (`550 5.7.26`). The proven pattern:
+run `AUTH LOGIN` against **localhost** — credentials never cross the
+public network unencrypted — and let stunnel encrypt to
+`smtp.gmail.com:465` with full certificate verification. The `127.0.0.1`
+bind below is intentional: the relay must only be reachable from the
+machine itself. Ready-to-run script:
+[`examples/smtp-gmail.ga`](https://github.com/lnx645/galang/blob/master/examples/smtp-gmail.ga).
+
+1. **Binary + extension.** Download `gar-windows-amd64.zip` (Linux: the
+   variant for your machine) from the
+   [latest release](https://github.com/lnx645/galang/releases/latest),
+   put `gar.exe`/`gar` on PATH, then `gar gne install smtp`. Extension
+   variants: darwin-{amd64,arm64}, linux-{amd64,arm64}, windows-amd64 —
+   on **Windows on ARM**, use the amd64 binary (runs through Windows x64
+   emulation).
+2. **Google app password**: Google Account → Security → 2-Step
+   Verification → App passwords (16 characters).
+3. **stunnel**: Windows — download `stunnel-latest-win64-installer.exe`
+   from [stunnel.org](https://www.stunnel.org/downloads.html); Linux —
+   `apt install stunnel4` (package name may vary per distro). Write the
+   configuration (the default file location is shown by
+   `stunnel -version`):
+
+   ```ini
+   [gmail-smtps]
+   client = yes
+   accept = 127.0.0.1:2526
+   connect = smtp.gmail.com:465
+   verifyChain = yes
+   CAfile = ca-certificates.crt
+   checkHost = smtp.gmail.com
+   sni = smtp.gmail.com
+   ```
+
+   `CAfile` points to a PEM CA bundle: Debian Linux uses
+   `/etc/ssl/certs/ca-certificates.crt`; if the Windows package does not
+   include one, download [cacert.pem](https://curl.se/ca/cacert.pem) and
+   save it under that name. On Windows use an **absolute path** —
+   especially when stunnel runs as a service.
+4. **Start stunnel.** Windows (admin prompt, from the configuration
+   folder): `stunnel -install stunnel.conf` then `stunnel -start`
+   (manage with `-reload`/`-stop`, remove with `-uninstall`). Linux:
+   write `/etc/stunnel/gmail.conf` (service name = file name) then
+   `systemctl enable --now stunnel@gmail`.
+5. **Test.** Fill in `<APP_PASSWORD>` in the example, then
+   `gar run examples/smtp-gmail.ga`. Expected: `kirim : true` and the
+   mail appears in the inbox.
+   - `550 5.7.26 ... unauthenticated` — the mail bypassed the relay
+     (stunnel down or wrong port).
+   - `535` — the app password is wrong or expired.
+
+Real test of 2026-10-09: direct delivery to the Gmail MX (port 25) was
+accepted through `RCPT`/`DATA` and then rejected by Google's policy; the
+path above was accepted with `250` and reached the inbox. The same steps
+apply on Linux — only the stunnel installation differs.

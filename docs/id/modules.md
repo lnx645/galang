@@ -328,3 +328,59 @@ $s.send_html("Kabar <b>penting</b> (versi teks)", "<p>Kabar <b>penting</b></p>")
   lokal) — jangan mengirim kredensial ke jaringan publik. Kemampuan EHLO
   dicek lebih dulu: server tanpa EHLO otomatis fallback `HELO`, dan
   `auth()` akan menolak dengan pesan yang menyebut STARTTLS.
+
+### Contoh nyata: Gmail lewat relay TLS lokal
+
+Ekstensi belum punya TLS, sedangkan Gmail menolak kiriman langsung port 25
+dari IP tanpa SPF/DKIM (`550 5.7.26`). Pola yang teruji: `AUTH LOGIN`
+dijalankan ke **localhost** — kredensial tidak menyeberangi jaringan publik
+tanpa enkripsi — dan stunnel mengenkripsi ke `smtp.gmail.com:465` dengan
+verifikasi sertifikat penuh. Bind `127.0.0.1` di bawah disengaja: relay
+hanya boleh diakses dari mesin itu sendiri. Skrip siap pakai:
+[`examples/smtp-gmail.ga`](https://github.com/lnx645/galang/blob/master/examples/smtp-gmail.ga).
+
+1. **Binari + ekstensi.** Unduh `gar-windows-amd64.zip` (Linux: varian
+   sesuai mesin) dari [rilis terbaru](https://github.com/lnx645/galang/releases/latest),
+   taruh `gar.exe`/`gar` di PATH, lalu `gar gne install smtp`. Varian
+   ekstensi: darwin-{amd64,arm64}, linux-{amd64,arm64}, windows-amd64 —
+   di **Windows on ARM** pakai binari amd64 (dijalankan lewat emulasi x64
+   Windows).
+2. **Sandi aplikasi Google**: Akun Google → Keamanan → Verifikasi 2
+   langkah → Sandi aplikasi (16 karakter).
+3. **stunnel**: Windows — unduh `stunnel-latest-win64-installer.exe` dari
+   [stunnel.org](https://www.stunnel.org/downloads.html); Linux —
+   `apt install stunnel4` (nama paket dapat berbeda per distro). Tulis
+   konfigurasi (lokasi berkas default ditampilkan `stunnel -version`):
+
+   ```ini
+   [gmail-smtps]
+   client = yes
+   accept = 127.0.0.1:2526
+   connect = smtp.gmail.com:465
+   verifyChain = yes
+   CAfile = ca-certificates.crt
+   checkHost = smtp.gmail.com
+   sni = smtp.gmail.com
+   ```
+
+   `CAfile` menunjuk bundel CA PEM: Debian Linux memakai
+   `/etc/ssl/certs/ca-certificates.crt`; bila paket Windows tidak
+   menyertakannya, unduh [cacert.pem](https://curl.se/ca/cacert.pem) dan
+   simpan dengan nama itu. Di Windows tulis **path absolut** — terutama
+   bila stunnel dijalankan sebagai layanan.
+4. **Jalankan stunnel.** Windows (prompt admin, dari folder konfigurasi):
+   `stunnel -install stunnel.conf` lalu `stunnel -start` (kendali
+   `-reload`/`-stop`, lepas `-uninstall`). Linux: tulis berkas
+   `/etc/stunnel/gmail.conf` (nama layanan = nama berkas) lalu
+   `systemctl enable --now stunnel@gmail`.
+5. **Tes.** Isi `<APP_PASSWORD>` pada contoh, lalu
+   `gar run examples/smtp-gmail.ga`. Yang diharapkan: `kirim : true` dan
+   surel muncul di inbox.
+   - `550 5.7.26 ... unauthenticated` — kiriman melewati relay (stunnel
+     mati atau port salah).
+   - `535` — sandi aplikasi salah atau kedaluwarsa.
+
+Hasil tes nyata 2026-10-09: kiriman langsung ke MX Gmail (port 25)
+diterima sampai `RCPT`/`DATA` lalu ditolak kebijakan Google; jalur di
+atas diterima `250` dan masuk inbox. Langkah yang sama berlaku di Linux —
+bedanya hanya pemasangan stunnel.
