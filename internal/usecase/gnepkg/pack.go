@@ -7,7 +7,7 @@
 //	manifest.json                 — name, version, gne_abi, entry per platform
 //	<GOOS-GOARCH>/<name><ext>     — binari native per platform
 //
-// Pemasangan FLAT: ~/.garurda/gne/<name><ext> + sidecar <name>.gne.json,
+// Pemasangan FLAT: ~/.galang/gne/<name><ext> + sidecar <name>.gne.json,
 // persis pola yang dicari discovery `use "nama"` — tanpa ubahan loader.
 package gnepkg
 
@@ -21,8 +21,8 @@ import (
 	"sort"
 	"strings"
 
-	"garurda/internal/infra/gne"
-	"garurda/internal/infra/gnepkg"
+	"galang/internal/infra/gne"
+	"galang/internal/infra/gnepkg"
 )
 
 // OfficialRepo adalah kanal distribusi ekstensi resmi: shortcut
@@ -163,13 +163,42 @@ func writeSidecar(dir string, m *Manifest) error {
 // ---- direktori instalasi ----
 
 // InstallDir mengembalikan direktori instalasi default
-// (~/.garurda/gne) — sama dengan kandidat discovery global `use`.
+// (~/.galang/gne) — sama dengan kandidat discovery global `use`.
 func InstallDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
 		return "", fmt.Errorf("tidak dapat menentukan direktori home — berikan --dir secara eksplisit")
 	}
+	return filepath.Join(home, ".galang", "gne"), nil
+}
+
+// LegacyInstallDir adalah lokasi instalasi sebelum rebrand v0.7.0
+// (~/.garurda/gne). Masih dipakai untuk PEMBACAAN (list/remove/discovery)
+// agar ekstensi yang sudah terpasang tidak hilang begitu binari di-upgrade;
+// pemasangan baru selalu menulis ke InstallDir.
+func LegacyInstallDir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return "", fmt.Errorf("tidak dapat menentukan direktori home — berikan --dir secara eksplisit")
+	}
 	return filepath.Join(home, ".garurda", "gne"), nil
+}
+
+// SearchDirs mengembalikan direktori instalasi untuk PEMBACAAN tanpa
+// --dir eksplisit: direktori aktif lebih dulu, disusul lokasi lama bila
+// masih ada. Urutan menentukan pemenang saat nama sama ada di dua tempat.
+func SearchDirs() ([]string, error) {
+	cur, err := InstallDir()
+	if err != nil {
+		return nil, err
+	}
+	dirs := []string{cur}
+	if legacy, err := LegacyInstallDir(); err == nil && legacy != cur {
+		if st, statErr := os.Stat(legacy); statErr == nil && st.IsDir() {
+			dirs = append(dirs, legacy)
+		}
+	}
+	return dirs, nil
 }
 
 // ---- pack ----

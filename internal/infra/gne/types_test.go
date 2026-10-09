@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"garurda/internal/domain"
+	"galang/internal/domain"
 )
 
 // rc dasar: release pertama menghapus entri, retain menahan penghapusan.

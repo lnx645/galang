@@ -1,4 +1,4 @@
-// Package ws provides WebSocket support for Garurda.
+// Package ws provides WebSocket support for GaLang.
 package ws
 
 import (

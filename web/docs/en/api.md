@@ -35,7 +35,7 @@ Builtins can be called directly without `use`. The standard modules
 Prints a single line without a trailing newline. Accepts any arguments,
 separated by spaces. Also available as a statement: `print a, b`.
 
-```garurda
+```galang
 print("a", 1, true)      // a 1 true
 ```
 
@@ -44,7 +44,7 @@ print("a", 1, true)      // a 1 true
 Same as `print` but ends with a newline. `println()` with no arguments prints
 a blank line.
 
-```garurda
+```galang
 println("selesai")
 ```
 
@@ -54,7 +54,7 @@ println("selesai")
 
 ### `type($v)` → `string`
 
-```garurda
+```galang
 type(72)         // "int"
 type(3.14)       // "float"
 type("x")        // "string"
@@ -82,7 +82,7 @@ type(async fn(){ return 1 }())  // "promise"
 | `is_function($v)` | `function` |
 | `is_promise($v)` | `promise` |
 
-```garurda
+```galang
 print(is_int(72))         // true
 print(is_promise(f()))    // true — f is async
 ```
@@ -102,7 +102,7 @@ types.
 | `bool($v)` | `bool` | `bool(0)` → `false` |
 | `to_object($pairs)` | `object` | `[key, value]` pairs |
 
-```garurda
+```galang
 print(int("42"), float("1.5"), str(7), bool(0))   // 42 1.5 7 false
 print(to_object([["a", 1], ["b", 2]]))            // {a: 1, b: 2}
 ```
@@ -119,7 +119,7 @@ print(to_object([["a", 1], ["b", 2]]))            // {a: 1, b: 2}
 | `sum($arr)` | sum of all elements |
 | `parse_int($s, $base)` | string → int with a base; `parse_int("42", 10)` → 42 |
 
-```garurda
+```galang
 print(abs(-5))              // 5
 print(min(3, 7), max(3, 7)) // 3 7
 print(sum([1, 2, 3]))       // 6
@@ -140,7 +140,7 @@ print(parse_int("ff", 16))  // 255
 | `contains($s, $sub)` | whether the substring exists (string) |
 | `slice($arr, $from, $to)` | slice, `$to` exclusive — **a new copy** |
 
-```garurda
+```galang
 print(len("garuda"))           // 6
 print(first([5, 6]), last([5, 6]))   // 5 6
 print(at([1, 2], 9, "def"))    // def
@@ -167,7 +167,7 @@ a new array.
 | `merge($a, $b)` | merge of two arrays/objects |
 | `unset($obj, $kunci)` | object: **in-place mutation**, delete a key |
 
-```garurda
+```galang
 $a = [3, 1, 2]
 print(pop($a))         // 3        — $a stays [3, 1, 2]
 print(push($a, 9))     // [3, 1, 2, 9]  — $a unchanged
@@ -190,7 +190,7 @@ print(merge([1], [2])) // [1, 2]
 
 The `fn` callback receives (`$elemen`) or, for `reduce`, (`$acc, $elemen`).
 
-```garurda
+```galang
 print(map([1, 2, 3], fn($x) { return $x * 2 }))        // [2, 4, 6]
 print(filter([1, 2, 3], fn($x) { return $x > 1 }))     // [2, 3]
 print(reduce([1, 2, 3], fn($acc, $x) { return $acc + $x }, 10))  // 16
@@ -210,7 +210,7 @@ print(join(["a", "b"], "-"))                           // a-b
 | `merge($a, $b)` | merge of two objects (right-hand keys win) |
 | `unset($obj, $k)` | delete a key (in-place mutation) |
 
-```garurda
+```galang
 $o = {x: 1, y: 2}
 print(keys($o))          // [x, y]
 print(values($o))        // [1, 2]
@@ -233,7 +233,7 @@ print($o)                // {x: 1}
 Methods are also available directly: `"abc".upper()`, `"a,b".split(",")` —
 the full list is under [String methods](#string-methods).
 
-```garurda
+```galang
 print(str_repeat("ab", 3))   // ababab
 print(html_escape("<b>"))    // &lt;b&gt;
 ```
@@ -248,7 +248,7 @@ print(html_escape("<b>"))    // &lt;b&gt;
 | `json_decode($s)` | JSON string → value (`{...}` → object, `[...]` → array) |
 | `html_escape($s)` | escape HTML |
 
-```garurda
+```galang
 print(json_encode({k: [1, 2]}))      // {"k":[1,2]}
 print(json_decode("{\"z\":9}"))      // {z: 9}
 ```
@@ -264,7 +264,7 @@ print(json_decode("{\"z\":9}"))      // {z: 9}
 Formatting & ISO time are available in the `time` module (`time.now()`,
 `time.format()`).
 
-```garurda
+```galang
 print(now_ms())   // 1728000000000
 ```
 
@@ -277,7 +277,7 @@ print(now_ms())   // 1728000000000
 | `gather($p1, $p2, ...)` | run many promises → array of results |
 | `spawn($fn, $args...)` | fire-and-forget background task → promise |
 
-```garurda
+```galang
 async fn a() { return 1 }
 async fn b() { return 2 }
 print(gather(a(), b()))      // [1, 2]
@@ -303,7 +303,7 @@ Details: [Language Reference — Async](language.md#12-async--async-fn-await-gat
 
 The constructors create error values; throw them with `throw`:
 
-```garurda
+```galang
 try {
     throw not_found("user tidak ada")
 } catch e {
@@ -343,7 +343,7 @@ as properties (e.g. `$s.len`).
 Properties (no parentheses): `.len`, `.upper`, `.lower`, `.trim`,
 `.reversed`.
 
-```garurda
+```galang
 $s = "Halo Dunia"
 print($s.len)                        // 10
 print($s.upper())                    // HALO DUNIA
@@ -378,7 +378,7 @@ change).
 Properties (no parentheses): `.len`, `.first`, `.last`, `.joined`
 (joined with `", "`).
 
-```garurda
+```galang
 $a = [1, 2, 3]
 print($a.len)        // 3
 print($a.first)      // 1
@@ -398,7 +398,7 @@ Array methods **return a copy** — the original array is unchanged.
 |---|---|
 | `.is($code)` | compare `e.code` with `$code` → `bool` |
 
-```garurda
+```galang
 try { throw not_found("x") }
 catch e { print(e.is("http_error")) }   // true
 ```

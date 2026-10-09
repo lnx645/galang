@@ -1,10 +1,10 @@
-# Contoh Web Publik Garurda
+# Contoh Web Publik GaLang
 
 Aplikasi contoh yang menampilkan modul `http` — termasuk **middleware
 `http.use`**, **sesi `http.session`**, dan **database SQLite nyata**
 (`database.connect`) — template **Blade**, file statis CSS/JS, dan
 respons JSON otomatis. Inilah aplikasi yang disajikan service
-`garurda-demo.service` di port **5800**.
+`galang-demo.service` di port **5800**.
 
 ## Menjalankan
 
@@ -53,7 +53,7 @@ examples/webapp/
 ## Middleware
 
 Satu middleware global mencatat setiap request ke stdout — terbaca di
-jurnal systemd via `journalctl -u garurda-demo`:
+jurnal systemd via `journalctl -u galang-demo`:
 
 ```ga
 http.use(fn($req, $next) {
@@ -64,7 +64,7 @@ http.use(fn($req, $next) {
 
 ## Sesi
 
-`GET /api/kunjungan` memakai sesi HTTP: cookie `garurda_session`
+`GET /api/kunjungan` memakai sesi HTTP: cookie `galang_session`
 (HttpOnly, SameSite=Lax) terbit pada kunjungan pertama yang **menulis**
 sesi; objek `$req.session` (sama dengan `http.session($req)`) hidup di
 store in-memory selama proses. `?reset=1` memanggil
@@ -96,27 +96,27 @@ terpisah (mencetak jumlah baris setelahnya).
 
 ## Deploy sebagai service systemd
 
-Salinan unit ada di `deploy/garurda-demo.service`:
+Salinan unit ada di `deploy/galang-demo.service`:
 
 ```bash
 # 1. aplikasi + binary
-mkdir -p /opt/garurda-demo
-cp main.ga migrate.ga schema.sql /opt/garurda-demo/
-cp -r views public /opt/garurda-demo/
+mkdir -p /opt/galang-demo
+cp main.ga migrate.ga schema.sql /opt/galang-demo/
+cp -r views public /opt/galang-demo/
 go build -o /usr/local/bin/gar ./cmd/gar
 
 # 2. user service (non-root) + unit
-useradd --system --home-dir /opt/garurda-demo --shell /usr/sbin/nologin garurda
+useradd --system --home-dir /opt/galang-demo --shell /usr/sbin/nologin galang
 # SQLite menulis demo.db saat start — direktori harus milik user service
-chown -R garurda:garurda /opt/garurda-demo
-cp deploy/garurda-demo.service /etc/systemd/system/
+chown -R galang:galang /opt/galang-demo
+cp deploy/galang-demo.service /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable --now garurda-demo.service
+systemctl enable --now galang-demo.service
 
 # 3. cek
 curl -s localhost:5800/api/sapa/dunia
 curl -s localhost:5800/api/user/1    # dari SQLite
-journalctl -u garurda-demo -f
+journalctl -u galang-demo -f
 ```
 
 > **Catatan:** `demo.db` dibuat otomatis saat pertama start (bootstrap

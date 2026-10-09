@@ -1,7 +1,7 @@
 package parse
 
 import (
-	"garurda/internal/domain"
+	"galang/internal/domain"
 )
 
 // Binary precedence. Higher binds tighter.

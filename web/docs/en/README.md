@@ -1,16 +1,16 @@
-# Garurda — Documentation
+# GaLang — Documentation
 
-Garurda is a web programming language written in **Go**. Its web runtime is
+GaLang is a web programming language written in **Go**. Its web runtime is
 complete: HTTP server, routing, Blade templates, static files, WebSocket, and
 SSE. Execution uses a bytecode VM with an unboxed calling convention — light and
 fast, with measured peak memory (RSS) below JavaScript across the whole
 benchmark suite.
 
-```garurda
+```galang
 use "http"
 
 http.GET("/", fn($req) {
-    return {msg: "Halo dari Garurda!"}
+    return {msg: "Halo dari GaLang!"}
 })
 
 http.listen(8869)

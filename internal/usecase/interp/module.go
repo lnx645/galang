@@ -16,7 +16,7 @@ import (
 	"sort"
 	"strings"
 
-	"garurda/internal/domain"
+	"galang/internal/domain"
 )
 
 // fileModuleName is the namespace a file module binds: its base name
@@ -38,7 +38,7 @@ func fileModuleName(path string) string {
 // for error reporting.
 func (in *Interp) loadFileModule(path string, pos domain.Position) (domain.Value, error) {
 	// Path eksplisit berupa pustaka native: langsung jalur GNE, jangan
-	// pernah mencoba membacanya sebagai sumber Garurda.
+	// pernah mencoba membacanya sebagai sumber GaLang.
 	if gneIsNative(path) {
 		return in.loadGNEExplicit(path, pos)
 	}

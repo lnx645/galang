@@ -11,10 +11,10 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	"garurda/internal/domain"
+	"galang/internal/domain"
 )
 
-// webRoute is a single route registered from Garurda code.
+// webRoute is a single route registered from GaLang code.
 type webRoute struct {
 	method  string
 	pattern string
@@ -26,10 +26,10 @@ type webRoute struct {
 // webRoutes collects the routes registered via the http module and
 // serves them. The VM's execution state (frames, stacks, call depth)
 // is shared across the process, so requests are serialized by execMu
-// before any Garurda closure is run.
+// before any GaLang closure is run.
 type webRoutes struct {
 	mu     sync.RWMutex   // protects routes and uses
-	execMu sync.Mutex     // serializes Garurda closure execution
+	execMu sync.Mutex     // serializes GaLang closure execution
 	routes []webRoute
 	uses   []domain.Value // middleware via http.use, in registration order
 }
@@ -153,7 +153,7 @@ func (in *Interp) startWebServer(port int) error {
 		}
 	})
 	addr := ":" + strconv.Itoa(port)
-	fmt.Fprintf(in.Out, "Garurda HTTP server listening on http://localhost%s\n", addr)
+	fmt.Fprintf(in.Out, "GaLang HTTP server listening on http://localhost%s\n", addr)
 	return http.ListenAndServe(addr, handler)
 }
 
@@ -180,7 +180,7 @@ func matchPattern(pattern, path string) (map[string]string, bool) {
 	return params, true
 }
 
-// serveRequest invokes a Garurda route handler for an incoming HTTP
+// serveRequest invokes a GaLang route handler for an incoming HTTP
 // request and writes the result back to the client. The middleware chain
 // registered via http.use wraps the handler: each entry receives
 // ($req, $next) and its return value becomes the response.
@@ -293,7 +293,7 @@ func (in *Interp) writeThrown(w http.ResponseWriter, err error) {
 	http.Error(w, "internal server error", http.StatusInternalServerError)
 }
 
-// serveWS upgrades the connection to WebSocket and calls the Garurda
+// serveWS upgrades the connection to WebSocket and calls the GaLang
 // handler with each incoming message. The handler's return value is
 // sent back as a WebSocket text message.
 func (in *Interp) serveWS(handler domain.Value, params map[string]string, w http.ResponseWriter, r *http.Request) {
@@ -322,7 +322,7 @@ func (in *Interp) serveWS(handler domain.Value, params map[string]string, w http
 	}
 }
 
-// serveSSE sends an initial connection event, then calls the Garurda
+// serveSSE sends an initial connection event, then calls the GaLang
 // handler which can return a string to be sent as SSE data. The
 // connection stays open until the client disconnects.
 func (in *Interp) serveSSE(handler domain.Value, params map[string]string, w http.ResponseWriter, r *http.Request) {
@@ -340,7 +340,7 @@ func (in *Interp) serveSSE(handler domain.Value, params map[string]string, w htt
 	fmt.Fprintf(w, "event: connected\ndata: {\"status\":\"ok\"}\n\n")
 	flusher.Flush()
 
-	// Call the Garurda handler once — it can return a string to
+	// Call the GaLang handler once — it can return a string to
 	// be sent as the first data event.
 	in.webRoutes.execMu.Lock()
 	reqObj := in.buildRequestObj(r, params)
@@ -365,7 +365,7 @@ func (in *Interp) serveStatic(dir, pattern string, w http.ResponseWriter, r *htt
 	http.StripPrefix(prefix, fs).ServeHTTP(w, r)
 }
 
-// buildRequestObj wraps an *http.Request into a Garurda object with
+// buildRequestObj wraps an *http.Request into a GaLang object with
 // method, path, url, headers, query, params and body fields.
 func (in *Interp) buildRequestObj(r *http.Request, params map[string]string) *domain.Obj {
 	obj := domain.NewObj()

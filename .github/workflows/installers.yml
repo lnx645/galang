@@ -1,12 +1,12 @@
 # Platform installers — built from release assets that already exist:
 #
-#   Windows : Garurda-Setup-<v>.exe   Inno Setup 6; x64 + Windows on ARM
+#   Windows : GaLang-Setup-<v>.exe   Inno Setup 6; x64 + Windows on ARM
 #                                     (x64 emulation); adds {app} to PATH;
 #                                     silent-tested: install →
 #                                     gar version → uninstall.
-#   Linux   : garurda_<v>_<arch>.deb  amd64 + arm64 → /usr/bin/gar;
+#   Linux   : galang_<v>_<arch>.deb  amd64 + arm64 → /usr/bin/gar;
 #             tested with dpkg -i → gar version → dpkg -r on the runner.
-#   macOS   : Garurda-<v>-macos.pkg   universal2 (lipo) → /usr/local/bin/gar;
+#   macOS   : GaLang-<v>-macos.pkg   universal2 (lipo) → /usr/local/bin/gar;
 #             tested with sudo installer → gar version.
 #
 # Triggers: release published (automatic for the next release — binary
@@ -69,21 +69,21 @@ jobs:
           $ver = $env:TAG -replace '^v',''
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           Push-Location packaging/windows
-          & $iscc "/DMyAppVersion=$ver" garurda.iss
+          & $iscc "/DMyAppVersion=$ver" galang.iss
           $rc = $LASTEXITCODE
           Pop-Location
           if ($rc -ne 0) { throw "ISCC failed (code $rc)" }
-          Get-Item "packaging/windows/out/Garurda-Setup-$ver.exe" |
+          Get-Item "packaging/windows/out/GaLang-Setup-$ver.exe" |
             Format-List Name, Length
 
       - name: Silent test — install, run, uninstall
         shell: pwsh
         run: |
           $ver = $env:TAG -replace '^v',''
-          $setup = "$PWD\packaging\windows\out\Garurda-Setup-$ver.exe"
+          $setup = "$PWD\packaging\windows\out\GaLang-Setup-$ver.exe"
           Start-Process -Wait -FilePath $setup `
             -ArgumentList '/SP-','/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART'
-          $gar = "${env:ProgramFiles}\Garurda\gar.exe"
+          $gar = "${env:ProgramFiles}\GaLang\gar.exe"
           if (-not (Test-Path $gar)) { throw "gar.exe was not installed at $gar" }
           $out = & $gar version
           Write-Host "installed: $out"
@@ -91,19 +91,19 @@ jobs:
             throw "version mismatch: '$out' vs '$ver'"
           }
           $mPath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
-          if ($mPath -notlike "*\Garurda*") { throw "machine PATH does not contain the Garurda folder" }
-          Start-Process -Wait -FilePath "${env:ProgramFiles}\Garurda\unins000.exe" `
+          if ($mPath -notlike "*\GaLang*") { throw "machine PATH does not contain the GaLang folder" }
+          Start-Process -Wait -FilePath "${env:ProgramFiles}\GaLang\unins000.exe" `
             -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART'
           if (Test-Path $gar) { throw "uninstall did not remove gar.exe" }
           $mPath2 = [Environment]::GetEnvironmentVariable('Path', 'Machine')
-          if ($mPath2 -like "*\Garurda*") { throw "PATH still contains the Garurda entry" }
+          if ($mPath2 -like "*\GaLang*") { throw "PATH still contains the GaLang entry" }
           Write-Host "silent test passed (install + PATH + uninstall)"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: installer-windows
-          path: packaging/windows/out/Garurda-Setup-*.exe
+          path: packaging/windows/out/GaLang-Setup-*.exe
           if-no-files-found: error
 
   linux:
@@ -147,14 +147,14 @@ jobs:
         run: |
           set -e
           VER="${TAG#v}"
-          sudo dpkg -i "deb/garurda_${VER}_amd64.deb"
+          sudo dpkg -i "deb/galang_${VER}_amd64.deb"
           out=$(/usr/bin/gar version)
           echo "$out"
           case "$out" in
             *"$VER"*) ;;
             *) echo "version mismatch: '$out' vs '$VER'" >&2; exit 1 ;;
           esac
-          sudo dpkg -r garurda
+          sudo dpkg -r galang
           test ! -f /usr/bin/gar
           echo "dpkg test passed (install + run + remove)"
 
@@ -200,13 +200,13 @@ jobs:
           unzip -q gar-darwin-arm64.zip -d bin-arm64
           ./packaging/macos/build-pkg.sh "$VER" \
             bin-amd64/gar-darwin-amd64 bin-arm64/gar-darwin-arm64 \
-            "pkg/Garurda-$VER-macos.pkg"
+            "pkg/GaLang-$VER-macos.pkg"
 
       - name: Test pkg install
         run: |
           set -e
           VER="${TAG#v}"
-          sudo installer -pkg "pkg/Garurda-$VER-macos.pkg" -target /
+          sudo installer -pkg "pkg/GaLang-$VER-macos.pkg" -target /
           out=$(/usr/local/bin/gar version)
           echo "$out"
           case "$out" in
@@ -243,8 +243,8 @@ jobs:
           VER="${TAG#v}"
           ls -la
           gh release upload "$TAG" \
-            "Garurda-Setup-$VER.exe" \
-            "garurda_${VER}_amd64.deb" \
-            "garurda_${VER}_arm64.deb" \
-            "Garurda-$VER-macos.pkg" \
+            "GaLang-Setup-$VER.exe" \
+            "galang_${VER}_amd64.deb" \
+            "galang_${VER}_arm64.deb" \
+            "GaLang-$VER-macos.pkg" \
             --clobber

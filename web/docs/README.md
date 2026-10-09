@@ -1,4 +1,4 @@
-# Garurda Documentation
+# GaLang Documentation
 
 Pilih bahasa / Choose a language:
 

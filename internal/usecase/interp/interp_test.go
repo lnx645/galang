@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"garurda/internal/domain"
+	"galang/internal/domain"
 )
 
 // runSnippet evaluates src and returns stdout, the REPL's view of the final
@@ -79,8 +79,8 @@ func TestPrintAndArithmetic(t *testing.T) {
 }
 
 func TestVariablesAndTypes(t *testing.T) {
-	if got := evalStr(t, `$nama = "Garurda"
-print $nama`); got != "Garurda" {
+	if got := evalStr(t, `$nama = "GaLang"
+print $nama`); got != "GaLang" {
 		t.Errorf("got %q", got)
 	}
 	// The `$` sigil is optional: both spellings hit the same variable.
@@ -145,8 +145,8 @@ print tambah(2, 3)`); got != "5" {
 	}
 	// Default parameter values.
 	if got := evalStr(t, `fn greet($nama, $sapaan = "Halo") { return $sapaan + ", " + $nama }
-print greet("Garurda")
-print greet("Garurda", "Selamat pagi")`); got != "Halo, Garurda\nSelamat pagi, Garurda" {
+print greet("GaLang")
+print greet("GaLang", "Selamat pagi")`); got != "Halo, GaLang\nSelamat pagi, GaLang" {
 		t.Errorf("defaults: got %q", got)
 	}
 	// Arrow functions.
@@ -378,8 +378,8 @@ print math.pi`); got != "3.141592653589793" {
 }
 
 func TestStrings(t *testing.T) {
-	if got := evalStr(t, `$nama = "Garurda"
-print "Halo ${nama}, kamu ${1 + 1} tahun"`); got != "Halo Garurda, kamu 2 tahun" {
+	if got := evalStr(t, `$nama = "GaLang"
+print "Halo ${nama}, kamu ${1 + 1} tahun"`); got != "Halo GaLang, kamu 2 tahun" {
 		t.Errorf("interpolation: got %q", got)
 	}
 	// Escapes and raw strings.
@@ -389,7 +389,7 @@ print "Halo ${nama}, kamu ${1 + 1} tahun"`); got != "Halo Garurda, kamu 2 tahun"
 	if got := evalStr(t, "print `a\\nb`"); got != `a\nb` {
 		t.Errorf("raw string: got %q", got)
 	}
-	if got := evalStr(t, `print "garurda".upper()`); got != "GARURDA" {
+	if got := evalStr(t, `print "galang".upper()`); got != "GALANG" {
 		t.Errorf("method: got %q", got)
 	}
 	if got := evalStr(t, `use "strings"

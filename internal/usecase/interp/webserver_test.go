@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"garurda/internal/domain"
+	"galang/internal/domain"
 )
 
 func TestMatchPattern(t *testing.T) {
@@ -310,7 +310,7 @@ http.GET("/", async fn($req) { return "async-ok" })
 	}
 }
 
-// sessionSid mengambil nilai garurda_session dari header Set-Cookie.
+// sessionSid mengambil nilai galang_session dari header Set-Cookie.
 func sessionSid(t *testing.T, w *testResponseWriter) string {
 	t.Helper()
 	sc := w.header.Get("Set-Cookie")
@@ -352,7 +352,7 @@ http.GET("/baca", fn($req) {
 		t.Fatalf("cookie seharusnya SameSite=Lax: %q", sc)
 	}
 	sid := sessionSid(t, w1)
-	w2 := serveReqCookie(t, in, "GET", "/baca", "garurda_session="+sid)
+	w2 := serveReqCookie(t, in, "GET", "/baca", "galang_session="+sid)
 	if w2.body != `{"n":42}` {
 		t.Fatalf("baca-silang = %q, want {\"n\":42}", w2.body)
 	}
@@ -397,11 +397,11 @@ http.GET("/baca", fn($req) {
 `)
 	w1 := serveReq(t, in, "GET", "/isi")
 	sid := sessionSid(t, w1)
-	w2 := serveReqCookie(t, in, "GET", "/keluar", "garurda_session="+sid)
+	w2 := serveReqCookie(t, in, "GET", "/keluar", "galang_session="+sid)
 	if sc := w2.header.Get("Set-Cookie"); !strings.Contains(sc, "Max-Age=0") {
 		t.Fatalf("destroy seharusnya mengirim cookie kedaluwarsa: %q", sc)
 	}
-	w3 := serveReqCookie(t, in, "GET", "/baca", "garurda_session="+sid)
+	w3 := serveReqCookie(t, in, "GET", "/baca", "galang_session="+sid)
 	if w3.body != `{"n":null}` {
 		t.Fatalf("sesi lama harus sudah mati, body = %q", w3.body)
 	}
@@ -426,7 +426,7 @@ http.GET("/", fn($req) {
 		t.Fatalf("langkah pertama = %q", w1.body)
 	}
 	sid := sessionSid(t, w1)
-	w2 := serveReqCookie(t, in, "GET", "/", "garurda_session="+sid)
+	w2 := serveReqCookie(t, in, "GET", "/", "galang_session="+sid)
 	if w2.body != `{"langkah":2}` {
 		t.Fatalf("langkah kedua = %q, want {\"langkah\":2}", w2.body)
 	}

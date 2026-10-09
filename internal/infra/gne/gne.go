@@ -15,7 +15,7 @@ import (
 	"sync"
 	"unsafe"
 
-	"garurda/internal/domain"
+	"galang/internal/domain"
 )
 
 // Peta global ctx → modul: ekspor Go dipanggil melewati frame C, jadi dari

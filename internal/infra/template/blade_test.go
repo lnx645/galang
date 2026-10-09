@@ -115,8 +115,8 @@ func TestInclude(t *testing.T) {
 		"partials/nav.blade": `<nav>{{ $brand }}</nav>`,
 		"utama.blade": `@extends("layouts/app")@section("isi")<p>isi</p>@endsection`,
 	})
-	out := render(t, e, "utama.blade", map[string]interface{}{"brand": "Garurda"})
-	if !strings.Contains(out, "<nav>Garurda</nav>") {
+	out := render(t, e, "utama.blade", map[string]interface{}{"brand": "GaLang"})
+	if !strings.Contains(out, "<nav>GaLang</nav>") {
 		t.Errorf("partial tidak termuat: %q", out)
 	}
 	if !strings.Contains(out, "<p>isi</p>") {

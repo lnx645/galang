@@ -1,6 +1,6 @@
 package interp
 
-// GNE — Garurda Native Extension.
+// GNE — GaLang Native Extension.
 //
 // Fallback resolusi `use`: bila berkas sumber tidak ditemukan (atau path
 // eksplisit berupa pustaka native), interpreter mencari ekstensi C berupa
@@ -8,7 +8,7 @@ package interp
 //
 //	1. <direktori pemanggil>/gne   (proyek — menang untuk pengembangan)
 //	2. setiap entri $GNE_PATH     (pemisah os.PathListSeparator)
-//	3. ~/.garurda/gne             (global)
+//	3. ~/.galang/gne             (global)
 //
 // Urutan resolusi `use` tetap: bawaan (in.Modules) → file .ga → GNE.
 // Tidak ada perubahan parser atau compiler: compileUse sudah terikat ke
@@ -22,15 +22,15 @@ import (
 	"strings"
 	"unsafe"
 
-	"garurda/internal/domain"
-	"garurda/internal/infra/gne"
+	"galang/internal/domain"
+	"galang/internal/infra/gne"
 )
 
 // gneNativeSuffixes adalah ekstensi pustaka native yang dikenali.
 var gneNativeSuffixes = []string{".so", ".dylib", ".dll"}
 
 // gneIsNative melaporkan apakah path menunjuk pustaka native, bukan
-// berkas sumber Garurda.
+// berkas sumber GaLang.
 func gneIsNative(path string) bool {
 	lp := strings.ToLower(path)
 	for _, s := range gneNativeSuffixes {
@@ -111,7 +111,13 @@ func (in *Interp) gneDirs() []string {
 		}
 	}
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		dirs = append(dirs, filepath.Join(home, ".garurda", "gne"))
+		dirs = append(dirs, filepath.Join(home, ".galang", "gne"))
+		// Lokasi lama sebelum rebrand v0.7.0 — dicari bila masih ada
+		// agar ekstensi terpasang lama tidak perlu dipasang ulang.
+		legacy := filepath.Join(home, ".garurda", "gne")
+		if st, statErr := os.Stat(legacy); statErr == nil && st.IsDir() {
+			dirs = append(dirs, legacy)
+		}
 	}
 	return dirs
 }

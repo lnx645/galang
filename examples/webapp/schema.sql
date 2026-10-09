@@ -1,4 +1,4 @@
--- Garurda Web App Database Schema
+-- GaLang Web App Database Schema
 -- Jalankan: gar run examples/webapp/migrate.ga
 
 -- Users table
@@ -83,6 +83,6 @@ INSERT OR IGNORE INTO users (id, name, email, password_hash, created_at) VALUES
 (2, 'Demo User', 'demo@example.com', 'bcrypt_hash_2', CURRENT_TIMESTAMP);
 
 INSERT OR IGNORE INTO posts (id, user_id, title, content, published, published_at, created_at) VALUES
-(1, 1, 'Selamat Datang di Garurda', '# Selamat Datang di Garurda\n\nIni adalah contoh post pertama di aplikasi Garurda Web App.', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
-(2, 1, 'Fitur-fitur Garurda', '# Fitur-fitur Garurda\n\n- HTTP Server cepat\n- Blade Template Engine\n- Async/Await support\n- Database ORM\n- WebSocket and SSE', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(1, 1, 'Selamat Datang di GaLang', '# Selamat Datang di GaLang\n\nIni adalah contoh post pertama di aplikasi GaLang Web App.', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+(2, 1, 'Fitur-fitur GaLang', '# Fitur-fitur GaLang\n\n- HTTP Server cepat\n- Blade Template Engine\n- Async/Await support\n- Database ORM\n- WebSocket and SSE', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
 (3, 2, 'Contoh Post User', '# Contoh Post\n\nIni adalah post dari user demo.', 0, NULL, CURRENT_TIMESTAMP);

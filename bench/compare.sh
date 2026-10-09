@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# compare.sh — mengukur Garurda vs PHP pada program yang identik.
+# compare.sh — mengukur GaLang vs PHP pada program yang identik.
 #
 # Cara yang adil: tiap program dijalankan RUNS kali dan yang dicatat adalah
 # waktu TERCEPAT, karena itu angka yang paling stabil untuk pembanding
@@ -49,7 +49,7 @@ peak_rss_kb() {
 }
 
 printf "%-8s | %-10s | %-10s | %-12s | %-9s\n" \
-  "TESTS" "Garurda" "PHP" "Garurda lebih" "winner"
+  "TESTS" "GaLang" "PHP" "GaLang lebih" "winner"
 printf -- "----------|------------|------------|--------------|-------------\n"
 
 overall_ok=1
@@ -57,10 +57,10 @@ for t in fib loop call; do
   g_ms=$(time_ms "$GAR" run "bench/$t.ga")
   p_ms=$(time_ms "$PHP_BIN" "bench/php/$t.php")
 
-  # ratio = berapa kali lebih cepat Garurda dibanding PHP (>1 = Garurda menang).
+  # ratio = berapa kali lebih cepat GaLang dibanding PHP (>1 = GaLang menang).
   ratio=$(awk -v g="$g_ms" -v p="$p_ms" 'BEGIN{ if (g>0) printf "%.2fx", p/g; else print "n/a" }')
 
-  if [ "$g_ms" -lt "$p_ms" ]; then verdict="Garurda"; else verdict="PHP"; overall_ok=0; fi
+  if [ "$g_ms" -lt "$p_ms" ]; then verdict="GaLang"; else verdict="PHP"; overall_ok=0; fi
 
   printf "%-8s | %-10s | %-10s | %-12s | %-9s\n" \
     "$t" "${g_ms}ms" "${p_ms}ms" "$ratio" "$verdict"
@@ -74,12 +74,12 @@ for t in fib loop call; do
   g_kb=$(peak_rss_kb "$GAR" run "bench/$t.ga")
   p_kb=$(peak_rss_kb "$PHP_BIN" "bench/php/$t.php")
   mratio=$(awk -v g="$g_kb" -v p="$p_kb" 'BEGIN{ if (g>0) printf "%.1f", p/g; else print "n/a" }')
-  printf "  %-6s Garurda %8s KiB   PHP %8s KiB   (PHP butuh %.1fx)\n" "$t" "$g_kb" "$p_kb" "$mratio"
+  printf "  %-6s GaLang %8s KiB   PHP %8s KiB   (PHP butuh %.1fx)\n" "$t" "$g_kb" "$p_kb" "$mratio"
 done
 
 echo
 if [ $overall_ok -eq 1 ]; then
-  echo "HASIL: Garurda menang di semua tes."
+  echo "HASIL: GaLang menang di semua tes."
 else
   echo "HASIL: PHP menang di setidaknya satu tes."
 fi

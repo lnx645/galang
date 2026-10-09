@@ -1,11 +1,11 @@
-// Bahasa — tur dari sintaks Garurda yang sudah berjalan hari ini.
+// Bahasa — tur dari sintaks GaLang yang sudah berjalan hari ini.
 // Jalankan: gar run examples/bahasa.ga
 
 use "strings"
 use "math"
 
 print "== Variabel dan tipe =="
-$nama = "Garurda"          // tipe disimpulkan
+$nama = "GaLang"          // tipe disimpulkan
 $versi = 0.1
 $aktif = true
 $kosong = null
@@ -33,8 +33,8 @@ fn tambah(int $a, int $b) int {
 
 fn kali($x) => $x * 2      // arrow function
 
-print greet("Garurda")
-print greet("Garurda", "Selamat pagi")
+print greet("GaLang")
+print greet("GaLang", "Selamat pagi")
 print tambah(2, 3)
 print kali(21)
 
@@ -110,7 +110,7 @@ print "min/max:  ${min($angka)} / ${max($angka)}"
 print "in:       ${4 in $angka}"
 print "keys:     ${keys($user)}"
 print "merge:    ${merge({a: 1}, {b: 2})}"
-print "strings:  ${strings.upper("garurda")}"
+print "strings:  ${strings.upper("galang")}"
 print "math:     floor=${math.floor(3.7)} round=${math.round(2.5)} pi=${math.pi}"
 print "json:     ${json_encode($user)}"
 print "html:     ${html_escape("<b>aman</b> & <i>kode</i>")}"

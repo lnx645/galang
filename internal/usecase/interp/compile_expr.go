@@ -3,7 +3,7 @@ package interp
 import (
 	"strings"
 
-	"garurda/internal/domain"
+	"galang/internal/domain"
 )
 
 // compileExpr turns an expression into a closure.

@@ -6,14 +6,14 @@
 # merged with lipo and installed to /usr/local/bin/gar. Example (on a
 # macOS runner):
 #   ./packaging/macos/build-pkg.sh 0.6.1 gar-darwin-amd64 gar-darwin-arm64 \
-#     pkg/Garurda-0.6.1-macos.pkg
+#     pkg/GaLang-0.6.1-macos.pkg
 set -euo pipefail
 
 VER=${1:?version required, e.g. 0.6.1}
 AMD64=${2:?amd64 binary required}
 ARM64=${3:?arm64 binary required}
-OUT=${4:-"Garurda-$VER-macos.pkg"}
-IDENT="io.github.lnx645.garurda"
+OUT=${4:-"GaLang-$VER-macos.pkg"}
+IDENT="io.github.lnx645.galang"
 
 for f in "$AMD64" "$ARM64"; do
   if [ ! -f "$f" ]; then

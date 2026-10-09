@@ -1,4 +1,4 @@
-// Package lex turns Garurda source text into a token stream.
+// Package lex turns GaLang source text into a token stream.
 package lex
 
 import (
@@ -7,7 +7,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"garurda/internal/domain"
+	"galang/internal/domain"
 )
 
 // Error is a lexer error with a source position.

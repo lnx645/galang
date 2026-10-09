@@ -26,7 +26,7 @@ const (
 	TypeCallObject TypeTag = "callable-object" // request, response, session, ...
 )
 
-// Value is a Garurda runtime value.
+// Value is a GaLang runtime value.
 type Value interface {
 	Type() TypeTag
 	// String renders the value for print.
@@ -391,7 +391,7 @@ func AsString(v Value) string {
 	return v.String()
 }
 
-// Quote renders a string as a Garurda literal.
+// Quote renders a string as a GaLang literal.
 func Quote(s string) string { return strconv.Quote(s) }
 
 // EscapeHTML escapes the five characters that matter for HTML text and

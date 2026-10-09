@@ -1,4 +1,4 @@
-// Package async provides the async runtime for Garurda.
+// Package async provides the async runtime for GaLang.
 package async
 
 import (

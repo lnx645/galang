@@ -1,4 +1,4 @@
-# Spesifikasi Bahasa Garurda
+# Spesifikasi Bahasa GaLang
 
 Status: **v0.1 — inti bahasa sudah berjalan & teruji**
 Terakhir diperbarui: 2026-10-07
@@ -56,7 +56,7 @@ perubahan harus lewat revisi dokumen ini dulu — bukan diam-diam di kode.
 // komentar baris
 /* komentar blok */
 
-$nama = "Garurda"        // escaped, mendukung ${expr} dan $nama
+$nama = "GaLang"        // escaped, mendukung ${expr} dan $nama
 $teks = `baris literal
 multi baris, tanpa escape`   // backtick = raw, tanpa interpolasi
 $jumlah = 1_000_000      // underscore
@@ -236,19 +236,19 @@ tercepat). Output kedua program diverifikasi sama sebelum dibandingkan.
 
 ### CPU
 
-| Tes | tree-walker (v0.1) | Garurda sekarang | PHP 8.2 | Go native | Garurda vs PHP |
+| Tes | tree-walker (v0.1) | GaLang sekarang | PHP 8.2 | Go native | GaLang vs PHP |
 |---|---|---|---|---|---|
 | `fib(25)` rekursi | 219 ms | **23-28 ms** | 30-36 ms | 8 ms | **menang 1,2-1,4x** |
 | loop 200.001 iterasi | 93 ms | **12-15 ms** | 27-32 ms | 5 ms | **menang 2,1-2,3x** |
 | 100.001 pemanggilan | 29 ms | **6-7 ms** | 27-31 ms | 5 ms | **menang 4,0-4,5x** |
 
 Rentang, bukan satu angka: PHP di mesin ini sangat berfluktuasi (28-45 ms)
-karena startup-nya besar, sedangkan Garurda stabil (23-28 ms) karena startup 4 ms.
-Tiga pengukuran berturut-turut selalu Garurda menang di ketiga tes.
+karena startup-nya besar, sedangkan GaLang stabil (23-28 ms) karena startup 4 ms.
+Tiga pengukuran berturut-turut selalu GaLang menang di ketiga tes.
 
 ### Memori (RSS puncak) dan startup
 
-| Ukuran | Garurda | PHP |
+| Ukuran | GaLang | PHP |
 |---|---|---|
 | RSS saat fib | **4-6 MB** | 19 MB (3-5x lebih besar) |
 | RSS saat loop | **4 MB** | 19 MB (4-5x lebih besar) |

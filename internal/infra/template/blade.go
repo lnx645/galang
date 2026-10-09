@@ -1,4 +1,4 @@
-// Package template menyediakan mesin template Blade untuk Garurda.
+// Package template menyediakan mesin template Blade untuk GaLang.
 //
 // Model render:
 //
@@ -371,7 +371,7 @@ func templateCount(v interface{}) int {
 }
 
 // templateAdd menjumlahkan angka, atau menggabungkan bila ada string
-// (mengikuti perilaku + pada string di bahasa Garurda).
+// (mengikuti perilaku + pada string di bahasa GaLang).
 func templateAdd(args ...interface{}) interface{} {
 	hasStr := false
 	for _, a := range args {

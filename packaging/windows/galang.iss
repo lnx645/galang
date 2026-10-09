@@ -1,21 +1,21 @@
-; garurda.iss — Garurda Windows installer (Inno Setup 6).
+; galang.iss — GaLang Windows installer (Inno Setup 6).
 ;
 ; Used by CI (the "Platform Installers" workflow):
-;   ISCC /DMyAppVersion=<version> garurda.iss
+;   ISCC /DMyAppVersion=<version> galang.iss
 ; with gar.exe (the release binary, extracted from
 ; gar-windows-amd64.zip) placed next to this script.
-; Output: out/Garurda-Setup-<version>.exe.
+; Output: out/GaLang-Setup-<version>.exe.
 ;
 ; The x64compatible architecture set covers Windows x64 AND Windows on
 ; ARM (the amd64 binary runs through Windows x64 emulation — consistent
 ; with the docs because the native extension variant windows-arm64 does
 ; not exist yet).
 
-#define MyAppName "Garurda"
+#define MyAppName "GaLang"
 #ifndef MyAppVersion
   #define MyAppVersion "0.0.0-dev"
 #endif
-#define MyAppPublisher "Garurda Project"
+#define MyAppPublisher "GaLang Project"
 #define MyAppURL "https://github.com/lnx645/galang"
 #define MyAppExeName "gar.exe"
 
@@ -31,7 +31,7 @@ AppUpdatesURL={#MyAppURL}/releases
 DefaultDirName={autopf}\{#MyAppName}
 DisableProgramGroupPage=yes
 OutputDir=out
-OutputBaseFilename=Garurda-Setup-{#MyAppVersion}
+OutputBaseFilename=GaLang-Setup-{#MyAppVersion}
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern

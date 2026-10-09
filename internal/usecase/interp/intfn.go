@@ -3,7 +3,7 @@ package interp
 import (
 	"errors"
 
-	"garurda/internal/domain"
+	"galang/internal/domain"
 )
 
 // This file implements a second, specialised compiler for functions whose

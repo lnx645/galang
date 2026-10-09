@@ -1,4 +1,4 @@
-// Package sse provides Server-Sent Events support for Garurda.
+// Package sse provides Server-Sent Events support for GaLang.
 package sse
 
 import (

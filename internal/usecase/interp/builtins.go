@@ -3,7 +3,7 @@ package interp
 import (
 	"strings"
 
-	"garurda/internal/domain"
+	"galang/internal/domain"
 )
 
 // builtinFn is the Go signature shared by every builtin implementation. `in`

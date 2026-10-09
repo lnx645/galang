@@ -1,14 +1,14 @@
-// Simple HTTP example for Garurda v0.2
+// Simple HTTP example for GaLang v0.2
 // Jalankan: gar run examples/simple_http.ga
 
 use "http"
 
 http.GET("/", fn($req) {
-    return "Hello from Garurda HTTP!"
+    return "Hello from GaLang HTTP!"
 })
 
 http.GET("/about", fn($req) {
-    return "About page - Garurda v0.2"
+    return "About page - GaLang v0.2"
 })
 
 http.GET("/users/{id}", fn($req) {

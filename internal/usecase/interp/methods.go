@@ -4,7 +4,7 @@ import (
 	"math"
 	"strings"
 
-	"garurda/internal/domain"
+	"galang/internal/domain"
 )
 
 // errUnsupportedJSON is returned when a value cannot be serialised to JSON.

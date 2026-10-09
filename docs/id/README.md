@@ -1,16 +1,16 @@
-# Garurda — Dokumentasi
+# GaLang — Dokumentasi
 
-Garurda adalah bahasa pemrograman web yang ditulis dalam **Go**. Runtime webnya
+GaLang adalah bahasa pemrograman web yang ditulis dalam **Go**. Runtime webnya
 lengkap: server HTTP, routing, template Blade, file statis, WebSocket, dan SSE.
 Eksekusinya memakai bytecode VM dengan konvensi pemanggilan unboxed — ringan dan
 cepat, dengan jejak memori (RSS puncak) terukur di bawah JavaScript pada seluruh
 pola benchmark.
 
-```garurda
+```galang
 use "http"
 
 http.GET("/", fn($req) {
-    return {msg: "Halo dari Garurda!"}
+    return {msg: "Halo dari GaLang!"}
 })
 
 http.listen(8869)

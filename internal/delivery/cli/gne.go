@@ -1,6 +1,6 @@
 package cli
 
-// Perintah `gar gne` — pengelola paket ekstensi Garurda Native Extension.
+// Perintah `gar gne` — pengelola paket ekstensi GaLang Native Extension.
 //
 //	pack    — kemas hasil build ext/<nama> jadi zip multi-platform
 //	install — pasang paket (shortcut kanal resmi, URL HTTPS, atau file)
@@ -17,7 +17,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"garurda/internal/usecase/gnepkg"
+	"galang/internal/usecase/gnepkg"
 )
 
 // gneGlobal dipakai oleh `--force` dan `--dir` yang bisa berdiri sendiri
@@ -93,7 +93,8 @@ Contoh:
   gar gne list
   gar gne remove redis
 
-Direktori instalasi default: ~/.garurda/gne (dicari otomatis oleh use "nama")
+Direktori instalasi default: ~/.galang/gne (dicari otomatis oleh use "nama";
+lokasi lama ~/.garurda/gne dari sebelum v0.7.0 tetap dibaca)
 `)
 }
 

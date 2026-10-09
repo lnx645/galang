@@ -9,13 +9,13 @@ import (
 	"sort"
 	"strings"
 
-	"garurda/internal/infra/gne"
-	"garurda/internal/infra/gnepkg"
+	"galang/internal/infra/gne"
+	"galang/internal/infra/gnepkg"
 )
 
 // Options mengatur perilaku Install.
 type Options struct {
-	// Dir adalah direktori instalasi; kosong = ~/.garurda/gne.
+	// Dir adalah direktori instalasi; kosong = ~/.galang/gne.
 	Dir string
 	// Force menimpa instalasi yang ada dan menembus penolakan
 	// non-CGO / platform yang tidak tersedia.
@@ -256,15 +256,40 @@ type Installed struct {
 	Size     int64
 }
 
-// List membaca semua sidecar di direktori instalasi.
+// List membaca semua sidecar di direktori instalasi. dir kosong = semua
+// lokasi instalasi (direktori aktif; lokasi lama ~/.garurda/gne bila
+// masih ada) — nama yang muncul di dua tempat dihitung sekali, versi
+// direktori aktif yang menang.
 func List(dir string) ([]Installed, error) {
-	if dir == "" {
-		d, err := InstallDir()
+	if dir != "" {
+		return listDir(dir)
+	}
+	dirs, err := SearchDirs()
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	var out []Installed
+	for _, d := range dirs {
+		items, err := listDir(d)
 		if err != nil {
 			return nil, err
 		}
-		dir = d
+		for _, it := range items {
+			if seen[it.Name] {
+				continue
+			}
+			seen[it.Name] = true
+			out = append(out, it)
+		}
 	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
+
+// listDir membaca satu direktori instalasi; direktori yang belum ada
+// menghasilkan daftar kosong, bukan galat.
+func listDir(dir string) ([]Installed, error) {
 	ents, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -301,40 +326,69 @@ func List(dir string) ([]Installed, error) {
 		}
 		out = append(out, t)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
 }
 
-// Remove melepas ekstensi beserta sidecar-nya.
+// Remove melepas ekstensi beserta sidecar-nya. dir kosong = cari di
+// semua lokasi instalasi (aktif + lokasi lama) dan hapus dari mana pun
+// ia berada — ekstensi lama bisa dilepas tanpa --dir manual.
 func Remove(dir, name string) (string, error) {
 	if !reName.MatchString(name) {
 		return "", fmt.Errorf("nama %q tidak valid", name)
 	}
 	if dir == "" {
-		d, err := InstallDir()
+		dirs, err := SearchDirs()
 		if err != nil {
 			return "", err
 		}
-		dir = d
+		var targets []string
+		for _, d := range dirs {
+			if _, statErr := os.Stat(filepath.Join(d, name+suffixSidecar)); statErr == nil {
+				targets = append(targets, d)
+			}
+		}
+		if len(targets) == 0 {
+			return "", fmt.Errorf("%s tidak terpasang di %s", name, dirs[0])
+		}
+		var removed []string
+		for _, d := range targets {
+			r, err := removeFiles(d, name)
+			if err != nil {
+				return "", err
+			}
+			removed = append(removed, r...)
+		}
+		return strings.Join(removed, ", "), nil
 	}
 	sidecar := filepath.Join(dir, name+suffixSidecar)
 	if _, err := os.Stat(sidecar); err != nil {
 		return "", fmt.Errorf("%s tidak terpasang di %s", name, dir)
 	}
+	removed, err := removeFiles(dir, name)
+	if err != nil {
+		return "", err
+	}
+	return strings.Join(removed, ", "), nil
+}
+
+// removeFiles menghapus binari native lalu sidecar name dari dir.
+// Sidecar wajib sudah diverifikasi ada oleh pemanggil.
+func removeFiles(dir, name string) ([]string, error) {
 	var removed []string
 	// Hapus semua varian ekstensi native (binari platform terpasang).
 	for _, ext := range []string{".so", ".dylib", ".dll"} {
 		p := filepath.Join(dir, name+ext)
 		if _, err := os.Stat(p); err == nil {
 			if err := os.Remove(p); err != nil {
-				return "", fmt.Errorf("hapus %s: %v", p, err)
+				return nil, fmt.Errorf("hapus %s: %v", p, err)
 			}
 			removed = append(removed, p)
 		}
 	}
+	sidecar := filepath.Join(dir, name+suffixSidecar)
 	if err := os.Remove(sidecar); err != nil {
-		return "", fmt.Errorf("hapus sidecar: %v", err)
+		return nil, fmt.Errorf("hapus sidecar: %v", err)
 	}
 	removed = append(removed, sidecar)
-	return strings.Join(removed, ", "), nil
+	return removed, nil
 }

@@ -4,11 +4,11 @@ Modul `http` menyediakan server HTTP nyata (berbasis `net/http` Go): routing,
 path parameter, request/response, template Blade, file statis, SSE, dan
 WebSocket.
 
-```garurda
+```galang
 use "http"
 
 http.GET("/", fn($req) {
-    return "Halo dari Garurda!"
+    return "Halo dari GaLang!"
 })
 
 http.listen(8869)
@@ -33,7 +33,7 @@ http.listen(8869)
 
 ## Routing
 
-```garurda
+```galang
 use "http"
 
 http.GET("/", fn($req) {
@@ -80,7 +80,7 @@ http.listen(8869)
 HTTP (GET/POST/PUT/DELETE) sebelum handler. Middleware menerima dua
 argumen: `($req, $next)`.
 
-```garurda
+```galang
 use "http"
 
 // Catat setiap request
@@ -124,7 +124,7 @@ Contoh nyata ada di [`examples/webapp`](https://github.com/lnx645/galang/tree/ma
 
 ## Request Object
 
-```garurda
+```galang
 http.GET("/cari/{id}", fn($req) {
     $req.method          // "GET", "POST", "PUT", "DELETE"
     $req.path            // "/cari/42"
@@ -142,7 +142,7 @@ http.GET("/cari/{id}", fn($req) {
 
 Untuk body JSON, decode dulu:
 
-```garurda
+```galang
 http.POST("/api", fn($req) {
     $data = json_decode($req.body)
     return {diterima: $data}
@@ -159,7 +159,7 @@ Cukup `return` nilai — runtime menentukan status, type, dan body:
 | `array` / `object` | `200 OK`, `application/json` (JSON otomatis) |
 | object terstruktur dengan `body` | lihat di bawah |
 
-```garurda
+```galang
 // String → HTML 200
 return "Halo"
 
@@ -185,7 +185,7 @@ Kunci structured response:
 
 ## json() — kontrol penuh
 
-```garurda
+```galang
 return http.json({id: 1}, 201)
 return http.json({msg: "ok"}, 200, {"X-Custom": "value"})
 ```
@@ -200,7 +200,7 @@ Content-Type otomatis `application/json; charset=utf-8`.
 Error yang dilempar di dalam handler dijawab server dengan **status sesuai
 error** dan body JSON `{code, message, status}`:
 
-```garurda
+```galang
 http.GET("/users/{id}", fn($req) {
     $user = cari_user($req.params.id)
     if $user == null {
@@ -242,7 +242,7 @@ Bug internal (pembagian nol, index di luar batas, variabel undefined)
 menghasilkan **500** dengan body polos. **Detail error dan stack trace hanya
 dicatat ke stderr server** — tidak pernah bocor ke klien.
 
-```garurda
+```galang
 http.GET("/rusak", fn($req) {
     return 1 / 0        // → 500, body polos; detail di stderr
 })
@@ -250,7 +250,7 @@ http.GET("/rusak", fn($req) {
 
 ## Cookie
 
-```garurda
+```galang
 // Set cookie lewat structured response
 return {type: "text/html", body: "OK", cookies: {session: "abc"}}
 
@@ -263,11 +263,11 @@ http.GET("/cek", fn($req) {
 
 ## Sesi (Session)
 
-Sesi mengikat data per pengunjung lewat cookie `garurda_session`
+Sesi mengikat data per pengunjung lewat cookie `galang_session`
 (HttpOnly, SameSite=Lax, Path=/) dan objek `$req.session` yang disimpan
 di memori.
 
-```garurda
+```galang
 http.GET("/keranjang", fn($req) {
     $s = http.session($req)   // objek yang sama dengan $req.session
     $n = 0
@@ -304,7 +304,7 @@ Contoh nyata: `GET /api/kunjungan` di
 
 ## Static Files
 
-```garurda
+```galang
 http.static("/public/", "public")
 // GET /public/style.css → menyajikan file public/style.css
 ```
@@ -313,7 +313,7 @@ URL prefix `/public/` dipetakan ke direktori `public/` di working directory.
 
 ## Template Blade
 
-```garurda
+```galang
 http.views("views")            // direktori template
 
 http.GET("/", fn($req) {
@@ -383,7 +383,7 @@ perbandingan (`>`, `>=`, `==`, `!=`, `<`, `<=`), logika (`&&`, `||`, `!`,
 
 ## SSE (Server-Sent Events)
 
-```garurda
+```galang
 http.stream("/events", fn($req) {
     return "ping"      // setiap return = satu event
 })
@@ -393,7 +393,7 @@ Klien: `new EventSource("/events")`.
 
 ## WebSocket
 
-```garurda
+```galang
 http.ws("/chat", fn($msg) {
     return "echo: " + $msg    // nilai return dikirim balik ke klien
 })
@@ -401,7 +401,7 @@ http.ws("/chat", fn($msg) {
 
 ## Contoh Lengkap
 
-```garurda
+```galang
 use "http"
 use "strings"
 

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"garurda/internal/domain"
-	"garurda/internal/infra/dbsql"
+	"galang/internal/domain"
+	"galang/internal/infra/dbsql"
 )
 
 // ---- type checking ----
@@ -603,7 +603,7 @@ func timeFromValue(in *Interp, v domain.Value, p domain.Position) (time.Time, er
 
 // ---- json bridge ----
 
-// jsonEncode serialises a Garurda value to JSON.
+// jsonEncode serialises a GaLang value to JSON.
 func jsonEncode(v domain.Value) (string, error) {
 	var b strings.Builder
 	if err := writeJSON(&b, v); err != nil {
@@ -677,7 +677,7 @@ func writeJSON(b *strings.Builder, v domain.Value) error {
 	return nil
 }
 
-// jsonDecode parses JSON into Garurda values.
+// jsonDecode parses JSON into GaLang values.
 func jsonDecode(s string) (domain.Value, error) {
 	dec := json.NewDecoder(strings.NewReader(s))
 	dec.UseNumber()

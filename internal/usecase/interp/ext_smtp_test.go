@@ -3,7 +3,7 @@
 package interp
 
 // Uji ekstensi resmi ext/smtp: mengompilasi sumber asli (bukan salinan),
-// menjalankannya lewat `use "smtp"` pada program Garurda nyata, dengan
+// menjalankannya lewat `use "smtp"` pada program GaLang nyata, dengan
 // server SMTP tiruan in-process. Suite tetap hermetic — tanpa MTA nyata.
 
 import (
@@ -310,7 +310,7 @@ print($s.auth("pengguna@contoh.id", "rahasia123"))
 print($s.from("kirim@contoh.id"))
 print($s.to("satu@contoh.id"))
 print($s.to("dua@contoh.id"))
-print($s.subject("Halo dari Garurda"))
+print($s.subject("Halo dari GaLang"))
 print($s.send("Baris pertama\n.dengan titik\nakhir ☕"))
 print($s.from("kirim@contoh.id"))
 print($s.to("kosong@contoh.id"))
@@ -353,7 +353,7 @@ try {
 	for _, w := range []string{
 		"From: kirim@contoh.id\r\n",
 		"To: satu@contoh.id, dua@contoh.id\r\n",
-		"Subject: Halo dari Garurda\r\n",
+		"Subject: Halo dari GaLang\r\n",
 		"Content-Type: text/plain; charset=utf-8\r\n",
 		"Content-Transfer-Encoding: 8bit\r\n",
 		"MIME-Version: 1.0\r\n",
@@ -405,7 +405,7 @@ try {
 			bnd = rest[:j]
 		}
 	}
-	if !strings.HasPrefix(bnd, "garurda=") {
+	if !strings.HasPrefix(bnd, "galang=") {
 		t.Fatalf("boundary aneh: %q", bnd)
 	}
 	if n := strings.Count(b3, "--"+bnd+"\r\n"); n != 2 {

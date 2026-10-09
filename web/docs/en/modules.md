@@ -3,7 +3,7 @@
 Modules are enabled with `use "nama"` and then accessed through the
 `nama.fungsi()` namespace.
 
-```garurda
+```galang
 use "strings"
 strings.upper("hello")    // HELLO
 ```
@@ -21,7 +21,7 @@ bottom of this page.
 
 12 functions for string manipulation.
 
-```garurda
+```galang
 use "strings"
 
 strings.upper("hello")            // HELLO
@@ -61,7 +61,7 @@ Many of the functions above are also available as direct **methods**:
 
 ## math
 
-```garurda
+```galang
 use "math"
 
 math.floor(3.7)     // 3
@@ -97,7 +97,7 @@ Note: `math.random()` **does not exist yet**. Global numeric functions such as
 
 ## time
 
-```garurda
+```galang
 use "time"
 
 time.now_ms()                     // 1728000000000 — unix ms
@@ -115,7 +115,7 @@ time.format(time.now_ms(), "2006-01-02")   // "2026-10-08"
 
 ## file
 
-```garurda
+```galang
 use "file"
 
 file.read("data.txt")                 // file contents as a string
@@ -134,7 +134,7 @@ file.write("output.txt", "isi")       // write/overwrite a file
 A real connection to **SQLite**, **MySQL**, or **PostgreSQL** via
 `database/sql` — the driver is chosen from the DSN prefix.
 
-```garurda
+```galang
 use "database"
 
 $db = database.connect("sqlite:///app.db")   // or "sqlite:app.db"
@@ -181,7 +181,7 @@ A complete HTTP server: routing, request/response, Blade templates, static
 files, SSE, and WebSocket. See the full documentation in
 [Web Runtime](web.md).
 
-```garurda
+```galang
 use "http"
 
 http.GET("/", fn($req) { return "Halo" })
@@ -199,7 +199,7 @@ ship inside `gar` — install it from the release assets first:
 gar gne install redis          # latest release; pin with gar gne install redis@0.6.0
 ```
 
-```garurda
+```galang
 use "redis"
 
 $r = redis.connect("127.0.0.1", 6379)         // default timeout 5000 ms
@@ -268,7 +268,7 @@ gar gne install smtp
 One mail = one transaction: `from()` → `to()` (repeatable) →
 `send()`/`send_html()`:
 
-```garurda
+```galang
 use "smtp"
 
 $s = smtp.connect("smtp.internal", 25)   // default timeout 5000 ms
@@ -276,7 +276,7 @@ $s.auth("pengirim@contoh.id", "rahasia") // optional — AUTH LOGIN
 $s.from("pengirim@contoh.id")
 $s.to("satu@contoh.id")
 $s.to("dua@contoh.id")                   // more recipients, repeat as needed
-$s.subject("Halo dari Garurda")
+$s.subject("Halo dari GaLang")
 $s.send("First line.\nSecond line.")
 $s.close()                               // true; called again → false
 ```
@@ -284,7 +284,7 @@ $s.close()                               // true; called again → false
 HTML mail is sent as multipart/alternative (text + HTML versions) so
 older clients can still read it:
 
-```garurda
+```galang
 $s.from("pengirim@contoh.id")
 $s.to("penerima@contoh.id")
 $s.subject("News")

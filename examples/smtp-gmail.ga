@@ -38,10 +38,10 @@ $s = smtp.connect("127.0.0.1", 2526, 20000)
 $s.auth("dadanhidyt@gmail.com", "<APP_PASSWORD>")
 $s.from("dadanhidyt@gmail.com")
 $s.to("dadanhidyt@gmail.com")
-$s.subject("Tes ekstensi smtp Garurda")
+$s.subject("Tes ekstensi smtp GaLang")
 print("kirim : " + str($s.send(
   "Halo!\n\n" +
-  "Surel tes dari ekstensi resmi smtp Garurda.\n" +
+  "Surel tes dari ekstensi resmi smtp GaLang.\n" +
   "Alur: use \"smtp\" → stunnel → smtp.gmail.com:465 (TLS).\n"
 )))
 print("tutup : " + str($s.close()))

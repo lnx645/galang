@@ -1,13 +1,13 @@
 # Native Extensions — GNE
 
-**GNE** (Garurda Native Extension) lets you write extensions in **C** — a
+**GNE** (GaLang Native Extension) lets you write extensions in **C** — a
 Redis client, a database driver, crypto, SMTP, anything — without touching
-the Garurda compiler or runtime. The runtime stays Go; extensions are
+the GaLang compiler or runtime. The runtime stays Go; extensions are
 loaded when `use` reaches them via `dlopen` (Linux/macOS) or `LoadLibrary`
 (Windows).
 
 > Working examples: the
-> [garurda-gne-examples](https://github.com/lnx645/garurda-gne-examples)
+> [galang-gne-examples](https://github.com/lnx645/galang-gne-examples)
 > repo (`hello` and `kv`). Requirements: `gar` **0.5.0+** and gcc.
 
 ## Official extensions — `redis` and `smtp`
@@ -25,7 +25,7 @@ gar gne remove redis           # remove binary + sidecar
 
 Other specs: `gar gne install ./redis.zip` (local file) or
 `gar gne install https://.../redis.zip` (HTTPS required). Packages install
-flat into `~/.garurda/gne`, so `use "redis"` / `use "smtp"` finds them
+flat into `~/.galang/gne`, so `use "redis"` / `use "smtp"` finds them
 right away — command details in
 [CLI — Extension Manager](cli.md#extension-manager--gar-gne), full API in
 [Standard Modules](modules.md).
@@ -45,7 +45,7 @@ table):
 
 The full sources are in the repo — compile as in the
 [Building](#building) table below and drop the result into `./gne/` or
-`~/.garurda/gne` (even without `pack`, `use` finds it). To package it as
+`~/.galang/gne` (even without `pack`, `use` finds it). To package it as
 a proper zip:
 
 ```bash
@@ -96,7 +96,7 @@ gcc -shared -fPIC -I <dir of gne.h> -o hello.so hello.c   # macOS: -dynamiclib
 mkdir -p gne && mv hello.so gne/
 ```
 
-```garurda
+```galang
 use "hello"
 print(hello.add(2, 3))    // 5
 ```
@@ -111,7 +111,9 @@ searches for a native extension in order:
    (wins during project development);
 2. each `$GNE_PATH` entry (`:` on Linux/macOS, `;` on Windows; relative
    entries resolve against the issuing file's directory);
-3. `~/.garurda/gne` — per-user global.
+3. `~/.galang/gne` — per-user global. The old `~/.garurda/gne` location
+   (pre-v0.7.0) is still read so existing extensions keep working; new
+   installs always write to `~/.galang/gne`.
 
 For `use "redis"` it looks for `redis.so` (Linux), `redis.dylib` or
 `redis.so` (macOS), `redis.dll` (Windows). Explicit paths work too:
@@ -159,8 +161,8 @@ accessors never throw; the extension decides whether to reject or not.
 
 ## Values and handle rules
 
-Garurda values are referenced through `gne_handle` (`uint64_t`). **0 is
-never valid**; Garurda's `null` has its own handle from `api->null()`.
+GaLang values are referenced through `gne_handle` (`uint64_t`). **0 is
+never valid**; GaLang's `null` has its own handle from `api->null()`.
 Handles are never reused — `release()` down to rc=0 deletes the entry, so
 a stale handle yields a clear `get_*` failure instead of a silent leak.
 
@@ -187,9 +189,9 @@ return 1;
 ```
 
 - `throw` followed by a **non-zero return** → a catchable error in
-  Garurda carrying `e.code`, `e.status`, `e.message`:
+  GaLang carrying `e.code`, `e.status`, `e.message`:
 
-```garurda
+```galang
 try {
     redis.connect($dsn)
 } catch e {
@@ -221,12 +223,12 @@ api->define_method(ctx, counter, "next", 0, 0, next, counter);
 api->obj_set(ctx, api->module(ctx), "counter", counter);
 ```
 
-```garurda
+```galang
 $c = hello.counter
 print($c.next())
 ```
 
-## Calling back into Garurda
+## Calling back into GaLang
 
 ```c
 gne_handle out;
@@ -237,7 +239,7 @@ if (api->call(ctx, argv[0], 1, &argv[1], &out) != 0)
 
 `call` accepts anything callable (closure, builtin). If the result is a
 promise (async function), pass it straight through — do not wait; the
-Garurda runtime handles it.
+GaLang runtime handles it.
 
 ## Per-module state
 
@@ -268,9 +270,9 @@ per-instance state. See `kv/kv.c` in the examples repo for the full pattern
 | macOS | `gcc -dynamiclib -Wall -Wextra -I <gne.h> -o x.dylib x.c` |
 | Windows | `x86_64-w64-mingw32-gcc -shared -Wall -Wextra -I <gne.h> -o x.dll x.c` (MSYS2: `pacman -S mingw-w64-x86_64-gcc`) |
 
-`gne.h` ships in **every release zip** and in the Garurda repo
+`gne.h` ships in **every release zip** and in the GaLang repo
 (`include/gne.h`). After building, drop the result into `./gne/` or
-`~/.garurda/gne`.
+`~/.galang/gne`.
 
 ## Limitations to know
 
@@ -293,11 +295,11 @@ risky as installing an npm package with native addons or running a
 binary from a repository. GNE does not change that arithmetic, but it
 narrows the path:
 
-- only three explicit locations (`./gne`, `$GNE_PATH`, `~/.garurda/gne`)
+- only three explicit locations (`./gne`, `$GNE_PATH`, `~/.galang/gne`)
   — no `PATH`/`LD_LIBRARY_PATH` scanning that could be hijacked;
 - `dlopen` with `RTLD_NOW | RTLD_LOCAL` (symbols do not leak globally);
 - the ABI is checked at init; handles are never reused;
-- extension authors do not need — and cannot — touch the Garurda
+- extension authors do not need — and cannot — touch the GaLang
   compiler or runtime.
 
 Only install extensions from sources you trust.
@@ -319,11 +321,11 @@ full GNE.
 
 ## Examples
 
-The [garurda-gne-examples](https://github.com/lnx645/garurda-gne-examples)
+The [galang-gne-examples](https://github.com/lnx645/galang-gne-examples)
 repo:
 
 - **`hello/`** — functions, object methods, catchable `throw`, callbacks
-  into Garurda closures, state across calls;
+  into GaLang closures, state across calls;
 - **`kv/`** — key-value with per-module state plus file persistence (the
   same pattern as Database/Redis extensions);
 - `build.sh` / `build.ps1` — Linux/macOS/Windows builds.

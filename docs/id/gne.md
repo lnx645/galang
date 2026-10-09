@@ -1,12 +1,12 @@
 # Ekstensi Native — GNE
 
-**GNE** (Garurda Native Extension) memungkinkan Anda menulis ekstensi dalam
+**GNE** (GaLang Native Extension) memungkinkan Anda menulis ekstensi dalam
 **C** — klien Redis, driver database, kripto, SMTP, apa pun — tanpa menyentuh
-compiler maupun runtime Garurda. Runtime tetap Go; ekstensi dimuat saat `use`
+compiler maupun runtime GaLang. Runtime tetap Go; ekstensi dimuat saat `use`
 memanggilnya lewat `dlopen` (Linux/macOS) atau `LoadLibrary` (Windows).
 
 > Contoh yang sudah jalan: repo
-> [garurda-gne-examples](https://github.com/lnx645/garurda-gne-examples)
+> [galang-gne-examples](https://github.com/lnx645/galang-gne-examples)
 > (`hello` dan `kv`). Syarat: `gar` **0.5.0+** dan gcc.
 
 ## Ekstensi resmi — `redis` dan `smtp`
@@ -24,7 +24,7 @@ gar gne remove redis           # lepas binari + sidecar
 
 Spesifikasi lain: `gar gne install ./redis.zip` (berkas lokal) atau
 `gar gne install https://.../redis.zip` (wajib HTTPS). Pemasangan FLAT ke
-`~/.garurda/gne` sehingga langsung dicari `use "redis"` / `use "smtp"` —
+`~/.galang/gne` sehingga langsung dicari `use "redis"` / `use "smtp"` —
 detail perintah di [CLI — Pengelola Ekstensi](cli.md#pengelola-ekstensi--gar-gne),
 API lengkap di [Modul Standar](modules.md).
 
@@ -40,7 +40,7 @@ Keduanya butuh binari `gar` dengan CGO (tabel [Platform](#platform)):
 ### Bangun sendiri
 
 Sumber lengkap ada di repo — kompilasi biasa sesuai tabel [Membangun](#membangun)
-di bawah, lalu taruh hasilnya di `./gne/` atau `~/.garurda/gne` (tanpa
+di bawah, lalu taruh hasilnya di `./gne/` atau `~/.galang/gne` (tanpa
 `pack` pun `use` langsung menemukannya). Untuk mengemasnya jadi paket:
 
 ```bash
@@ -91,7 +91,7 @@ gcc -shared -fPIC -I <arah gne.h> -o hello.so hello.c   # macOS: -dynamiclib
 mkdir -p gne && mv hello.so gne/
 ```
 
-```garurda
+```galang
 use "hello"
 print(hello.add(2, 3))    // 5
 ```
@@ -106,7 +106,9 @@ interpreter mencari ekstensi native pada urutan:
    (menang untuk pengembangan proyek);
 2. setiap entri `$GNE_PATH` (dipisah `:` di Linux/macOS, `;` di Windows;
    path relatif diselesaikan terhadap direktori pemanggil);
-3. `~/.garurda/gne` — global per pengguna.
+3. `~/.galang/gne` — global per pengguna. Lokasi lama `~/.garurda/gne`
+   (sebelum v0.7.0) masih ikut dibaca agar ekstensi lama tetap
+   ditemukan; pemasangan baru selalu menulis ke `~/.galang/gne`.
 
 Untuk `use "redis"`, yang dicari: `redis.so` (Linux), `redis.dylib` atau
 `redis.so` (macOS), `redis.dll` (Windows). Path eksplisit juga boleh:
@@ -153,8 +155,8 @@ tidak. `len` berlaku untuk array dan string (string: panjang **byte**).
 
 ## Nilai dan aturan handle
 
-Nilai Garurda disebut lewat `gne_handle` (`uint64_t`). **0 selalu tidak
-valid**; `null` Garurda punya handle sendiri dari `api->null()`.
+Nilai GaLang disebut lewat `gne_handle` (`uint64_t`). **0 selalu tidak
+valid**; `null` GaLang punya handle sendiri dari `api->null()`.
 Handle tidak pernah dipakai ulang — `release()` sampai rc=0 menghapus
 entri, sehingga handle basi menghasilkan kegagalan `get_*` yang jelas,
 bukan kebocoran diam-diam.
@@ -182,10 +184,10 @@ api->throw(ctx, "redis_error", 502, "koneksi ditolak");
 return 1;
 ```
 
-- `throw` lalu **return non-zero** → galat catchable di Garurda dengan
+- `throw` lalu **return non-zero** → galat catchable di GaLang dengan
   `e.code`, `e.status`, `e.message`:
 
-```garurda
+```galang
 try {
     redis.connect($dsn)
 } catch e {
@@ -218,12 +220,12 @@ api->define_method(ctx, counter, "next", 0, 0, next, counter);
 api->obj_set(ctx, api->module(ctx), "counter", counter);
 ```
 
-```garurda
+```galang
 $c = hello.counter
 print($c.next())
 ```
 
-## Panggilan balik ke Garurda
+## Panggilan balik ke GaLang
 
 ```c
 gne_handle out;
@@ -234,7 +236,7 @@ if (api->call(ctx, argv[0], 1, &argv[1], &out) != 0)
 
 `call` menerima nilai apa pun yang bisa dipanggil (closure, builtin). Bila
 hasilnya promise (fungsi async), kirimkan apa adanya — jangan ditunggu;
-runtime Garurda yang menanganinya.
+runtime GaLang yang menanganinya.
 
 ## State per-modul
 
@@ -265,9 +267,9 @@ pola lengkap (key-value + simpan/muat berkas).
 | macOS | `gcc -dynamiclib -Wall -Wextra -I <gne.h> -o x.dylib x.c` |
 | Windows | `x86_64-w64-mingw32-gcc -shared -Wall -Wextra -I <gne.h> -o x.dll x.c` (MSYS2: `pacman -S mingw-w64-x86_64-gcc`) |
 
-Header `gne.h` ada di **setiap zip rilis** dan di repo Garurda
+Header `gne.h` ada di **setiap zip rilis** dan di repo GaLang
 (`include/gne.h`). Setelah build, taruh hasilnya di `./gne/` atau
-`~/.garurda/gne`.
+`~/.galang/gne`.
 
 ## Batasan yang perlu diketahui
 
@@ -291,12 +293,12 @@ riskannya dengan meng-install paket npm ber-addon native atau menjalankan
 binary dari repository. GNE tidak mengubah perhitungan itu, tetapi
 membatasi jalurnya:
 
-- hanya tiga lokasi eksplisit (`./gne`, `$GNE_PATH`, `~/.garurda/gne`) —
+- hanya tiga lokasi eksplisit (`./gne`, `$GNE_PATH`, `~/.galang/gne`) —
   tidak ada pemindaian `PATH`/`LD_LIBRARY_PATH` yang bisa dibajak;
 - `dlopen` dengan `RTLD_NOW | RTLD_LOCAL` (simbol tidak bocor ke global);
 - ABI dicek saat init; handle tidak pernah dipakai ulang;
 - penulis ekstensi tidak perlu — dan tidak bisa — menyentuh compiler
-  atau runtime Garurda.
+  atau runtime GaLang.
 
 Pasang ekstensi hanya dari sumber yang Anda percaya.
 
@@ -317,10 +319,10 @@ mendapatkan GNE penuh.
 
 ## Contoh
 
-Repo [garurda-gne-examples](https://github.com/lnx645/garurda-gne-examples):
+Repo [galang-gne-examples](https://github.com/lnx645/galang-gne-examples):
 
 - **`hello/`** — fungsi, method objek, `throw` catchable, callback ke
-  closure Garurda, state antar panggilan;
+  closure GaLang, state antar panggilan;
 - **`kv/`** — key-value dengan state per-modul + persistensi berkas
   (pola yang sama untuk ekstensi Database/Redis);
 - `build.sh` / `build.ps1` — build Linux/macOS/Windows.

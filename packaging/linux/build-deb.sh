@@ -4,7 +4,7 @@
 # Build a Debian/Ubuntu .deb package from a gar binary. The arch uses
 # Debian names (amd64 / arm64). Example:
 #   ./packaging/linux/build-deb.sh 0.6.1 amd64 gar-linux-amd64 dist
-# Output: garurda_<version>_<arch>.deb containing /usr/bin/gar.
+# Output: galang_<version>_<arch>.deb containing /usr/bin/gar.
 set -euo pipefail
 
 VER=${1:?version required, e.g. 0.6.1}
@@ -27,13 +27,13 @@ trap 'rm -rf "$STAGE"' EXIT
 # mktemp creates the stage root with mode 700 — without this, that mode
 # would be recorded inside the package as "drwx------ ./".
 chmod 755 "$STAGE"
-PKG="garurda_${VER}_${ARCH}"
+PKG="galang_${VER}_${ARCH}"
 
-mkdir -p "$STAGE/DEBIAN" "$STAGE/usr/bin" "$STAGE/usr/share/doc/garurda"
+mkdir -p "$STAGE/DEBIAN" "$STAGE/usr/bin" "$STAGE/usr/share/doc/galang"
 install -m 755 "$BIN" "$STAGE/usr/bin/gar"
 
 cat > "$STAGE/DEBIAN/control" <<EOF
-Package: garurda
+Package: galang
 Version: $VER
 Section: interpreters
 Priority: optional
@@ -41,8 +41,8 @@ Architecture: $ARCH
 Maintainer: Dadan <dadanhidyt@gmail.com>
 Homepage: https://github.com/lnx645/galang
 Installed-Size: $(du -ks "$STAGE/usr" | cut -f1)
-Description: Galang language interpreter (gar)
- Garurda is a library and interpreter for the Galang language:
+Description: GaLang language interpreter (gar)
+ GaLang (Garuda Language) is a programming language for the web:
  single-file scripts, a web runtime, a native extension installer
  (GNE), and the official redis and smtp extensions.
 EOF

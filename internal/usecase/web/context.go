@@ -1,4 +1,4 @@
-// Package web provides the web framework types for Garurda.
+// Package web provides the web framework types for GaLang.
 package web
 
 import (

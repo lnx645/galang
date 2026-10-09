@@ -4,7 +4,7 @@
 
 function kerja(int $n): int {
     $acc = 0;
-    // `for $i in 0..$n` in Garurda is inclusive on both ends, so the
+    // `for $i in 0..$n` in GaLang is inclusive on both ends, so the
     // equivalent PHP loop uses `<=`.
     for ($i = 0; $i <= $n; $i++) {
         $acc = $acc + $i;

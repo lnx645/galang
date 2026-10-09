@@ -5,7 +5,7 @@ import (
 	"math"
 	"strings"
 
-	"garurda/internal/domain"
+	"galang/internal/domain"
 )
 
 // Value operations shared by the compiled code. These stay interpreter-aware

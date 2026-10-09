@@ -2,7 +2,7 @@
 
 Modul diaktifkan dengan `use "nama"` lalu diakses lewat namespace `nama.fungsi()`.
 
-```garurda
+```galang
 use "strings"
 strings.upper("hello")    // HELLO
 ```
@@ -19,7 +19,7 @@ sama, tetapi binarnya dipasang lewat `gar gne install <nama>` (butuh `gar`
 
 12 fungsi untuk manipulasi string.
 
-```garurda
+```galang
 use "strings"
 
 strings.upper("hello")            // HELLO
@@ -59,7 +59,7 @@ Banyak fungsi di atas juga tersedia sebagai **method** langsung:
 
 ## math
 
-```garurda
+```galang
 use "math"
 
 math.floor(3.7)     // 3
@@ -95,7 +95,7 @@ Catatan: `math.random()` **belum ada**. Fungsi angka global seperti `abs`,
 
 ## time
 
-```garurda
+```galang
 use "time"
 
 time.now_ms()                     // 1728000000000 — unix ms
@@ -113,7 +113,7 @@ time.format(time.now_ms(), "2006-01-02")   // "2026-10-08"
 
 ## file
 
-```garurda
+```galang
 use "file"
 
 file.read("data.txt")                 // isi file sebagai string
@@ -132,7 +132,7 @@ file.write("output.txt", "isi")       // tulis/timpa file
 Koneksi nyata ke **SQLite**, **MySQL**, atau **PostgreSQL** lewat
 `database/sql` — driver dipilih dari prefiks DSN.
 
-```garurda
+```galang
 use "database"
 
 $db = database.connect("sqlite:///app.db")   // atau "sqlite:app.db"
@@ -180,7 +180,7 @@ Server HTTP lengkap: routing, request/response, template Blade, file statis,
 SSE, dan WebSocket. Lihat dokumentasi lengkap di
 [Web Runtime](web.md).
 
-```garurda
+```galang
 use "http"
 
 http.GET("/", fn($req) { return "Halo" })
@@ -198,7 +198,7 @@ dalam `gar` — pasang dulu dari aset rilis:
 gar gne install redis          # rilis terbaru; versi: gar gne install redis@0.6.0
 ```
 
-```garurda
+```galang
 use "redis"
 
 $r = redis.connect("127.0.0.1", 6379)         // timeout bawaan 5000 ms
@@ -267,7 +267,7 @@ gar gne install smtp
 Satu surel = satu transaksi `from()` → `to()` (boleh berulang) →
 `send()`/`send_html()`:
 
-```garurda
+```galang
 use "smtp"
 
 $s = smtp.connect("smtp.internal", 25)   // timeout bawaan 5000 ms
@@ -275,7 +275,7 @@ $s.auth("pengirim@contoh.id", "rahasia") // opsional — AUTH LOGIN
 $s.from("pengirim@contoh.id")
 $s.to("satu@contoh.id")
 $s.to("dua@contoh.id")                   // penerima lain, ulangi sesuai perlu
-$s.subject("Halo dari Garurda")
+$s.subject("Halo dari GaLang")
 $s.send("Baris pertama.\nBaris kedua.")
 $s.close()                               // true; dipanggil lagi → false
 ```
@@ -283,7 +283,7 @@ $s.close()                               // true; dipanggil lagi → false
 Surel HTML dikirim multipart/alternative (versi teks + HTML) —
 penerima klien lama tetap bisa membaca:
 
-```garurda
+```galang
 $s.from("pengirim@contoh.id")
 $s.to("penerima@contoh.id")
 $s.subject("Kabar")

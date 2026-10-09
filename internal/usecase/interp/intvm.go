@@ -1,7 +1,7 @@
 package interp
 
 import (
-	"garurda/internal/domain"
+	"galang/internal/domain"
 )
 
 // A bytecode virtual machine for integer functions.

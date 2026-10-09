@@ -1,4 +1,4 @@
-// Package interp evaluates Garurda programs.
+// Package interp evaluates GaLang programs.
 //
 // The engine compiles the syntax tree into Go closures and runs those, so the
 // hot loop contains no node-type dispatch, no name lookups, and (for integers)
@@ -13,10 +13,10 @@ import (
 	"strings"
 	"sync"
 
-	"garurda/internal/domain"
-	"garurda/internal/infra/gne"
-	"garurda/internal/infra/template"
-	"garurda/internal/usecase/parse"
+	"galang/internal/domain"
+	"galang/internal/infra/gne"
+	"galang/internal/infra/template"
+	"galang/internal/usecase/parse"
 )
 
 // Error is a runtime error carrying the source position where it happened.
@@ -39,7 +39,7 @@ func (e *Error) Error() string {
 	var b strings.Builder
 	file := e.File
 	if file == "" {
-		file = "<garurda>"
+		file = "<galang>"
 	}
 	fmt.Fprintf(&b, "%s:%d:%d: %s", file, e.Pos.Line, e.Pos.Col, e.Msg)
 	if len(e.Stack) > 0 {
@@ -62,7 +62,7 @@ func (e *Error) Frame(f StackFrame) *Error {
 // Thrown reports whether the error came from throw and is catchable.
 func (e *Error) Thrown() bool { return e.Value != nil }
 
-// Interp evaluates Garurda programs.
+// Interp evaluates GaLang programs.
 type Interp struct {
 	// Out receives print/println output.
 	Out io.Writer
@@ -102,7 +102,7 @@ type Interp struct {
 	maxDepth int
 	// Modules are the builtin module factories, e.g. "strings" and "math".
 	Modules map[string]func() *domain.Obj
-	// webRoutes holds HTTP routes registered from Garurda code via the
+	// webRoutes holds HTTP routes registered from GaLang code via the
 	// http module. It is nil until the http module is first loaded.
 	webRoutes *webRoutes
 	// sessions is the in-memory store behind http.session / $req.session.
@@ -125,7 +125,7 @@ type Interp struct {
 	// module scope receives these values as its prelude, so modules
 	// see print/len/... but never the caller's globals.
 	builtinVals map[string]domain.Value
-	// gne memuat ekstensi native (Garurda Native Extension); dibuat
+	// gne memuat ekstensi native (GaLang Native Extension); dibuat
 	// lazily pada `use` pertama yang jatuh ke jalur GNE.
 	gne *gne.Registry
 	// engine renders Blade templates for the http module.

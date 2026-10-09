@@ -73,7 +73,7 @@ func TestDatabaseGalatTertangkap(t *testing.T) {
 	src := `
 use "database"
 try {
-    database.connect("postgres://127.0.0.1:1/garurda-tidak-ada")
+    database.connect("postgres://127.0.0.1:1/galang-tidak-ada")
     print("sambung-ok")
 } catch e {
     print(e.code)

@@ -1,6 +1,6 @@
-# CLI Garurda
+# CLI GaLang
 
-Interpreter Garurda adalah binary `gar`.
+Interpreter GaLang adalah binary `gar`.
 
 ## Perintah
 
@@ -29,7 +29,7 @@ global `args` (array of string):
 gar run tugas.ga -- alice 30 --port 9000
 ```
 
-```garurda
+```galang
 // tugas.ga
 print(args)            // [alice, 30, --port, 9000]
 print(args[0])         // alice
@@ -109,7 +109,7 @@ gar gne remove smtp
 
 ### Keamanan pemasangan
 
-- Pemasangan **FLAT** ke `~/.garurda/gne/` — `<nama>.so`/`.dylib`/`.dll` plus
+- Pemasangan **FLAT** ke `~/.galang/gne/` — `<nama>.so`/`.dylib`/`.dll` plus
   sidecar `<nama>.gne.json`, persis direktori yang dicari `use "nama"`.
   `--dir D` mengalihkan tujuan (arahkan `GNE_PATH` ke situ bila di luar
   default).
@@ -144,7 +144,7 @@ Contoh unit untuk production:
 
 ```ini
 [Unit]
-Description=Garurda App
+Description=GaLang App
 After=network.target
 
 [Service]

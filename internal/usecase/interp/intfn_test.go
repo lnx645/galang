@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"garurda/internal/domain"
-	"garurda/internal/usecase/parse"
+	"galang/internal/domain"
+	"galang/internal/usecase/parse"
 )
 
 var _ = strings.TrimSpace

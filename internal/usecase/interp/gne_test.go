@@ -168,7 +168,7 @@ func bangunEkstensi(t *testing.T, dir, name, src string) string {
 	return out
 }
 
-// TestGNEPenuh menguji seluruh permukaan ABI lewat program Garurda nyata.
+// TestGNEPenuh menguji seluruh permukaan ABI lewat program GaLang nyata.
 func TestGNEPenuh(t *testing.T) {
 	dir := t.TempDir()
 	bangunEkstensi(t, filepath.Join(dir, "gne"), "hello", fixtureGNE)
@@ -284,6 +284,26 @@ print(hello.add(4, 5))
 	}
 	if strings.TrimSpace(out) != "9" {
 		t.Errorf("output = %q, want 9", out)
+	}
+}
+
+// TestGNELokasiLama — lokasi lama ~/.garurda/gne (sebelum rebrand
+// v0.7.0) tetap dicari `use` bila direktori aktif belum berisi ekstensi.
+func TestGNELokasiLama(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := t.TempDir()
+	lama := filepath.Join(home, ".garurda", "gne")
+	bangunEkstensi(t, lama, "hello", fixtureGNE)
+	out, err := jalankanMain(t, dir, `
+use "hello"
+print(hello.add(6, 7))
+`)
+	if err != nil {
+		t.Fatalf("eval: %v", err)
+	}
+	if strings.TrimSpace(out) != "13" {
+		t.Errorf("output = %q, want 13 (ekstensi lokasi lama harus termuat)", out)
 	}
 }
 

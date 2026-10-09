@@ -1,4 +1,4 @@
-# Build, test, dan release untuk Garurda.
+# Build, test, dan release untuk GaLang.
 #
 # Target:
 #   make build       - Build untuk platform saat ini
@@ -14,7 +14,7 @@
 GO      ?= go
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS := -s -w -X main.version=$(VERSION)
-BUILD_DIR := build
+BUILD_DIR := bin
 DIST_DIR := dist
 
 # Platform targets — binari rilis. macOS (darwin) sengaja TIDAK ada di
@@ -163,7 +163,7 @@ dev:
 
 # Release notes template
 notes:
-	@echo "## Garurda $(VERSION)"
+	@echo "## GaLang $(VERSION)"
 	@echo ""
 	@echo "### Changes"
 	@echo "- "

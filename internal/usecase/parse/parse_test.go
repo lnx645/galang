@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"garurda/internal/domain"
-	"garurda/internal/usecase/lex"
+	"galang/internal/domain"
+	"galang/internal/usecase/lex"
 )
 
 // tokenSummary renders a token stream compactly for assertions.

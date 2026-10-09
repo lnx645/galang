@@ -1,4 +1,4 @@
-// Contoh web Garurda — JavaScript polos, tanpa library.
+// Contoh web GaLang — JavaScript polos, tanpa library.
 // (CSS menangani menu burger; fokus JS di sini: interaksi API + jam.)
 
 (function () {

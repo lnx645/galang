@@ -1,4 +1,4 @@
-# Garurda Language Reference
+# GaLang Language Reference
 
 Complete reference. All examples on this page have been run and verified on
 the v0.2 runtime.
@@ -7,7 +7,7 @@ the v0.2 runtime.
 
 ### Comments
 
-```garurda
+```galang
 // single-line comment
 /* block comment
    can span multiple lines */
@@ -18,7 +18,7 @@ the v0.2 runtime.
 A newline ends a statement; `;` is optional. A line is continued automatically
 when the last character is a binary operator or `(`, `[`, `{`.
 
-```garurda
+```galang
 $total = 1 +
          2          // continues on the next line — OK
 ```
@@ -27,9 +27,9 @@ $total = 1 +
 
 The `$` sigil is **optional**. `nama` and `$nama` refer to the same variable:
 
-```garurda
-$nama = "Garurda"
-print(nama)   // Garurda
+```galang
+$nama = "GaLang"
+print(nama)   // GaLang
 ```
 
 `$` must be used when a variable name matches a keyword, e.g. `$string`.
@@ -43,7 +43,7 @@ Object property names follow the same rules.
 
 ### Numbers
 
-```garurda
+```galang
 $desimal   = 42          // int
 $heksa     = 0xFF        // hexadecimal int (255)
 $underscore = 1_000_000   // thousands separator (1000000)
@@ -53,8 +53,8 @@ $scientific = 1.0e3      // float, 1000.0
 
 ### Strings
 
-```garurda
-$nama = "Garurda"
+```galang
+$nama = "GaLang"
 print("Halo, $nama!")        // identifier interpolation
 print("Halo, ${nama}!")      // expression interpolation: ${...}
 print("harga 5$")            // $ without an identifier = safe literal
@@ -69,14 +69,14 @@ multi baris, tanpa escape dan tanpa interpolasi`
 
 ### Booleans and null
 
-```garurda
+```galang
 $aktif = true
 $kosong = null
 ```
 
 ### Array
 
-```garurda
+```galang
 $kosong  = []
 $angka   = [1, 2, 3]
 $campur  = ["a", 1, true, null, [2]]
@@ -85,7 +85,7 @@ $rentang = [1..5]        // [1, 2, 3, 4, 5]
 
 ### Object
 
-```garurda
+```galang
 $kosong = {}
 $user   = {nama: "Dadan", umur: 25, "kunci spasi": true}
 ```
@@ -113,7 +113,7 @@ Check types with `is_int`, `is_float`, `is_string`, `is_bool`, `is_array`,
 
 ### No coercion
 
-```garurda
+```galang
 print("1" == 1)     // false — string "1" ≠ int 1
 print(1 == 1.0)     // true  — int and float compare numerically
 // "n=" + 5         // ERROR: cannot add int to string (use str(int))
@@ -123,7 +123,7 @@ Conversion must be explicit: `int("42")`, `str(7)`, `float("1.5")`, `bool(0)`.
 
 ## 4. Variables and Typed Declarations
 
-```garurda
+```galang
 $x = 10                    // automatic type inference
 int $n = 72                // typed declaration: must be int
 ?string $s = null          // may be null
@@ -153,7 +153,7 @@ hot path. Assigning a mismatched value produces a clear runtime error.
 
 ### Logic — two syntaxes, both valid
 
-```garurda
+```galang
 if $a and $b { }      if $a && $b { }
 if $a or  $b { }      if $a || $b { }
 if not $a { }         if !$a { }
@@ -161,7 +161,7 @@ if not $a { }         if !$a { }
 
 ### Membership with `in`
 
-```garurda
+```galang
 print(1 in [1, 2])          // true   — array
 print("a" in {a: 1})        // true   — object (checks the key)
 print("bc" in "abcd")       // true   — substring
@@ -170,7 +170,7 @@ print(9 in [1, 2])          // false
 
 ### Ranges `..` (inclusive on both ends)
 
-```garurda
+```galang
 for $i in 1..5 { }      // 1 2 3 4 5
 for $i in 0..10..5 { }  // 0 5 10  — with a step
 for $i in 3..1 { }      // 3 2 1    — descending, direction follows the sign
@@ -178,7 +178,7 @@ for $i in 3..1 { }      // 3 2 1    — descending, direction follows the sign
 
 ### Ternary
 
-```garurda
+```galang
 $status = $n > 0 ? "ok" : "gagal"
 ```
 
@@ -204,7 +204,7 @@ There are no compound assignment operators (`+=`, `-=`) and no null-coalescing
 
 ## 6. Branching
 
-```garurda
+```galang
 if $n > 0 {
     print("positif")
 } else if $n < 0 {
@@ -223,7 +223,7 @@ Curly braces `{ }` are mandatory — there is no brace-less form.
 
 ### while
 
-```garurda
+```galang
 $i = 0
 while $i < 3 {
     $i = $i + 1
@@ -233,7 +233,7 @@ print($i)   // 3
 
 ### for-in over arrays
 
-```garurda
+```galang
 for $item in [1, 2, 3] {
     print($item)
 }
@@ -241,7 +241,7 @@ for $item in [1, 2, 3] {
 
 ### for-in over objects (key + value)
 
-```garurda
+```galang
 for $k, $v in {a: 1, b: 2} {
     print("$k -> $v")     // a -> 1 ; b -> 2
 }
@@ -249,7 +249,7 @@ for $k, $v in {a: 1, b: 2} {
 
 ### for over strings (per character)
 
-```garurda
+```galang
 for $ch in "abc" {
     print($ch)            // a b c
 }
@@ -257,7 +257,7 @@ for $ch in "abc" {
 
 ### Ranges, steps, and direction
 
-```garurda
+```galang
 for $i in 1..10 { }        // inclusive: 1..10
 for $i in 0..10..5 { }     // step 5: 0 5 10
 for $i in 3..1 { }         // descending: 3 2 1
@@ -265,7 +265,7 @@ for $i in 3..1 { }         // descending: 3 2 1
 
 ### break / continue
 
-```garurda
+```galang
 for $i in 1..10 {
     if $i == 5 { continue }
     if $i > 7 { break }
@@ -275,7 +275,7 @@ for $i in 1..10 {
 
 ## 8. Arrays
 
-```garurda
+```galang
 $a = [1, 2, 3, 4, 5]
 print($a[0])      // 0-based index → 1
 print($a[-1])     // negative index (from the end) → 5
@@ -287,7 +287,7 @@ print($a.joined)  // "1,2,3,4,5"
 
 ### Slicing
 
-```garurda
+```galang
 $a = [1, 2, 3, 4, 5]
 print($a[1:3])    // [2, 3]        — from:to, to exclusive
 print($a[2:])     // [3, 4, 5]     — from index 2
@@ -303,7 +303,7 @@ fallback value, use `at($a, $i, $default)`.
 
 ### Array comprehension
 
-```garurda
+```galang
 $kali2 = [$n * 2 for $n in [1, 2, 3]]        // [2, 4, 6]
 $besar = [$n for $n in [1, 12, 3] if $n > 10] // [12]
 ```
@@ -315,7 +315,7 @@ $besar = [$n for $n in [1, 12, 3] if $n > 10] // [12]
 - **Built-in functions return a new copy**: `append`, `push`, `pop`,
   `sort`, `reverse`, `slice`, `map`, `filter` do not modify the original array.
 
-```garurda
+```galang
 $a = [1, 2]
 $b = $a
 $b = append($b, 3)     // $a stays [1, 2]  — append returns a new array
@@ -326,7 +326,7 @@ $d[0] = 99             // $c[0] also becomes 99 — assignment = shared referenc
 
 ## 9. Objects
 
-```garurda
+```galang
 $user = {nama: "Dadan", umur: 25}
 print($user.nama)       // dot access
 print($user["umur"])    // bracket access
@@ -342,7 +342,7 @@ Objects are also **reference** values on assignment (just like arrays).
 
 ## 10. Functions
 
-```garurda
+```galang
 fn tambah(int $a, int $b) int {
     return $a + $b
 }
@@ -361,14 +361,14 @@ print(greet("Dadan", "Selamat")) // Selamat, Dadan!
 
 ### Arrow functions (single expression)
 
-```garurda
+```galang
 fn kali($x) => $x * 2
 print(kali(21))    // 42
 ```
 
 ### First-class functions & closures
 
-```garurda
+```galang
 $f = fn($a, $b) { return $a + $b }
 print($f(2, 3))    // 5
 
@@ -390,7 +390,7 @@ message.
 
 ## 11. Error Handling
 
-```garurda
+```galang
 try {
     $u = null
     if $u == null { throw not_found("user tidak ada") }
@@ -401,7 +401,7 @@ try {
 
 ### Error constructors
 
-```garurda
+```galang
 throw error("kegagalan umum")     // status 500
 throw bad_request("input salah")  // 400
 throw unauthorized("belum login") // 401
@@ -425,7 +425,7 @@ Every error value has these fields:
 To tell error kinds apart, use `e.status` (e.g. `e.status == 404`) or
 `e.is($code)`, which compares `e.code`:
 
-```garurda
+```galang
 try {
     throw not_found("x")
 } catch e {
@@ -442,7 +442,7 @@ try {
 - **Cannot** be caught — they halt the program: internal interpreter errors
   such as undefined variables, out-of-bounds indexes, and division by zero.
 
-```garurda
+```galang
 try { $x = undefined_var } catch e { print("tangkap") }
 // → the program stops with a stack trace; catch is NOT executed
 ```
@@ -453,7 +453,7 @@ The `finally` block **always** executes: when the try succeeds, when the catch
 handles an error, and when the error is rethrown. This is the place to clean up
 resources.
 
-```garurda
+```galang
 try {
     $data = file.read("config.json")
 } catch $e {
@@ -465,7 +465,7 @@ try {
 
 `finally` without `catch` is also valid:
 
-```garurda
+```galang
 try {
     $r = risky()
 } finally {
@@ -479,7 +479,7 @@ throw $r   // the error is rethrown after finally runs
 A function declared `async` **returns a promise** when it is called, rather
 than the result itself.
 
-```garurda
+```galang
 async fn ambil_user($id) {
     return {"id": $id, "nama": "Budi"}
 }
@@ -497,7 +497,7 @@ print($u.nama)               // Budi
 - A promise can be stored first, awaited later, and **awaited repeatedly**
   (the task still runs only once):
 
-```garurda
+```galang
 $p = ambil_user(9)
 print(type($p))             // "promise"
 $hasil = await $p           // the work happens here
@@ -506,7 +506,7 @@ print(is_promise($p))       // true
 
 ### `gather` — resolve many promises at once
 
-```garurda
+```galang
 async fn a() { return 1 }
 async fn b() { return 2 }
 
@@ -519,7 +519,7 @@ any of the promises is thrown immediately.
 
 ### `spawn` — background tasks (fire-and-forget)
 
-```garurda
+```galang
 fn catat($pesan) { print("log: " + $pesan) }
 
 spawn(catat, "user login")  // scheduled, not run here
@@ -537,7 +537,7 @@ with built-in async I/O.
 
 Two forms are supported:
 
-```garurda
+```galang
 print("nilai:", $x)      // call style
 print "nilai:", $x       // statement style
 println("selesai")       // one line
@@ -547,7 +547,7 @@ println "a", "b"         // statement
 
 ## 14. Modules
 
-```garurda
+```galang
 use "strings"
 use "math"
 use "time"
@@ -564,7 +564,7 @@ Details: [Standard Library](modules.md).
 issues the `use`. The file becomes a namespace holding all of its
 top-level `fn`s:
 
-```garurda
+```galang
 // db.ga — same directory as the main program
 $koneksi = database.connect("sqlite:app.db")   // private: not exported
 
@@ -573,7 +573,7 @@ fn ambil_user($id) {
 }
 ```
 
-```garurda
+```galang
 // main.ga
 use "db"              // looks for db.ga next to main.ga
 use "lib/util.ga"     // relative path; the bound namespace: util
@@ -598,11 +598,11 @@ Rules:
 ### Native extensions (GNE)
 
 Besides `.ga` files, `use` can also load **native C extensions** (GNE —
-Garurda Native Extension) without changing the parser or the compiler.
+GaLang Native Extension) without changing the parser or the compiler.
 When no source file is found, the search order is `./gne` → `$GNE_PATH`
-→ `~/.garurda/gne`:
+→ `~/.galang/gne`:
 
-```garurda
+```galang
 use "redis"         // looks for redis.so / .dylib / .dll
 use "lib/foo.so"    // explicit paths are fine too
 ```
@@ -610,7 +610,7 @@ use "lib/foo.so"    // explicit paths are fine too
 The resolution order remains **builtin → `.ga` file → GNE**. The full
 guide to writing C extensions is at
 [Native Extensions — GNE](gne.md); working examples live in the
-[garurda-gne-examples](https://github.com/lnx645/garurda-gne-examples)
+[galang-gne-examples](https://github.com/lnx645/galang-gne-examples)
 repo.
 
 ## 15. Not Yet Available

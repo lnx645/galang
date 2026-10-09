@@ -9,7 +9,7 @@
  *   $s.from("kirim@example.id")                    // MAIL FROM
  *   $s.to("satu@example.id")                       // RCPT TO (boleh berulang)
  *   $s.to("dua@example.id")
- *   $s.subject("Halo dari Garurda")
+ *   $s.subject("Halo dari GaLang")
  *   $s.send("Halo.\nBaris.")                       // DATA text/plain
  *   $s.send_html("Halo", "<p>Halo <b>dunia</b></p>") // multipart/alternative
  *   $s.close()
@@ -1467,7 +1467,7 @@ static int m_send_html(gne_ctx *ctx, int argc, const gne_handle *argv, gne_handl
 				suf[0] = 0;
 			else
 				snprintf(suf, sizeof suf, "-%d", tries);
-			snprintf(bnd, sizeof bnd, "garurda=%lld=%u%s",
+			snprintf(bnd, sizeof bnd, "galang=%lld=%u%s",
 				 (long long)time(NULL), ++s->seq, suf);
 			if (!has_substr(text, tlen, bnd) && !has_substr(html, hlen, bnd))
 				break;

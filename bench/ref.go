@@ -1,5 +1,5 @@
 // ref.go — referensi native Go untuk program yang sama.
-// Dipakai sebagai patokan: Garurda tidak mungkin menyamai ini pada beban CPU,
+// Dipakai sebagai patokan: GaLang tidak mungkin menyamai ini pada beban CPU,
 // tapi angkanya penting untuk konteks.
 package main
 

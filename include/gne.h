@@ -1,9 +1,9 @@
-/* gne.h — ABI Garurda Native Extension (GNE) versi 1.
+/* gne.h — ABI GaLang Native Extension (GNE) versi 1.
  *
  * Kontrak singkat untuk penulis ekstensi:
  *
- *   1. Nilai Garurda disebut lewat handle (uint64_t). 0 SELALU tidak valid;
- *      null Garurda punya handle sendiri (api->null()).
+ *   1. Nilai GaLang disebut lewat handle (uint64_t). 0 SELALU tidak valid;
+ *      null GaLang punya handle sendiri (api->null()).
  *   2. Semua fungsi host hanya boleh dipanggil dari satu goroutine yang
  *      memanggil ekstensi; ctx hanya berlaku selama satu panggilan —
  *      JANGAN disimpan atau dikirim ke thread lain.
@@ -33,7 +33,7 @@
  * Cara membangun:
  *   gcc -shared -fPIC -I<path ke gne.h> -o redis.so redis.c
  *   (macOS: -dynamiclib; Windows mingw: -shared)
- *   Taruh hasilnya di ./gne/ atau ~/.garurda/gne, lalu: use "redis".
+ *   Taruh hasilnya di ./gne/ atau ~/.galang/gne, lalu: use "redis".
  */
 #ifndef GNE_H
 #define GNE_H
@@ -84,13 +84,13 @@ enum {
 	GNE_ERROR
 };
 
-/* Fungsi native yang didaftarkan ke Garurda.
+/* Fungsi native yang didaftarkan ke GaLang.
  * Untuk method (define_method), argv[0] adalah self; min/max tidak
  * menghitung self. Return 0 dengan *ret terisi = sukses. */
 typedef int (*gne_cfunc)(gne_ctx *ctx, int argc, const gne_handle *argv,
 			 gne_handle *ret);
 
-/* Tabel API host — diisi oleh runtime Garurda, dipanggil selama hidup
+/* Tabel API host — diisi oleh runtime GaLang, dipanggil selama hidup
  * proses. Ekstensi menyimpan pointer ini di variabel statis pada
  * gne_module_init(). Semua fungsi butuh ctx dari call berjalan. */
 typedef struct gne_host_api {

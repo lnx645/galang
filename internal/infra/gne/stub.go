@@ -5,7 +5,7 @@ package gne
 import (
 	"unsafe"
 
-	"garurda/internal/domain"
+	"galang/internal/domain"
 )
 
 // ErrNoCGO dikembalikan oleh Load pada build tanpa CGO.

@@ -10,11 +10,11 @@ import (
 	"encoding/hex"
 	"sync"
 
-	"garurda/internal/domain"
+	"galang/internal/domain"
 )
 
 // sessionCookieName adalah cookie pembawa id sesi.
-const sessionCookieName = "garurda_session"
+const sessionCookieName = "galang_session"
 
 // sessionStore menyimpan objek sesi dalam memori, dikunci id sesi.
 type sessionStore struct {

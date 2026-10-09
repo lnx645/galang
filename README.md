@@ -1,11 +1,11 @@
-# Garurda
+# GaLang (Garuda Language)
 
 Bahasa pemrograman interpreted untuk web, dengan ekstensi `.ga`, ditulis di atas
 interpreter Go. Identifier, komentar, dan pesan error memakai bahasa Inggris.
 
 ```ga
 // examples/hello.ga
-print "Halo dari Garurda!"
+print "Halo dari GaLang!"
 
 $nama = "Dunia"
 print "Halo, ${nama}!"
@@ -13,7 +13,7 @@ print "Halo, ${nama}!"
 
 ```console
 $ make build && ./bin/gar run examples/hello.ga
-Halo dari Garurda!
+Halo dari GaLang!
 Halo, Dunia!
 ```
 
@@ -37,9 +37,9 @@ Halo, Dunia!
 - Modul: `use "strings"` memuat pustaka bawaan; `use "db.ga"` memuat file
   `.ga` lokal menjadi namespace (dieksekusi sekali)
 - **Ekstensi native C (GNE)**: `use "redis"` memuat `redis.so`/`.dylib`/`.dll`
-  dari `./gne` → `$GNE_PATH` → `~/.garurda/gne` — menulis ekstensi dalam C
+  dari `./gne` → `$GNE_PATH` → `~/.galang/gne` — menulis ekstensi dalam C
   tanpa menyentuh compiler/runtime ([panduan GNE](docs/id/gne.md),
-  [contoh](https://github.com/lnx645/garurda-gne-examples))
+  [contoh](https://github.com/lnx645/galang-gne-examples))
 - **Ekstensi resmi `redis` & `smtp`** dipasang dari aset rilis lewat
   `gar gne install redis` / `gar gne install smtp` (pasang, daftar, lepas;
   juga URL HTTPS atau berkas zip) — API-nya ada di
@@ -91,16 +91,16 @@ dirinya sendiri.
 Diukur head-to-head dengan PHP 8.2 pada program identik (`./bench/compare.sh`,
 9 run, ambil tercepat):
 
-| Tes | Garurda | PHP 8.2 | Go native | Pemenang |
+| Tes | GaLang | PHP 8.2 | Go native | Pemenang |
 |---|---|---|---|---|
-| rekursi `fib(25)` | **23-28 ms** | 30-36 ms | 8 ms | **Garurda (1,2-1,4x)** |
-| loop 200.001 iterasi | **12-15 ms** | 27-32 ms | 5 ms | **Garurda (2,1-2,3x)** |
-| 100.001 pemanggilan fungsi | **6-7 ms** | 27-31 ms | 5 ms | **Garurda (4,0-4,5x)** |
-| memori (RSS) | **4-6 MB** | 19 MB | — | **Garurda (3-5x)** |
-| startup proses kosong | **4 ms** | 24-45 ms | — | **Garurda (6-10x)** |
+| rekursi `fib(25)` | **23-28 ms** | 30-36 ms | 8 ms | **GaLang (1,2-1,4x)** |
+| loop 200.001 iterasi | **12-15 ms** | 27-32 ms | 5 ms | **GaLang (2,1-2,3x)** |
+| 100.001 pemanggilan fungsi | **6-7 ms** | 27-31 ms | 5 ms | **GaLang (4,0-4,5x)** |
+| memori (RSS) | **4-6 MB** | 19 MB | — | **GaLang (3-5x)** |
+| startup proses kosong | **4 ms** | 24-45 ms | — | **GaLang (6-10x)** |
 
-Garurda menang di ketiga tes CPU pada setiap pengukuran. Angkanya berupa
-rentang karena PHP di mesin ini berfluktuasi besar (28-45 ms) sedangkan Garurda
+GaLang menang di ketiga tes CPU pada setiap pengukuran. Angkanya berupa
+rentang karena PHP di mesin ini berfluktuasi besar (28-45 ms) sedangkan GaLang
 stabil (23-28 ms). Margin `fib` paling tipis karena itu tes yang paling banyak
 memanggil fungsi.
 

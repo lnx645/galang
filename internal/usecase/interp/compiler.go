@@ -3,7 +3,7 @@ package interp
 import (
 	"strings"
 
-	"garurda/internal/domain"
+	"galang/internal/domain"
 )
 
 // The compiler walks the syntax tree once and produces closures. Scope

@@ -1,7 +1,7 @@
 package interp
 
 import (
-	"garurda/internal/domain"
+	"galang/internal/domain"
 )
 
 // SetProgramArgs exposes command line arguments to the program as the global

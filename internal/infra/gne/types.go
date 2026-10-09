@@ -1,16 +1,16 @@
-// Package gne memuat ekstensi native Garurda (Garurda Native Extension):
+// Package gne memuat ekstensi native GaLang (GaLang Native Extension):
 // berkas .so/.dylib/.dll yang mengekspor gne_module_init sesuai include/gne.h.
 //
 // Pembagian tanggung jawab: paket ini murni mekanik C-ABI (dlopen, tabel
 // handle, jembatan panggilan). Semantik bahasa (membuat Builtin, galat
-// catchable, memanggil closure Garurda) disuntikkan lewat Hooks dari sisi
+// catchable, memanggil closure GaLang) disuntikkan lewat Hooks dari sisi
 // interpreter, sehingga arah import tetap domain → usecase → infra.
 package gne
 
 import (
 	"unsafe"
 
-	"garurda/internal/domain"
+	"galang/internal/domain"
 )
 
 // ABI adalah versi ABI GNE yang didukung build ini. Nilainya WAJIB sama
@@ -29,7 +29,7 @@ type Hooks struct {
 	MakeError func(code string, status int, msg string, pos domain.Position) error
 	// MakeBug membangun galat internal engine (errf, tidak catchable).
 	MakeBug func(msg string, pos domain.Position) error
-	// CallValue memanggil nilai Garurda (callback dari C).
+	// CallValue memanggil nilai GaLang (callback dari C).
 	CallValue func(fn domain.Value, args []domain.Value, pos domain.Position) (domain.Value, error)
 	// DescribeError memecah error pemanggilan balik menjadi code/status/msg.
 	DescribeError func(err error) (code string, status int, msg string)

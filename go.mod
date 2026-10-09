@@ -1,4 +1,4 @@
-module garurda
+module galang
 
 go 1.19
 

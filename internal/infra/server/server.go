@@ -1,4 +1,4 @@
-// Package server provides the HTTP server for Garurda web applications.
+// Package server provides the HTTP server for GaLang web applications.
 package server
 
 import (
@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"garurda/internal/usecase/web"
+	"galang/internal/usecase/web"
 )
 
 // HandlerFunc is the function signature for route handlers.

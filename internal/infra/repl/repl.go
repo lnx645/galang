@@ -1,4 +1,4 @@
-// Package repl implements the interactive Garurda shell.
+// Package repl implements the interactive GaLang shell.
 package repl
 
 import (
@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	"garurda/internal/usecase/interp"
+	"galang/internal/usecase/interp"
 )
 
 // REPL runs an interactive session.
@@ -25,7 +25,7 @@ func New(in *interp.Interp, r io.Reader, w io.Writer) *REPL {
 
 // Run loops until EOF or an explicit `exit`.
 func (r *REPL) Run() error {
-	fmt.Fprintln(r.w, "Garurda REPL — ketik .exit untuk keluar, .help untuk bantuan")
+	fmt.Fprintln(r.w, "GaLang REPL — ketik .exit untuk keluar, .help untuk bantuan")
 	for {
 		fmt.Fprint(r.w, "gar> ")
 		line, err := r.r.ReadString('\n')
@@ -81,7 +81,7 @@ func (r *REPL) help() {
   .exit            keluar dari REPL
 
 Contoh:
-  $nama = "Garurda"
+  $nama = "GaLang"
   print "Halo ${nama}"
   fn greet(x) => "Halo, ${x}"
   print greet("dunia")

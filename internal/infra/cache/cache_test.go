@@ -6,14 +6,14 @@ import (
 	"path/filepath"
 	"testing"
 
-	"garurda/internal/usecase/interp"
+	"galang/internal/usecase/interp"
 )
 
 func TestCache(t *testing.T) {
 	// Use a discard writer for test output
 	discard := io.Discard
 
-	dir, err := os.MkdirTemp("", "garurda-cache-test")
+	dir, err := os.MkdirTemp("", "galang-cache-test")
 	if err != nil {
 		t.Fatal(err)
 	}

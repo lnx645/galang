@@ -1,4 +1,4 @@
-# Sintaks Bahasa Garurda
+# Sintaks Bahasa GaLang
 
 Referensi lengkap. Semua contoh di halaman ini sudah dijalankan dan diverifikasi
 pada runtime v0.2.
@@ -7,7 +7,7 @@ pada runtime v0.2.
 
 ### Komentar
 
-```garurda
+```galang
 // komentar satu baris
 /* komentar blok
    bisa multi baris */
@@ -18,7 +18,7 @@ pada runtime v0.2.
 Newline mengakhiri statement; `;` opsional. Baris otomatis dilanjutkan bila
 karakter terakhir adalah operator biner atau `(`, `[`, `{`.
 
-```garurda
+```galang
 $total = 1 +
          2          // diteruskan ke baris berikutnya — OK
 ```
@@ -27,9 +27,9 @@ $total = 1 +
 
 Sigil `$` **opsional**. `nama` dan `$nama` menunjuk ke variabel yang sama:
 
-```garurda
-$nama = "Garurda"
-print(nama)   // Garurda
+```galang
+$nama = "GaLang"
+print(nama)   // GaLang
 ```
 
 `$` wajib dipakai bila nama variabel sama dengan kata kunci, mis. `$string`.
@@ -43,7 +43,7 @@ Nama properti object juga mengikuti aturan ini.
 
 ### Angka
 
-```garurda
+```galang
 $desimal   = 42          // int
 $heksa     = 0xFF        // int heksadesimal (255)
 $underscore = 1_000_000   // pemisah ribuan (1000000)
@@ -53,8 +53,8 @@ $scientific = 1.0e3      // float, 1000.0
 
 ### String
 
-```garurda
-$nama = "Garurda"
+```galang
+$nama = "GaLang"
 print("Halo, $nama!")        // interpolasi identifer
 print("Halo, ${nama}!")      // interpolasi ekspresi: ${...}
 print("harga 5$")            // $ tanpa identifer = literal aman
@@ -69,14 +69,14 @@ multi baris, tanpa escape dan tanpa interpolasi`
 
 ### Boolean dan null
 
-```garurda
+```galang
 $aktif = true
 $kosong = null
 ```
 
 ### Array
 
-```garurda
+```galang
 $kosong  = []
 $angka   = [1, 2, 3]
 $campur  = ["a", 1, true, null, [2]]
@@ -85,7 +85,7 @@ $rentang = [1..5]        // [1, 2, 3, 4, 5]
 
 ### Object
 
-```garurda
+```galang
 $kosong = {}
 $user   = {nama: "Dadan", umur: 25, "kunci spasi": true}
 ```
@@ -113,7 +113,7 @@ Cek tipe dengan `is_int`, `is_float`, `is_string`, `is_bool`, `is_array`,
 
 ### Tanpa coerciion
 
-```garurda
+```galang
 print("1" == 1)     // false — string "1" ≠ int 1
 print(1 == 1.0)     // true  — int dan float dibanding numerik
 // "n=" + 5         // ERROR: cannot add int to string (use str(int))
@@ -123,7 +123,7 @@ Konversi harus eksplisit: `int("42")`, `str(7)`, `float("1.5")`, `bool(0)`.
 
 ## 4. Variabel dan Deklarasi Bertipe
 
-```garurda
+```galang
 $x = 10                    // inferensi tipe otomatis
 int $n = 72                // deklarasi bertipe: wajib int
 ?string $s = null          // boleh null
@@ -153,7 +153,7 @@ Mencocokkan nilai yang salah menghasilkan error runtime yang jelas.
 
 ### Logika — dua sintaks, keduanya valid
 
-```garurda
+```galang
 if $a and $b { }      if $a && $b { }
 if $a or  $b { }      if $a || $b { }
 if not $a { }         if !$a { }
@@ -161,7 +161,7 @@ if not $a { }         if !$a { }
 
 ### Keanggotaan `in`
 
-```garurda
+```galang
 print(1 in [1, 2])          // true   — array
 print("a" in {a: 1})        // true   — object (cek kunci)
 print("bc" in "abcd")       // true   — substring
@@ -170,7 +170,7 @@ print(9 in [1, 2])          // false
 
 ### Rentang `..` (inklusif kedua sisi)
 
-```garurda
+```galang
 for $i in 1..5 { }      // 1 2 3 4 5
 for $i in 0..10..5 { }  // 0 5 10  — dengan langkah
 for $i in 3..1 { }      // 3 2 1    — turun, arah mengikuti tanda
@@ -178,7 +178,7 @@ for $i in 3..1 { }      // 3 2 1    — turun, arah mengikuti tanda
 
 ### Ternary
 
-```garurda
+```galang
 $status = $n > 0 ? "ok" : "gagal"
 ```
 
@@ -203,7 +203,7 @@ Belum ada operator compound (`+=`, `-=`) dan null-coalescing (`??`).
 
 ## 6. Percabangan
 
-```garurda
+```galang
 if $n > 0 {
     print("positif")
 } else if $n < 0 {
@@ -222,7 +222,7 @@ Kurung kurawal `{ }` wajib — tidak ada bentuk tanpa kurawal.
 
 ### while
 
-```garurda
+```galang
 $i = 0
 while $i < 3 {
     $i = $i + 1
@@ -232,7 +232,7 @@ print($i)   // 3
 
 ### for-in array
 
-```garurda
+```galang
 for $item in [1, 2, 3] {
     print($item)
 }
@@ -240,7 +240,7 @@ for $item in [1, 2, 3] {
 
 ### for-in object (kunci + nilai)
 
-```garurda
+```galang
 for $k, $v in {a: 1, b: 2} {
     print("$k -> $v")     // a -> 1 ; b -> 2
 }
@@ -248,7 +248,7 @@ for $k, $v in {a: 1, b: 2} {
 
 ### for pada string (per karakter)
 
-```garurda
+```galang
 for $ch in "abc" {
     print($ch)            // a b c
 }
@@ -256,7 +256,7 @@ for $ch in "abc" {
 
 ### Rentang, langkah, dan arah
 
-```garurda
+```galang
 for $i in 1..10 { }        // inklusif: 1..10
 for $i in 0..10..5 { }     // langkah 5: 0 5 10
 for $i in 3..1 { }         // turun: 3 2 1
@@ -264,7 +264,7 @@ for $i in 3..1 { }         // turun: 3 2 1
 
 ### break / continue
 
-```garurda
+```galang
 for $i in 1..10 {
     if $i == 5 { continue }
     if $i > 7 { break }
@@ -274,7 +274,7 @@ for $i in 1..10 {
 
 ## 8. Array
 
-```garurda
+```galang
 $a = [1, 2, 3, 4, 5]
 print($a[0])      // indeks 0-based → 1
 print($a[-1])     // indeks negatif (dari akhir) → 5
@@ -286,7 +286,7 @@ print($a.joined)  // "1,2,3,4,5"
 
 ### Slicing
 
-```garurda
+```galang
 $a = [1, 2, 3, 4, 5]
 print($a[1:3])    // [2, 3]        — from:to, to eksklusif
 print($a[2:])     // [3, 4, 5]     — dari index 2
@@ -302,7 +302,7 @@ nilai cadangan, pakai `at($a, $i, $default)`.
 
 ### Array comprehension
 
-```garurda
+```galang
 $kali2 = [$n * 2 for $n in [1, 2, 3]]        // [2, 4, 6]
 $besar = [$n for $n in [1, 12, 3] if $n > 10] // [12]
 ```
@@ -314,7 +314,7 @@ $besar = [$n for $n in [1, 12, 3] if $n > 10] // [12]
 - **Fungsi bawaan mengembalikan salinan baru**: `append`, `push`, `pop`,
   `sort`, `reverse`, `slice`, `map`, `filter` tidak mengubah array asli.
 
-```garurda
+```galang
 $a = [1, 2]
 $b = $a
 $b = append($b, 3)     // $a tetap [1, 2]  — append mengembalikan array baru
@@ -325,7 +325,7 @@ $d[0] = 99             // $c[0] juga jadi 99 — assignment = referensi bersama
 
 ## 9. Object
 
-```garurda
+```galang
 $user = {nama: "Dadan", umur: 25}
 print($user.nama)       // akses dot
 print($user["umur"])    // akses bracket
@@ -341,7 +341,7 @@ Object juga bersifat **referensi** saat penugasan (sama seperti array).
 
 ## 10. Fungsi
 
-```garurda
+```galang
 fn tambah(int $a, int $b) int {
     return $a + $b
 }
@@ -360,14 +360,14 @@ print(greet("Dadan", "Selamat")) // Selamat, Dadan!
 
 ### Arrow function (satu ekspresi)
 
-```garurda
+```galang
 fn kali($x) => $x * 2
 print(kali(21))    // 42
 ```
 
 ### Fungsi first-class & closure
 
-```garurda
+```galang
 $f = fn($a, $b) { return $a + $b }
 print($f(2, 3))    // 5
 
@@ -388,7 +388,7 @@ pendefinisian. Batas kedalaman rekursi **2000** dengan pesan yang jelas.
 
 ## 11. Error Handling
 
-```garurda
+```galang
 try {
     $u = null
     if $u == null { throw not_found("user tidak ada") }
@@ -399,7 +399,7 @@ try {
 
 ### Konstruktor error
 
-```garurda
+```galang
 throw error("kegagalan umum")     // status 500
 throw bad_request("input salah")  // 400
 throw unauthorized("belum login") // 401
@@ -423,7 +423,7 @@ Setiap nilai error punya field:
 Untuk membedakan jenis error, gunakan `e.status` (mis. `e.status == 404`)
 atau `e.is($code)` yang membandingkan `e.code`:
 
-```garurda
+```galang
 try {
     throw not_found("x")
 } catch e {
@@ -439,7 +439,7 @@ try {
 - **Tidak bisa** ditangkap — menghentikan program: error internal interpreter
   seperti variabel undefined, index di luar batas, pembagian nol.
 
-```garurda
+```galang
 try { $x = undefined_var } catch e { print("tangkap") }
 // → program berhenti dengan stack trace, catch TIDAK dijalankan
 ```
@@ -450,7 +450,7 @@ Blok `finally` dieksekusi **selalu**: saat try sukses, saat catch menangani
 error, maupun saat error diteruskan (rethrow). Ini tempat membersihkan sumber
 daya.
 
-```garurda
+```galang
 try {
     $data = file.read("config.json")
 } catch $e {
@@ -462,7 +462,7 @@ try {
 
 `finally` tanpa `catch` juga valid:
 
-```garurda
+```galang
 try {
     $r = risky()
 } finally {
@@ -476,7 +476,7 @@ throw $r   // error diteruskan setelah finally jalan
 Fungsi yang dideklarasikan `async` **mengembalikan promise** saat dipanggil,
 bukan hasilnya langsung.
 
-```garurda
+```galang
 async fn ambil_user($id) {
     return {"id": $id, "nama": "Budi"}
 }
@@ -494,7 +494,7 @@ Aturan `await`:
 - Promise bisa disimpan dulu, di-await nanti, dan **di-await berulang kali**
   (tugasnya hanya berjalan sekali):
 
-```garurda
+```galang
 $p = ambil_user(9)
 print(type($p))             // "promise"
 $hasil = await $p           // dikerjakan di sini
@@ -503,7 +503,7 @@ print(is_promise($p))       // true
 
 ### `gather` — selesaikan banyak promise sekaligus
 
-```garurda
+```galang
 async fn a() { return 1 }
 async fn b() { return 2 }
 
@@ -516,7 +516,7 @@ Error dari salah satu promise langsung melempar.
 
 ### `spawn` — tugas latar belakang (fire-and-forget)
 
-```garurda
+```galang
 fn catat($pesan) { print("log: " + $pesan) }
 
 spawn(catat, "user login")  // dijanjikan, bukan dijalankan di sini
@@ -534,7 +534,7 @@ builtin async I/O.
 
 Dua bentuk didukung:
 
-```garurda
+```galang
 print("nilai:", $x)      // gaya pemanggilan
 print "nilai:", $x       // gaya pernyataan
 println("selesai")       // satu baris
@@ -544,7 +544,7 @@ println "a", "b"         // pernyataan
 
 ## 14. Modul
 
-```garurda
+```galang
 use "strings"
 use "math"
 use "time"
@@ -561,7 +561,7 @@ Detail: [Modul Standar](modules.md).
 memanggilnya. File itu menjadi namespace yang berisi semua `fn`
 top-level-nya:
 
-```garurda
+```galang
 // db.ga — satu direktori dengan program utama
 $koneksi = database.connect("sqlite:app.db")   // privat: tidak ikut diekspor
 
@@ -570,7 +570,7 @@ fn ambil_user($id) {
 }
 ```
 
-```garurda
+```galang
 // main.ga
 use "db"              // mencari db.ga di direktori main.ga
 use "lib/util.ga"     // path relatif; namespace yang diikat: util
@@ -594,11 +594,11 @@ Aturan:
 ### Ekstensi native (GNE)
 
 Selain file `.ga`, `use` juga bisa memuat **ekstensi native C** (GNE —
-Garurda Native Extension) tanpa mengubah parser maupun compiler. Bila
+GaLang Native Extension) tanpa mengubah parser maupun compiler. Bila
 berkas sumber tidak ditemukan, urutan pencariannya `./gne` → `$GNE_PATH`
-→ `~/.garurda/gne`:
+→ `~/.galang/gne`:
 
-```garurda
+```galang
 use "redis"         // mencari redis.so / .dylib / .dll
 use "lib/foo.so"    // path eksplisit juga boleh
 ```
@@ -606,7 +606,7 @@ use "lib/foo.so"    // path eksplisit juga boleh
 Urutan resolusi tetap: **bawaan → file `.ga` → GNE**. Panduan lengkap
 menulis ekstensi C ada di [Ekstensi Native — GNE](gne.md); contoh yang
 sudah jalan ada di repo
-[garurda-gne-examples](https://github.com/lnx645/garurda-gne-examples).
+[galang-gne-examples](https://github.com/lnx645/galang-gne-examples).
 
 ## 15. Yang Belum Ada
 

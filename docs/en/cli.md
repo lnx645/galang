@@ -1,6 +1,6 @@
-# Garurda CLI
+# GaLang CLI
 
-The Garurda interpreter is the `gar` binary.
+The GaLang interpreter is the `gar` binary.
 
 ## Commands
 
@@ -30,7 +30,7 @@ global `args` variable (an array of strings):
 gar run tugas.ga -- alice 30 --port 9000
 ```
 
-```garurda
+```galang
 // tugas.ga
 print(args)            // [alice, 30, --port, 9000]
 print(args[0])         // alice
@@ -112,7 +112,7 @@ gar gne remove smtp
 
 ### Install-time safety
 
-- Packages install **flat** into `~/.garurda/gne/` — the
+- Packages install **flat** into `~/.galang/gne/` — the
   `<name>.so`/`.dylib`/`.dll` binary plus a `<name>.gne.json` sidecar,
   exactly where `use "name"` looks. `--dir D` changes the target (point
   `GNE_PATH` there if you use a non-default location).
@@ -147,7 +147,7 @@ Example unit for production:
 
 ```ini
 [Unit]
-Description=Garurda App
+Description=GaLang App
 After=network.target
 
 [Service]

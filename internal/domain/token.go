@@ -1,4 +1,4 @@
-// Package domain holds the core, dependency-free model of the Garurda language:
+// Package domain holds the core, dependency-free model of the GaLang language:
 // tokens, syntax tree nodes and runtime values.
 package domain
 

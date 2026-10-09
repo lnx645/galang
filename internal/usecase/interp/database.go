@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"time"
 
-	"garurda/internal/domain"
+	"galang/internal/domain"
 )
 
 // dbThrow membangun galat database yang bisa ditangkap try/catch:
@@ -42,7 +42,7 @@ func (in *Interp) dbSQLArgs(name string, a []domain.Value, pos domain.Position) 
 	}
 }
 
-// dbParam mengubah nilai Garurda menjadi parameter driver.
+// dbParam mengubah nilai GaLang menjadi parameter driver.
 func dbParam(v domain.Value) interface{} {
 	switch x := v.(type) {
 	case domain.Str:
@@ -60,7 +60,7 @@ func dbParam(v domain.Value) interface{} {
 	}
 }
 
-// dbValue mengubah nilai kolom database menjadi nilai Garurda.
+// dbValue mengubah nilai kolom database menjadi nilai GaLang.
 func dbValue(v interface{}) domain.Value {
 	switch x := v.(type) {
 	case nil:
@@ -175,7 +175,7 @@ func (in *Interp) dbExec(db *sql.DB, name, query string, params []interface{}, p
 	return out, nil
 }
 
-// connObj membungkus *sql.DB menjadi objek metode untuk Garurda:
+// connObj membungkus *sql.DB menjadi objek metode untuk GaLang:
 // $db.query / $db.query_first / $db.query_row / $db.exec / $db.close.
 func (in *Interp) connObj(db *sql.DB, driver string) *domain.Obj {
 	obj := domain.NewObj()

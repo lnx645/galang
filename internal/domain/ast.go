@@ -1,6 +1,6 @@
 package domain
 
-// Node is any node of the Garurda syntax tree.
+// Node is any node of the GaLang syntax tree.
 type Node interface {
 	Pos() Position
 	node()

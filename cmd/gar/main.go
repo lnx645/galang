@@ -1,10 +1,10 @@
-// Command gar is the Garurda interpreter.
+// Command gar is the GaLang interpreter.
 package main
 
 import (
 	"os"
 
-	"garurda/internal/delivery/cli"
+	"galang/internal/delivery/cli"
 )
 
 func main() {

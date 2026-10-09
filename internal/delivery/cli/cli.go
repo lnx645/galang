@@ -10,8 +10,8 @@ import (
 	"sort"
 	"strings"
 
-	"garurda/internal/infra/repl"
-	"garurda/internal/usecase/interp"
+	"galang/internal/infra/repl"
+	"galang/internal/usecase/interp"
 )
 
 // Version adalah versi interpreter.
@@ -31,7 +31,7 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		printUsage(stdout)
 		return 0
 	case "-v", "--version", "version":
-		fmt.Fprintf(stdout, "gar %s — interpreter bahasa Garurda\n", Version)
+		fmt.Fprintf(stdout, "gar %s — interpreter bahasa GaLang\n", Version)
 		return 0
 	case "run":
 		return runFile(rest, stdout, stderr)
@@ -47,10 +47,10 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 }
 
 func printUsage(w io.Writer) {
-	fmt.Fprint(w, `gar — interpreter bahasa Garurda
+	fmt.Fprint(w, `gar — interpreter bahasa GaLang
 
 Penggunaan:
-  gar run <file.ga> [argumen...]   jalankan program Garurda
+  gar run <file.ga> [argumen...]   jalankan program GaLang
   gar repl                        buka sesi interaktif (REPL)
   gar gne <subperintah>           kelola ekstensi native (install/pack/list/remove)
   gar version                     tampilkan versi
@@ -68,7 +68,7 @@ func runFile(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "gar run: nama file .ga wajib diberikan")
 		return 2
 	}
-	// Everything after a bare `--` is handed to the Garurda program.
+	// Everything after a bare `--` is handed to the GaLang program.
 	var programArgs []string
 	for i, a := range args {
 		if a == "--" {

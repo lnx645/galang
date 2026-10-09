@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"garurda/internal/infra/gne"
-	"garurda/internal/infra/gnepkg"
+	"galang/internal/infra/gne"
+	"galang/internal/infra/gnepkg"
 )
 
 // bangunFakeExt membuat struktur ext/redis tiruan: gne.json + build/<plat>.
@@ -137,6 +137,66 @@ func TestPackInstallListRemove(t *testing.T) {
 	}
 	// Remove kedua harus gagal (sudah tidak terpasang).
 	if _, err := Remove(dir, "redis"); err == nil {
+		t.Error("remove kedua harus ditolak")
+	}
+}
+
+// TestListRemoveLokasiLama — rebrand v0.7.0: tanpa --dir, pemasangan
+// baru menulis ke ~/.galang/gne, sementara ekstensi di lokasi lama
+// ~/.garurda/gne tetap terbaca List dan dapat dilepas Remove.
+func TestListRemoveLokasiLama(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	baru := filepath.Join(home, ".galang", "gne")
+	lama := filepath.Join(home, ".garurda", "gne")
+
+	ext := bangunFakeExt(t, "redis", "0.6.0", map[string]string{
+		CurrentPlatform(): "ELF-palsu-redis",
+	})
+	zipPath := filepath.Join(t.TempDir(), "redis.zip")
+	if _, _, err := Pack(ext, zipPath); err != nil {
+		t.Fatalf("pack: %v", err)
+	}
+
+	// Pemasangan baru menulis ke lokasi aktif.
+	res, err := Install(context.Background(), zipPath, Options{})
+	if err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	if filepath.Dir(res.Path) != baru {
+		t.Fatalf("install di %q, mau lokasi baru %q", filepath.Dir(res.Path), baru)
+	}
+
+	// Pindahkan hasil instalasi ke lokasi lama (kondisi mesin pre-v0.7.0).
+	if err := os.MkdirAll(lama, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []string{"redis" + libExtFor(runtime.GOOS), "redis" + suffixSidecar} {
+		if err := os.Rename(filepath.Join(baru, f), filepath.Join(lama, f)); err != nil {
+			t.Fatalf("pindah %s: %v", f, err)
+		}
+	}
+
+	// List tanpa --dir tetap menemukan ekstensi lokasi lama.
+	items, err := List("")
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(items) != 1 || items[0].Name != "redis" {
+		t.Fatalf("list = %+v, mau menampilkan redis lokasi lama", items)
+	}
+
+	// Remove tanpa --dir menghapus dari lokasi lama.
+	if _, err := Remove("", "redis"); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+	for _, f := range []string{"redis" + libExtFor(runtime.GOOS), "redis" + suffixSidecar} {
+		if _, err := os.Stat(filepath.Join(lama, f)); !os.IsNotExist(err) {
+			t.Errorf("%s masih ada setelah remove", f)
+		}
+	}
+	// Remove kedua harus ditolak (sudah tidak terpasang di mana pun).
+	if _, err := Remove("", "redis"); err == nil {
 		t.Error("remove kedua harus ditolak")
 	}
 }

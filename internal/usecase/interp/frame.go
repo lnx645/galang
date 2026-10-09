@@ -1,6 +1,6 @@
 package interp
 
-import "garurda/internal/domain"
+import "galang/internal/domain"
 
 // The engine compiles the syntax tree once into a tree of Go closures and then
 // runs that tree. Three consequences matter:

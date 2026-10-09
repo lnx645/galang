@@ -1,4 +1,4 @@
-// Package db provides database access for Garurda.
+// Package db provides database access for GaLang.
 package db
 
 import (

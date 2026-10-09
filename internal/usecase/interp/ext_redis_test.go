@@ -3,7 +3,7 @@
 package interp
 
 // Uji ekstensi resmi ext/redis: mengompilasi sumber asli (bukan salinan),
-// menjalankannya melalui `use "redis"` di program Garurda nyata, dengan
+// menjalankannya melalui `use "redis"` di program GaLang nyata, dengan
 // server RESP2 tiruan in-process (tanpa jaringan). Satu uji tambahan
 // memakai redis-server sungguhan bila tersedia (dev-only, auto-skip).
 

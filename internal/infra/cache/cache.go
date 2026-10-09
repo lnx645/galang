@@ -1,4 +1,4 @@
-// Package cache stores the result of parsing a Garurda source file, so that a
+// Package cache stores the result of parsing a GaLang source file, so that a
 // program is not lexed and parsed again on every run or request.
 //
 // This is the equivalent of PHP's opcache, at the layer where it is possible
@@ -24,8 +24,8 @@ import (
 	"path/filepath"
 	"sync"
 
-	"garurda/internal/domain"
-	"garurda/internal/usecase/parse"
+	"galang/internal/domain"
+	"galang/internal/usecase/parse"
 )
 
 // version guards the file format. Bumping it invalidates every entry, which is
@@ -43,13 +43,23 @@ type Parser struct {
 	mu           sync.Mutex
 }
 
+// envOrLegacy membaca nama env baru dengan fallback ke nama lama hasil
+// rebrand v0.7.0 (GARURDA_* → GALANG_*) — konsumen lama tak mendadak
+// kehilangan efek.
+func envOrLegacy(name, legacy string) string {
+	if v := os.Getenv(name); v != "" {
+		return v
+	}
+	return os.Getenv(legacy)
+}
+
 // New returns a parser using the default cache directory. The second result is
 // false when caching is disabled by the environment.
 func New() *Parser {
-	if v := os.Getenv("GARURDA_CACHE"); v == "off" || v == "0" {
+	if v := envOrLegacy("GALANG_CACHE", "GARURDA_CACHE"); v == "off" || v == "0" {
 		return &Parser{}
 	}
-	dir := os.Getenv("GARURDA_CACHE_DIR")
+	dir := envOrLegacy("GALANG_CACHE_DIR", "GARURDA_CACHE_DIR")
 	if dir == "" {
 		base := os.Getenv("XDG_CACHE_HOME")
 		if base == "" {
@@ -59,7 +69,7 @@ func New() *Parser {
 			}
 			base = filepath.Join(home, ".cache")
 		}
-		dir = filepath.Join(base, "garurda", "parse")
+		dir = filepath.Join(base, "galang", "parse")
 	}
 	return &Parser{Dir: dir}
 }

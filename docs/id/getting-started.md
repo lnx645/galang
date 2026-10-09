@@ -9,9 +9,9 @@ pemasang siap pakai:
 
 | Platform | Aset | Cara pakai |
 |---|---|---|
-| Windows x64 & ARM | `Garurda-Setup-<v>.exe` (Inno Setup) | jalankan wizard (izin admin); `gar` masuk PATH otomatis; cabut lewat "Tambah atau hapus program" |
-| Debian / Ubuntu | `garurda_<v>_amd64.deb` / `garurda_<v>_arm64.deb` | `sudo dpkg -i garurda_<v>_amd64.deb` — terpasang di `/usr/bin/gar` |
-| macOS (Intel + Apple Silicon) | `Garurda-<v>-macos.pkg` (universal) | `sudo installer -pkg Garurda-<v>-macos.pkg -target /` — terpasang di `/usr/local/bin/gar` |
+| Windows x64 & ARM | `GaLang-Setup-<v>.exe` (Inno Setup) | jalankan wizard (izin admin); `gar` masuk PATH otomatis; cabut lewat "Tambah atau hapus program" |
+| Debian / Ubuntu | `galang_<v>_amd64.deb` / `galang_<v>_arm64.deb` | `sudo dpkg -i galang_<v>_amd64.deb` — terpasang di `/usr/bin/gar` |
+| macOS (Intel + Apple Silicon) | `GaLang-<v>-macos.pkg` (universal) | `sudo installer -pkg GaLang-<v>-macos.pkg -target /` — terpasang di `/usr/local/bin/gar` |
 
 Catatan:
 
@@ -61,9 +61,9 @@ go build -o bin/gar ./cmd/gar
 
 Simpan sebagai `hello.ga`:
 
-```garurda
+```galang
 // hello.ga
-$name = "Garurda"
+$name = "GaLang"
 print("Halo, $name!")
 ```
 
@@ -71,12 +71,12 @@ Jalankan:
 
 ```bash
 gar run hello.ga
-# Halo, Garurda!
+# Halo, GaLang!
 ```
 
 ## Variabel dan Tipe
 
-```garurda
+```galang
 $umur = 25            // int
 $pi = 3.14            // float
 $aktif = true         // bool
@@ -93,7 +93,7 @@ Sigil `$` **opsional** — `nama` dan `$nama` adalah variabel yang sama.
 
 Konversi eksplisit, tanpa coerciion otomatis:
 
-```garurda
+```galang
 print(int("42"))      // 42
 print(str(7))         // "7"
 print(float("1.5"))   // 1.5
@@ -102,7 +102,7 @@ print(float("1.5"))   // 1.5
 
 ## Fungsi Pertama
 
-```garurda
+```galang
 fn greet($nama, $sapaan = "Halo") {
     return "${sapaan}, ${nama}!"
 }
@@ -155,7 +155,7 @@ myapp/
 
 `main.ga`:
 
-```garurda
+```galang
 use "http"
 
 http.views("views")
@@ -171,7 +171,7 @@ http.listen(8869)
 
 ```blade
 <h1>{{ $title }}</h1>
-<p>Halo dari Garurda.</p>
+<p>Halo dari GaLang.</p>
 ```
 
 Jalankan lalu buka `http://localhost:8869`:
@@ -190,7 +190,7 @@ Argumen setelah `--` tersedia di variabel global `args` (array of string):
 gar run tugas.ga -- alice 30
 ```
 
-```garurda
+```galang
 // tugas.ga
 print(args)          // [alice, 30]
 ```

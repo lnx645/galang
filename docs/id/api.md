@@ -35,7 +35,7 @@ Builtins bisa dipanggil langsung tanpa `use`. Modul standar
 Mencetak satu baris tanpa newline akhir. Menerima argumen apa pun, dipisah
 spasi. Juga tersedia sebagai pernyataan: `print a, b`.
 
-```garurda
+```galang
 print("a", 1, true)      // a 1 true
 ```
 
@@ -44,7 +44,7 @@ print("a", 1, true)      // a 1 true
 Sama seperti `print` tetapi diakhiri newline. `println()` tanpa argumen
 mencetak baris kosong.
 
-```garurda
+```galang
 println("selesai")
 ```
 
@@ -54,7 +54,7 @@ println("selesai")
 
 ### `type($v)` → `string`
 
-```garurda
+```galang
 type(72)         // "int"
 type(3.14)       // "float"
 type("x")        // "string"
@@ -82,7 +82,7 @@ type(async fn(){ return 1 }())  // "promise"
 | `is_function($v)` | `function` |
 | `is_promise($v)` | `promise` |
 
-```garurda
+```galang
 print(is_int(72))         // true
 print(is_promise(f()))    // true — f async
 ```
@@ -101,7 +101,7 @@ Konversi selalu **eksplisit** — tidak ada coerciion otomatis antar tipe.
 | `bool($v)` | `bool` | `bool(0)` → `false` |
 | `to_object($pairs)` | `object` | pasangan `[kunci, nilai]` |
 
-```garurda
+```galang
 print(int("42"), float("1.5"), str(7), bool(0))   // 42 1.5 7 false
 print(to_object([["a", 1], ["b", 2]]))            // {a: 1, b: 2}
 ```
@@ -118,7 +118,7 @@ print(to_object([["a", 1], ["b", 2]]))            // {a: 1, b: 2}
 | `sum($arr)` | jumlah seluruh elemen |
 | `parse_int($s, $base)` | string → int dengan basis; `parse_int("42", 10)` → 42 |
 
-```garurda
+```galang
 print(abs(-5))              // 5
 print(min(3, 7), max(3, 7)) // 3 7
 print(sum([1, 2, 3]))       // 6
@@ -139,7 +139,7 @@ print(parse_int("ff", 16))  // 255
 | `contains($s, $sub)` | apakah substring ada (string) |
 | `slice($arr, $from, $to)` | potongan, `$to` eksklusif — **salinan baru** |
 
-```garurda
+```galang
 print(len("garuda"))           // 6
 print(first([5, 6]), last([5, 6]))   // 5 6
 print(at([1, 2], 9, "def"))    // def
@@ -166,7 +166,7 @@ array baru.
 | `merge($a, $b)` | gabungan dua array/object |
 | `unset($obj, $kunci)` | object: **mutasi in-place**, hapus kunci |
 
-```garurda
+```galang
 $a = [3, 1, 2]
 print(pop($a))         // 3        — $a tetap [3, 1, 2]
 print(push($a, 9))     // [3, 1, 2, 9]  — $a tidak berubah
@@ -189,7 +189,7 @@ print(merge([1], [2])) // [1, 2]
 
 `fn` callback menerima (`$elemen`) atau, untuk `reduce`, (`$acc, $elemen`).
 
-```garurda
+```galang
 print(map([1, 2, 3], fn($x) { return $x * 2 }))        // [2, 4, 6]
 print(filter([1, 2, 3], fn($x) { return $x > 1 }))     // [2, 3]
 print(reduce([1, 2, 3], fn($acc, $x) { return $acc + $x }, 10))  // 16
@@ -209,7 +209,7 @@ print(join(["a", "b"], "-"))                           // a-b
 | `merge($a, $b)` | gabungan dua object (kunci kanan menang) |
 | `unset($obj, $k)` | hapus kunci (mutasi in-place) |
 
-```garurda
+```galang
 $o = {x: 1, y: 2}
 print(keys($o))          // [x, y]
 print(values($o))        // [1, 2]
@@ -232,7 +232,7 @@ print($o)                // {x: 1}
 Method langsung tersedia juga: `"abc".upper()`, `"a,b".split(",")` — lengkap
 di [Method string](#method-string).
 
-```garurda
+```galang
 print(str_repeat("ab", 3))   // ababab
 print(html_escape("<b>"))    // &lt;b&gt;
 ```
@@ -247,7 +247,7 @@ print(html_escape("<b>"))    // &lt;b&gt;
 | `json_decode($s)` | string JSON → nilai (`{...}` → object, `[...]` → array) |
 | `html_escape($s)` | escape HTML |
 
-```garurda
+```galang
 print(json_encode({k: [1, 2]}))      // {"k":[1,2]}
 print(json_decode("{\"z\":9}"))      // {z: 9}
 ```
@@ -262,7 +262,7 @@ print(json_decode("{\"z\":9}"))      // {z: 9}
 
 Format & waktu ISO tersedia di modul `time` (`time.now()`, `time.format()`).
 
-```garurda
+```galang
 print(now_ms())   // 1728000000000
 ```
 
@@ -275,7 +275,7 @@ print(now_ms())   // 1728000000000
 | `gather($p1, $p2, ...)` | jalankan banyak promise → array hasil |
 | `spawn($fn, $args...)` | tugas latar belakang fire-and-forget → promise |
 
-```garurda
+```galang
 async fn a() { return 1 }
 async fn b() { return 2 }
 print(gather(a(), b()))      // [1, 2]
@@ -301,7 +301,7 @@ Detail: [Sintaks Bahasa — Async](language.md#12-async--async-fn-await-gather-s
 
 Konstruktor membuat nilai error; lemparkan dengan `throw`:
 
-```garurda
+```galang
 try {
     throw not_found("user tidak ada")
 } catch e {
@@ -341,7 +341,7 @@ sebagai properti (mis. `$s.len`).
 Properti (tanpa tanda kurung): `.len`, `.upper`, `.lower`, `.trim`,
 `.reversed`.
 
-```garurda
+```galang
 $s = "Halo Dunia"
 print($s.len)                        // 10
 print($s.upper())                    // HALO DUNIA
@@ -375,7 +375,7 @@ Catatan: method **tidak memutasi** string asli (string tidak bisa berubah isi).
 Properti (tanpa tanda kurung): `.len`, `.first`, `.last`, `.joined`
 (gabungan dengan `", "`).
 
-```garurda
+```galang
 $a = [1, 2, 3]
 print($a.len)        // 3
 print($a.first)      // 1
@@ -395,7 +395,7 @@ Method array **mengembalikan salinan** — array asli tidak berubah.
 |---|---|
 | `.is($code)` | bandingkan `e.code` dengan `$code` → `bool` |
 
-```garurda
+```galang
 try { throw not_found("x") }
 catch e { print(e.is("http_error")) }   // true
 ```

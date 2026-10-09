@@ -14,7 +14,7 @@ import (
 	"fmt"
 	"unsafe"
 
-	"garurda/internal/domain"
+	"galang/internal/domain"
 )
 
 // gneGuardH/gneGuardI membungkus setiap ekspor dengan pemulihan panik:

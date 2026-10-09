@@ -1,5 +1,5 @@
-// hello — the smallest Garurda program.
-print "Halo dari Garurda!"
+// hello — the smallest GaLang program.
+print "Halo dari GaLang!"
 
 $nama = "Dunia"
 print "Halo, ${nama}!"

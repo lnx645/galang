@@ -1,11 +1,11 @@
 [Unit]
-Description=Garurda Demo Web Server (port 5800)
+Description=GaLang Demo Web Server (port 5800)
 After=network.target
 
 [Service]
 Type=simple
-User=garurda
-WorkingDirectory=/opt/garurda-demo
+User=galang
+WorkingDirectory=/opt/galang-demo
 ExecStart=/usr/local/bin/gar run main.ga
 Restart=always
 RestartSec=3

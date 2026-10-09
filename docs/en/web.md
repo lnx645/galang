@@ -4,11 +4,11 @@ The `http` module provides a real HTTP server (built on Go's `net/http`):
 routing, path parameters, request/response, Blade templates, static files,
 SSE, and WebSocket.
 
-```garurda
+```galang
 use "http"
 
 http.GET("/", fn($req) {
-    return "Halo dari Garurda!"
+    return "Halo dari GaLang!"
 })
 
 http.listen(8869)
@@ -33,7 +33,7 @@ http.listen(8869)
 
 ## Routing
 
-```garurda
+```galang
 use "http"
 
 http.GET("/", fn($req) {
@@ -81,7 +81,7 @@ http.listen(8869)
 route (GET/POST/PUT/DELETE) before the handler. A middleware receives two
 arguments: `($req, $next)`.
 
-```garurda
+```galang
 use "http"
 
 // Log every request
@@ -129,7 +129,7 @@ A working example lives in
 
 ## Request Object
 
-```garurda
+```galang
 http.GET("/cari/{id}", fn($req) {
     $req.method          // "GET", "POST", "PUT", "DELETE"
     $req.path            // "/cari/42"
@@ -147,7 +147,7 @@ http.GET("/cari/{id}", fn($req) {
 
 For a JSON body, decode it first:
 
-```garurda
+```galang
 http.POST("/api", fn($req) {
     $data = json_decode($req.body)
     return {diterima: $data}
@@ -164,7 +164,7 @@ Just `return` a value — the runtime determines the status, type, and body:
 | `array` / `object` | `200 OK`, `application/json` (JSON automatically) |
 | structured object with `body` | see below |
 
-```garurda
+```galang
 // String → HTML 200
 return "Halo"
 
@@ -190,7 +190,7 @@ Structured response keys:
 
 ## json() — full control
 
-```garurda
+```galang
 return http.json({id: 1}, 201)
 return http.json({msg: "ok"}, 200, {"X-Custom": "value"})
 ```
@@ -205,7 +205,7 @@ The Content-Type is automatically `application/json; charset=utf-8`.
 An error thrown inside a handler is answered by the server with **the matching
 status** and a JSON body `{code, message, status}`:
 
-```garurda
+```galang
 http.GET("/users/{id}", fn($req) {
     $user = cari_user($req.params.id)
     if $user == null {
@@ -247,7 +247,7 @@ Internal bugs (division by zero, out-of-bounds index, undefined variable)
 produce **500** with a plain body. **Error details and the stack trace are only
 logged to the server's stderr** — they never leak to the client.
 
-```garurda
+```galang
 http.GET("/rusak", fn($req) {
     return 1 / 0        // → 500, plain body; details go to stderr
 })
@@ -255,7 +255,7 @@ http.GET("/rusak", fn($req) {
 
 ## Cookie
 
-```garurda
+```galang
 // Set a cookie via a structured response
 return {type: "text/html", body: "OK", cookies: {session: "abc"}}
 
@@ -268,11 +268,11 @@ http.GET("/cek", fn($req) {
 
 ## Sessions
 
-Sessions bind per-visitor data through the `garurda_session` cookie
+Sessions bind per-visitor data through the `galang_session` cookie
 (HttpOnly, SameSite=Lax, Path=/) and the in-memory `$req.session`
 object.
 
-```garurda
+```galang
 http.GET("/cart", fn($req) {
     $s = http.session($req)   // the same object as $req.session
     $n = 0
@@ -310,7 +310,7 @@ A working example: `GET /api/kunjungan` in
 
 ## Static Files
 
-```garurda
+```galang
 http.static("/public/", "public")
 // GET /public/style.css → serves the file public/style.css
 ```
@@ -320,7 +320,7 @@ directory.
 
 ## Template Blade
 
-```garurda
+```galang
 http.views("views")            // template directory
 
 http.GET("/", fn($req) {
@@ -390,7 +390,7 @@ set: comparisons (`>`, `>=`, `==`, `!=`, `<`, `<=`), logic (`&&`, `||`, `!`,
 
 ## SSE (Server-Sent Events)
 
-```garurda
+```galang
 http.stream("/events", fn($req) {
     return "ping"      // each return = one event
 })
@@ -400,7 +400,7 @@ Client: `new EventSource("/events")`.
 
 ## WebSocket
 
-```garurda
+```galang
 http.ws("/chat", fn($msg) {
     return "echo: " + $msg    // the returned value is sent back to the client
 })
@@ -408,7 +408,7 @@ http.ws("/chat", fn($msg) {
 
 ## Full Example
 
-```garurda
+```galang
 use "http"
 use "strings"
 

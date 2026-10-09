@@ -1,7 +1,7 @@
 package interp
 
 import (
-	"garurda/internal/domain"
+	"galang/internal/domain"
 )
 
 // Async execution is cooperative: an `async fn` call builds a promise with a

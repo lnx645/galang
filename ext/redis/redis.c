@@ -521,7 +521,7 @@ fail:
 	return -1;
 }
 
-/* Baca satu balasan RESP menjadi handle Garurda (rekursif).
+/* Baca satu balasan RESP menjadi handle GaLang (rekursif).
  * 0 = sukses, -1 = sudah throw (atau galat I/O dengan throw). */
 static int read_reply(gne_ctx *ctx, conn *c, gne_handle *out, int depth)
 {

@@ -1,11 +1,11 @@
-// Package parse builds a Garurda syntax tree from a token stream.
+// Package parse builds a GaLang syntax tree from a token stream.
 package parse
 
 import (
 	"fmt"
 
-	"garurda/internal/domain"
-	"garurda/internal/usecase/lex"
+	"galang/internal/domain"
+	"galang/internal/usecase/lex"
 )
 
 // Error is a parse error with a source position.
