@@ -78,6 +78,12 @@ func (in *Interp) loadFileModule(path string, pos domain.Position) (domain.Value
 		tried := append([]string{}, cands...)
 		if bare {
 			tried = append(tried, in.gneCandidatesList(path)...)
+			// Nama telanjang yang tak ditemukan bisa jadi ekstensi GNE
+			// yang belum dipasang (redis/smtp/paket pihak ketiga) —
+			// arahkan langsung ke perintahnya.
+			return nil, in.errf(pos,
+				"module '%s' not found (tried %s) — install with: gar gne install %s",
+				path, strings.Join(tried, ", "), path)
 		}
 		return nil, in.errf(pos, "module '%s' not found (tried %s)", path, strings.Join(tried, ", "))
 	}

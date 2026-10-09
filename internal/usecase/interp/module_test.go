@@ -145,7 +145,8 @@ func TestUseFileSiklus(t *testing.T) {
 	}
 }
 
-// File yang tidak ada: galat menyebut path yang dicoba.
+// File yang tidak ada: galat menyebut path yang dicoba, dan untuk nama
+// telanjang (kandidat GNE ikut dicoba) menyertakan petunjuk pemasangan.
 func TestUseFileTidakAda(t *testing.T) {
 	dir := t.TempDir()
 	_, err := jalankanMain(t, dir, "use \"hilang\"\n")
@@ -154,6 +155,25 @@ func TestUseFileTidakAda(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "not found") || !strings.Contains(err.Error(), "hilang") {
 		t.Errorf("pesan galat = %v", err)
+	}
+	if !strings.Contains(err.Error(), "gar gne install hilang") {
+		t.Errorf("galat tanpa petunjuk pemasangan GNE: %v", err)
+	}
+}
+
+// Path eksplisit (bertanda slash) bukan wilayah GNE — tanpa petunjuk
+// gar gne install agar tidak menyesatkan.
+func TestUseFileTidakAdaPathEksplisitTanpaPetunjukGNE(t *testing.T) {
+	dir := t.TempDir()
+	_, err := jalankanMain(t, dir, "use \"lib/hilang\"\n")
+	if err == nil {
+		t.Fatal("path eksplisit tak ada seharusnya error")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("pesan galat = %v", err)
+	}
+	if strings.Contains(err.Error(), "gar gne install") {
+		t.Errorf("path eksplisit tidak boleh menyertakan petunjuk GNE: %v", err)
 	}
 }
 
