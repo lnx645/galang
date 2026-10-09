@@ -1,14 +1,16 @@
-# Rilis macOS — satu-satunya platform yang TIDAK bisa dibangun di mesin
-# rilis Linux (cross-CGO ke darwin mustahil), jadi dibangun di runner:
+# macOS release assets — the only platform that CANNOT be built on the
+# Linux release machine (cross-CGO to darwin is impossible), so it is
+# built on runners instead:
 #
-#   1. gar-darwin-<arch> dengan CGO=1 (GNE dlopen + SQLite aktif)
-#   2. binari ekstensi .dylib per arsitektur (untuk `make pack-ext`)
-#   3. uji asap: pack + install ekstensi + `use` yang melempar galat
-#      terkendali — bukti dlopen jalur GNE benar-benar bekerja di darwin.
+#   1. gar-darwin-<arch> with CGO=1 (GNE dlopen + SQLite enabled)
+#   2. extension .dylib binaries per architecture (for `make pack-ext`)
+#   3. smoke test: pack + install extensions + `use` raising a controlled
+#      error — proof that the GNE dlopen path really works on darwin.
 #
-# Job `unggah` menunggu rilis dibuat (make release-zip && gh release
-# create di mesin rilis) lalu menambahkan aset darwin ke rilis itu.
-name: Rilis macOS
+# The `upload` job waits for the release to be created (make release-zip
+# && gh release create on the release machine) then adds the darwin
+# assets to that release.
+name: Release macOS
 
 on:
   push:
@@ -23,7 +25,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: macos-15-intel # amd64; label Intel terakhir s/d Agu 2027
+          - runner: macos-15-intel # amd64; Intel label kept until Aug 2027
             arch: amd64
           - runner: macos-latest # arm64 (Apple Silicon)
             arch: arm64
@@ -32,13 +34,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          # go.mod (go 1.19) tetap membatasi tingkat bahasa; Go 1.19 sudah
-          # EOL dan tak lagi diuji terhadap linker Xcode baru, jadi binari
-          # darwin dibangun dengan toolchain stabil yang ikut diuji runner.
+          # go.mod (Go 1.19) still pins the language level; Go 1.19 is
+          # EOL and no longer tested against the linker shipped with new
+          # Xcode releases, so darwin binaries are built with the stable
+          # toolchain the runners are tested against.
           go-version: stable
-      - name: Bangun gar (CGO=1)
+      - name: Build gar (CGO=1)
         run: CGO_ENABLED=1 go build -ldflags "-s -w" -o gar-darwin-${{ matrix.arch }} ./cmd/gar
-      - name: Bangun ekstensi .dylib
+      - name: Build extension .dylibs
         run: |
           set -e
           for name in redis smtp; do
@@ -46,9 +49,9 @@ jobs:
             mkdir -p "$out"
             clang -dynamiclib -Wall -Wextra -I include \
               -o "$out/$name.dylib" "ext/$name/$name.c"
-            echo "Ekstensi $name → $out/$name.dylib"
+            echo "Built extension $name → $out"
           done
-      - name: Uji asap (pack + install + use)
+      - name: Smoke test (pack + install + use)
         run: |
           set -e
           GAR="$PWD/gar-darwin-${{ matrix.arch }}"
@@ -63,30 +66,30 @@ jobs:
             'use "smtp"' \
             'try {' \
             '  $r = redis.connect("127.0.0.1", 65530, 300)' \
-            '  print("tidak")' \
+            '  print("unexpected")' \
             '} catch e {' \
-            '  print("asap-redis " + e.code)' \
+            '  print("smoke-redis " + e.code)' \
             '}' \
             'try {' \
             '  $s = smtp.connect("127.0.0.1", 65530, 300)' \
-            '  print("tidak")' \
+            '  print("unexpected")' \
             '} catch e {' \
-            '  print("asap-smtp " + e.code)' \
+            '  print("smoke-smtp " + e.code)' \
             '}' \
             > /tmp/smoke/main.ga
           cd /tmp/smoke
           out=$("$GAR" run main.ga)
           echo "$out"
-          echo "$out" | grep -q 'asap-redis redis_error'
-          echo "$out" | grep -q 'asap-smtp smtp_error'
-          echo "asap lulus di darwin/${{ matrix.arch }}"
-      - name: Siapkan zip aset
+          echo "$out" | grep -q 'smoke-redis redis_error'
+          echo "$out" | grep -q 'smoke-smtp smtp_error'
+          echo "smoke test passed on darwin/${{ matrix.arch }}"
+      - name: Prepare zip assets
         run: |
           set -e
           cp include/gne.h .
           zip -q gar-darwin-${{ matrix.arch }}.zip gar-darwin-${{ matrix.arch }} gne.h
           zip -qr ext-dylib-${{ matrix.arch }}.zip ext/redis/build ext/smtp/build
-      - name: Unggah artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: macos-${{ matrix.arch }}
@@ -95,32 +98,33 @@ jobs:
             ext-dylib-${{ matrix.arch }}.zip
           if-no-files-found: error
 
-  unggah:
+  upload:
     needs: macos
     runs-on: ubuntu-latest
     steps:
-      - name: Unduh hasil build macOS
+      - name: Download macOS build artifacts
         uses: actions/download-artifact@v4
         with:
           merge-multiple: true
-      - name: Gabung binari .dylib dua arsitektur
+      - name: Merge .dylib binaries from both architectures
         run: |
           set -e
           unzip -q ext-dylib-amd64.zip
           unzip -q ext-dylib-arm64.zip
           zip -qr ext-darwin-builds.zip ext/redis/build ext/smtp/build
           unzip -l ext-darwin-builds.zip
-      - name: Tunggu rilis lalu unggah aset
+      - name: Wait for release then upload assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Job ini tanpa checkout, jadi gh tidak punya git remote untuk
-          # memutus repository — GH_REPO wajib agar gh release view/upload
-          # bisa jalan (tanpa ini, wait loop selalu gagal 20 menit).
+          # This job has no checkout, so gh cannot infer the repository
+          # from git remotes — GH_REPO is required for gh release
+          # view/upload to work (without it the wait loop timed out
+          # after 20 minutes).
           GH_REPO: ${{ github.repository }}
         run: |
           set -e
-          # Rilis dibuat manual dari mesin rilis (make release-zip &&
-          # gh release create) — tunggu maksimal 20 menit.
+          # The release is created from the release machine
+          # (make release-zip && gh release create) — wait up to 20 minutes.
           ok=0
           for i in $(seq 1 40); do
             if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
@@ -130,7 +134,7 @@ jobs:
             sleep 30
           done
           if [ "$ok" != 1 ]; then
-            echo "rilis $GITHUB_REF_NAME belum juga dibuat dalam 20 menit" >&2
+            echo "release $GITHUB_REF_NAME still not created after 20 minutes" >&2
             exit 1
           fi
           gh release upload "$GITHUB_REF_NAME" \

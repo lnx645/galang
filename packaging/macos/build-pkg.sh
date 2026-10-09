@@ -1,22 +1,23 @@
 #!/usr/bin/env bash
-# build-pkg.sh <versi> <binari-amd64> <binari-arm64> [keluaran.pkg]
+# build-pkg.sh <version> <amd64-binary> <arm64-binary> [output.pkg]
 #
-# Rakit .pkg macOS universal2 dari binari rilis dua arsitektur (hasil
-# ekstrak gar-darwin-*.zip). Dua binari digabung dengan lipo lalu
-# dipasang ke /usr/local/bin/gar. Contoh (di runner macOS):
+# Build a universal2 macOS .pkg from release binaries for both
+# architectures (extracted from gar-darwin-*.zip). The two binaries are
+# merged with lipo and installed to /usr/local/bin/gar. Example (on a
+# macOS runner):
 #   ./packaging/macos/build-pkg.sh 0.6.1 gar-darwin-amd64 gar-darwin-arm64 \
 #     pkg/Garurda-0.6.1-macos.pkg
 set -euo pipefail
 
-VER=${1:?versi wajib, mis. 0.6.1}
-AMD64=${2:?binari amd64 wajib}
-ARM64=${3:?binari arm64 wajib}
+VER=${1:?version required, e.g. 0.6.1}
+AMD64=${2:?amd64 binary required}
+ARM64=${3:?arm64 binary required}
 OUT=${4:-"Garurda-$VER-macos.pkg"}
 IDENT="io.github.lnx645.garurda"
 
 for f in "$AMD64" "$ARM64"; do
   if [ ! -f "$f" ]; then
-    echo "binari tidak ada: $f" >&2
+    echo "binary not found: $f" >&2
     exit 1
   fi
   chmod +x "$f"
@@ -24,12 +25,12 @@ done
 
 STAGE=$(mktemp -d)
 trap 'rm -rf "$STAGE"' EXIT
-# mktemp memberi mode 700 pada root stage — samakan dengan 755 agar
-# tak ikut terekam dalam payload paket.
+# mktemp creates the stage root with mode 700 — normalize it to 755 so
+# it is never recorded in the package payload.
 chmod 755 "$STAGE"
 mkdir -p "$STAGE/usr/local/bin"
 
-# Satu binari universal (Intel + Apple Silicon) — lipo bawaan Xcode.
+# One universal binary (Intel + Apple Silicon) via the Xcode-bundled lipo.
 lipo -create "$AMD64" "$ARM64" -output "$STAGE/usr/local/bin/gar"
 chmod 755 "$STAGE/usr/local/bin/gar"
 file "$STAGE/usr/local/bin/gar"
@@ -38,5 +39,5 @@ mkdir -p "$(dirname "$OUT")"
 pkgbuild --identifier "$IDENT" --version "$VER" --install-location / \
   --root "$STAGE" "$OUT"
 
-echo "Dibuat: $OUT"
+echo "Created: $OUT"
 pkgutil --payload-files "$OUT"

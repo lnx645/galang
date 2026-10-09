@@ -1,18 +1,19 @@
-# Pemasang platform — dibuat dari aset rilis yang sudah terbit:
+# Platform installers — built from release assets that already exist:
 #
 #   Windows : Garurda-Setup-<v>.exe   Inno Setup 6; x64 + Windows on ARM
-#                                     (emulasi x64); menambah {app} ke
-#                                     PATH; diuji hening: pasang →
-#                                     gar version → lepas.
+#                                     (x64 emulation); adds {app} to PATH;
+#                                     silent-tested: install →
+#                                     gar version → uninstall.
 #   Linux   : garurda_<v>_<arch>.deb  amd64 + arm64 → /usr/bin/gar;
-#             diuji dpkg -i → gar version → dpkg -r di runner.
+#             tested with dpkg -i → gar version → dpkg -r on the runner.
 #   macOS   : Garurda-<v>-macos.pkg   universal2 (lipo) → /usr/local/bin/gar;
-#             diuji sudo installer → gar version.
+#             tested with sudo installer → gar version.
 #
-# Pemicu: release terbit (otomatis untuk rilis berikutnya — aset binari
-# bisa diunggah bersamaan, jadi ada tungguan unduh maks 20 menit) dan
-# workflow_dispatch(tag) untuk memasangi rilis lama.
-name: Pemasang Platform
+# Triggers: release published (automatic for the next release — binary
+# assets may be uploaded concurrently, so downloads retry for up to 20
+# minutes) and workflow_dispatch(tag) to add installers to an older
+# release.
+name: Platform Installers
 
 on:
   release:
@@ -20,7 +21,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag rilis yang dipasangi aset (mis. v0.6.1)"
+        description: "Release tag to attach assets to (e.g. v0.6.1)"
         required: true
         type: string
 
@@ -35,12 +36,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # Perkakas pemasang diambil dari cabang default (binari datang
-          # dari aset rilis, bukan dari checkout ini — tag lama bisa saja
-          # belum punya folder packaging/).
+          # Installer tooling is checked out from the default branch
+          # (binary assets come from the release, not this checkout —
+          # older tags may not contain the packaging/ folder yet).
           ref: ${{ github.event.repository.default_branch }}
 
-      - name: Ambil binari rilis gar-windows-amd64
+      - name: Fetch release binary gar-windows-amd64
         shell: pwsh
         run: |
           $url = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:TAG/gar-windows-amd64.zip"
@@ -48,21 +49,21 @@ jobs:
           for ($i = 1; $i -le 40; $i++) {
             & curl.exe -fsSL -o gar-windows-amd64.zip $url
             if ($LASTEXITCODE -eq 0) { $ok = $true; break }
-            Write-Host "percobaan $i gagal; ulang dalam 30 detik"
+            Write-Host "attempt $i failed; retrying in 30 seconds"
             Start-Sleep -Seconds 30
           }
-          if (-not $ok) { throw "aset gar-windows-amd64.zip tidak muncul dalam 20 menit" }
+          if (-not $ok) { throw "asset gar-windows-amd64.zip did not appear within 20 minutes" }
           Expand-Archive gar-windows-amd64.zip -DestinationPath bin
           Copy-Item bin/gar-windows-amd64.exe packaging/windows/gar.exe
 
-      - name: Siapkan Inno Setup 6
+      - name: Set up Inno Setup 6
         shell: pwsh
         run: |
           choco install innosetup -y --no-progress
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-          if (-not (Test-Path $iscc)) { throw "ISCC tidak ditemukan: $iscc" }
+          if (-not (Test-Path $iscc)) { throw "ISCC not found: $iscc" }
 
-      - name: Kompilasi pemasang
+      - name: Compile installer
         shell: pwsh
         run: |
           $ver = $env:TAG -replace '^v',''
@@ -71,11 +72,11 @@ jobs:
           & $iscc "/DMyAppVersion=$ver" garurda.iss
           $rc = $LASTEXITCODE
           Pop-Location
-          if ($rc -ne 0) { throw "ISCC gagal (kode $rc)" }
+          if ($rc -ne 0) { throw "ISCC failed (code $rc)" }
           Get-Item "packaging/windows/out/Garurda-Setup-$ver.exe" |
             Format-List Name, Length
 
-      - name: Uji hening — pasang, jalankan, lepas
+      - name: Silent test — install, run, uninstall
         shell: pwsh
         run: |
           $ver = $env:TAG -replace '^v',''
@@ -83,25 +84,25 @@ jobs:
           Start-Process -Wait -FilePath $setup `
             -ArgumentList '/SP-','/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART'
           $gar = "${env:ProgramFiles}\Garurda\gar.exe"
-          if (-not (Test-Path $gar)) { throw "gar.exe tidak terpasang di $gar" }
+          if (-not (Test-Path $gar)) { throw "gar.exe was not installed at $gar" }
           $out = & $gar version
-          Write-Host "terpasang: $out"
+          Write-Host "installed: $out"
           if ("$out" -notmatch [regex]::Escape($ver)) {
-            throw "versi tak cocok: '$out' vs '$ver'"
+            throw "version mismatch: '$out' vs '$ver'"
           }
           $mPath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
-          if ($mPath -notlike "*\Garurda*") { throw "PATH mesin tak berisi folder Garurda" }
+          if ($mPath -notlike "*\Garurda*") { throw "machine PATH does not contain the Garurda folder" }
           Start-Process -Wait -FilePath "${env:ProgramFiles}\Garurda\unins000.exe" `
             -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART'
-          if (Test-Path $gar) { throw "uninstall tak membersihkan gar.exe" }
+          if (Test-Path $gar) { throw "uninstall did not remove gar.exe" }
           $mPath2 = [Environment]::GetEnvironmentVariable('Path', 'Machine')
-          if ($mPath2 -like "*\Garurda*") { throw "PATH masih menyimpan entri Garurda" }
-          Write-Host "uji hening lulus (pasang + PATH + lepas)"
+          if ($mPath2 -like "*\Garurda*") { throw "PATH still contains the Garurda entry" }
+          Write-Host "silent test passed (install + PATH + uninstall)"
 
-      - name: Unggah artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: pemasang-windows
+          name: installer-windows
           path: packaging/windows/out/Garurda-Setup-*.exe
           if-no-files-found: error
 
@@ -112,12 +113,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # Perkakas pemasang diambil dari cabang default (binari datang
-          # dari aset rilis, bukan dari checkout ini — tag lama bisa saja
-          # belum punya folder packaging/).
           ref: ${{ github.event.repository.default_branch }}
 
-      - name: Ambil binari rilis (amd64 + arm64)
+      - name: Fetch release binaries (amd64 + arm64)
         run: |
           set -e
           for p in gar-linux-amd64.zip gar-linux-arm64.zip; do
@@ -127,15 +125,15 @@ jobs:
                 "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$p"; then
                 ok=1; break
               fi
-              echo "percobaan $i ($p) gagal; ulang dalam 30 detik"
+              echo "attempt $i ($p) failed; retrying in 30 seconds"
               sleep 30
             done
             if [ "$ok" != 1 ]; then
-              echo "aset $p tidak muncul dalam 20 menit" >&2; exit 1
+              echo "asset $p did not appear within 20 minutes" >&2; exit 1
             fi
           done
 
-      - name: Susun .deb dua arsitektur
+      - name: Build .deb for both architectures
         run: |
           set -e
           VER="${TAG#v}"
@@ -145,7 +143,7 @@ jobs:
           ./packaging/linux/build-deb.sh "$VER" arm64 bin-arm64/gar-linux-arm64 deb
           ls -l deb/
 
-      - name: Uji pasang paket (amd64)
+      - name: Test package install (amd64)
         run: |
           set -e
           VER="${TAG#v}"
@@ -154,16 +152,16 @@ jobs:
           echo "$out"
           case "$out" in
             *"$VER"*) ;;
-            *) echo "versi tak cocok: '$out' vs '$VER'" >&2; exit 1 ;;
+            *) echo "version mismatch: '$out' vs '$VER'" >&2; exit 1 ;;
           esac
           sudo dpkg -r garurda
           test ! -f /usr/bin/gar
-          echo "uji dpkg lulus (pasang + jalankan + lepas)"
+          echo "dpkg test passed (install + run + remove)"
 
-      - name: Unggah artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: pemasang-linux
+          name: installer-linux
           path: deb/*.deb
           if-no-files-found: error
 
@@ -174,12 +172,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # Perkakas pemasang diambil dari cabang default (binari datang
-          # dari aset rilis, bukan dari checkout ini — tag lama bisa saja
-          # belum punya folder packaging/).
           ref: ${{ github.event.repository.default_branch }}
 
-      - name: Ambil binari rilis darwin (amd64 + arm64)
+      - name: Fetch release binaries darwin (amd64 + arm64)
         run: |
           set -e
           for p in gar-darwin-amd64.zip gar-darwin-arm64.zip; do
@@ -189,15 +184,15 @@ jobs:
                 "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$p"; then
                 ok=1; break
               fi
-              echo "percobaan $i ($p) gagal; ulang dalam 30 detik"
+              echo "attempt $i ($p) failed; retrying in 30 seconds"
               sleep 30
             done
             if [ "$ok" != 1 ]; then
-              echo "aset $p tidak muncul dalam 20 menit" >&2; exit 1
+              echo "asset $p did not appear within 20 minutes" >&2; exit 1
             fi
           done
 
-      - name: Rakit .pkg universal2
+      - name: Build universal2 .pkg
         run: |
           set -e
           VER="${TAG#v}"
@@ -207,7 +202,7 @@ jobs:
             bin-amd64/gar-darwin-amd64 bin-arm64/gar-darwin-arm64 \
             "pkg/Garurda-$VER-macos.pkg"
 
-      - name: Uji pasang pkg
+      - name: Test pkg install
         run: |
           set -e
           VER="${TAG#v}"
@@ -216,32 +211,33 @@ jobs:
           echo "$out"
           case "$out" in
             *"$VER"*) ;;
-            *) echo "versi tak cocok: '$out' vs '$VER'" >&2; exit 1 ;;
+            *) echo "version mismatch: '$out' vs '$VER'" >&2; exit 1 ;;
           esac
-          echo "uji pkg lulus"
+          echo "pkg test passed"
 
-      - name: Unggah artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: pemasang-macos
+          name: installer-macos
           path: pkg/*.pkg
           if-no-files-found: error
 
-  unggah:
+  upload:
     needs: [windows, linux, macos]
     runs-on: ubuntu-latest
     env:
       TAG: ${{ inputs.tag || github.event.release.tag_name }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      # Job tanpa checkout — GH_REPO wajib agar gh tahu repository tujuan
-      # (pelajaran dari job unggah release.yml yang pernah timeout).
+      # This job has no checkout — GH_REPO is required so gh knows the
+      # target repository (lesson learned from the release.yml upload
+      # job that used to time out).
       GH_REPO: ${{ github.repository }}
     steps:
       - uses: actions/download-artifact@v4
         with:
           merge-multiple: true
 
-      - name: Unggah pemasang ke rilis
+      - name: Upload installers to the release
         run: |
           set -e
           VER="${TAG#v}"

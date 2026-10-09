@@ -1,31 +1,31 @@
 #!/usr/bin/env bash
-# build-deb.sh <versi> <arsitektur> <binari-gar> [dir-keluaran]
+# build-deb.sh <version> <arch> <gar-binary> [output-dir]
 #
-# Susun paket .deb Debian/Ubuntu dari binari gar. Arsitektur memakai
-# nama Debian (amd64 / arm64). Contoh:
+# Build a Debian/Ubuntu .deb package from a gar binary. The arch uses
+# Debian names (amd64 / arm64). Example:
 #   ./packaging/linux/build-deb.sh 0.6.1 amd64 gar-linux-amd64 dist
-# Hasil: garurda_<versi>_<arsitektur>.deb berisi /usr/bin/gar.
+# Output: garurda_<version>_<arch>.deb containing /usr/bin/gar.
 set -euo pipefail
 
-VER=${1:?versi wajib, mis. 0.6.1}
-ARCH=${2:?arsitektur wajib (amd64/arm64)}
-BIN=${3:?binari gar wajib}
+VER=${1:?version required, e.g. 0.6.1}
+ARCH=${2:?architecture required (amd64/arm64)}
+BIN=${3:?gar binary required}
 OUT=${4:-.}
 
 case "$ARCH" in
   amd64|arm64) ;;
-  *) echo "arsitektur tak dikenal: $ARCH (pakai amd64 atau arm64)" >&2
+  *) echo "unknown architecture: $ARCH (use amd64 or arm64)" >&2
      exit 1 ;;
 esac
 if [ ! -f "$BIN" ]; then
-  echo "binari tidak ada: $BIN" >&2
+  echo "binary not found: $BIN" >&2
   exit 1
 fi
 
 STAGE=$(mktemp -d)
 trap 'rm -rf "$STAGE"' EXIT
-# mktemp memberi mode 700 pada root stage — tanpa ini, mode ikut
-# terekam sebagai "drwx------ ./" di dalam paket.
+# mktemp creates the stage root with mode 700 — without this, that mode
+# would be recorded inside the package as "drwx------ ./".
 chmod 755 "$STAGE"
 PKG="garurda_${VER}_${ARCH}"
 
@@ -41,12 +41,12 @@ Architecture: $ARCH
 Maintainer: Dadan <dadanhidyt@gmail.com>
 Homepage: https://github.com/lnx645/galang
 Installed-Size: $(du -ks "$STAGE/usr" | cut -f1)
-Description: Interpreter bahasa Galang (gar)
- Garurda adalah pustaka dan interpreter bahasa Galang: skrip satu
- berkas, runtime web, pemasang ekstensi native (GNE), serta ekstensi
- resmi redis dan smtp.
+Description: Galang language interpreter (gar)
+ Garurda is a library and interpreter for the Galang language:
+ single-file scripts, a web runtime, a native extension installer
+ (GNE), and the official redis and smtp extensions.
 EOF
 
 mkdir -p "$OUT"
 dpkg-deb --build --root-owner-group "$STAGE" "$OUT/$PKG.deb"
-echo "Dibuat: $OUT/$PKG.deb"
+echo "Created: $OUT/$PKG.deb"

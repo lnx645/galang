@@ -1,7 +1,7 @@
-# Uji rutin: go vet + seluruh suite test di Linux dan macOS.
+# Routine tests: go vet + the full test suite on Linux and macOS.
 #
-# macOS ikut diuji karena ekstensi GNE di sana dikompilasi clang
-# menghasilkan .dylib — jalur dlopen berbeda dari Linux.
+# macOS is included because GNE extensions there are compiled with
+# clang producing .dylib — a different dlopen path than Linux.
 name: CI
 
 on:
@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  uji:
+  test:
     strategy:
       fail-fast: false
       matrix:
@@ -24,9 +24,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          # go.mod (go 1.19) tetap membatasi tingkat bahasa; toolchain
-          # memakai rilis stabil karena Go 1.19 sudah EOL dan tidak lagi
-          # diuji terhadap Xcode/clang terbaru di runner macOS.
+          # go.mod (Go 1.19) still pins the language level; the toolchain
+          # uses the stable release because Go 1.19 is EOL and is no
+          # longer tested against the newest Xcode/clang on macOS runners.
           go-version: stable
       - name: go vet
         run: go vet ./...

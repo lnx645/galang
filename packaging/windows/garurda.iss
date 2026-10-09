@@ -1,19 +1,21 @@
-; garurda.iss — pemasang Windows Garurda (Inno Setup 6).
+; garurda.iss — Garurda Windows installer (Inno Setup 6).
 ;
-; Dipakai CI (workflow "Pemasang Platform"):
-;   ISCC /DMyAppVersion=<versi> garurda.iss
-; dengan gar.exe (binari rilis, hasil ekstrak gar-windows-amd64.zip)
-; seberkas dengannya. Hasil: out/Garurda-Setup-<versi>.exe.
+; Used by CI (the "Platform Installers" workflow):
+;   ISCC /DMyAppVersion=<version> garurda.iss
+; with gar.exe (the release binary, extracted from
+; gar-windows-amd64.zip) placed next to this script.
+; Output: out/Garurda-Setup-<version>.exe.
 ;
-; Arsitektur x64compatible = Windows x64 ATAU Windows on ARM (binari
-; amd64 dijalankan lewat emulasi x64 Windows — konsisten dengan panduan
-; docs karena varian ekstensi native belum punya windows-arm64).
+; The x64compatible architecture set covers Windows x64 AND Windows on
+; ARM (the amd64 binary runs through Windows x64 emulation — consistent
+; with the docs because the native extension variant windows-arm64 does
+; not exist yet).
 
 #define MyAppName "Garurda"
 #ifndef MyAppVersion
   #define MyAppVersion "0.0.0-dev"
 #endif
-#define MyAppPublisher "Proyek Garurda"
+#define MyAppPublisher "Garurda Project"
 #define MyAppURL "https://github.com/lnx645/galang"
 #define MyAppExeName "gar.exe"
 
@@ -44,8 +46,9 @@ UninstallDisplayIcon={app}\{#MyAppExeName}
 Source: "gar.exe"; DestDir: "{app}"; Flags: ignoreversion
 
 [Registry]
-; Tambahkan {app} ke PATH mesin bila belum ada; Inno menyimpan nilai
-; lama dan memulihkannya saat uninstall.
+; Add {app} to the machine PATH when it is not there yet; Inno keeps
+; the previous value but does NOT restore it on uninstall (see the
+; CurUninstallStepChanged handler below).
 Root: HKLM; Subkey: "SYSTEM\CurrentControlSet\Control\Session Manager\Environment"; \
   ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app}"; \
   Check: NeedsAddPath(ExpandConstant('{app}'))
@@ -54,7 +57,8 @@ Root: HKLM; Subkey: "SYSTEM\CurrentControlSet\Control\Session Manager\Environmen
 const
   EnvPathKey = 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment';
 
-{ Cek keberadaan entri PATH (case-insensitive, dipisah titik koma). }
+{ Check whether the PATH already contains the entry (case-insensitive,
+  semicolon-separated). }
 function NeedsAddPath(Param: string): Boolean;
 var
   OrigPath: string;
@@ -68,11 +72,11 @@ begin
                 ';' + Uppercase(OrigPath) + ';') = 0;
 end;
 
-{ Uninstall: buang entri direktori instal dari PATH mesin. Inno TIDAK
-  memulihkan nilai registry yang ia modifikasi, jadi tanpa langkah ini
-  PATH menyimpan entri mati — terbukti pada uji hening di CI.
-  (Hindari tanda kurung kurawal di dalam komentar Pascal: komentar
-  tidak bersarang sehingga koma kurawal bisa menutupnya lebih awal.) }
+{ On uninstall, remove the install directory from the machine PATH.
+  Inno does NOT restore registry values it modified, so without this
+  step the PATH keeps a dead entry — proven by the silent test in CI.
+  (Avoid curly braces inside Pascal comments: comments do not nest, so
+  a stray brace closes them early.) }
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   Path, NewPath, Token, Rest, App: string;
@@ -105,7 +109,7 @@ begin
       NewPath := NewPath + Token;
     end;
   end;
-  { Jangan pernah menulis PATH kosong. }
+  { Never write an empty PATH. }
   if NewPath <> '' then
     RegWriteStringValue(HKLM, EnvPathKey, 'Path', NewPath);
 end;
