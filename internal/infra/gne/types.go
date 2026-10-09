@@ -13,6 +13,11 @@ import (
 	"garurda/internal/domain"
 )
 
+// ABI adalah versi ABI GNE yang didukung build ini. Nilainya WAJIB sama
+// dengan GNE_ABI di include/gne.h (diuji di types_test.go) dan dipakai
+// installer `gar gne` untuk menolak paket yang tidak kompatibel.
+const ABI = 1
+
 // Hooks adalah jembatan semantik dari interpreter. Semua fungsi dipanggil
 // pada goroutine interpreter (kontrak satu-goroutine mesin).
 type Hooks struct {

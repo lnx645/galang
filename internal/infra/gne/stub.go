@@ -11,6 +11,9 @@ import (
 // ErrNoCGO dikembalikan oleh Load pada build tanpa CGO.
 const ErrNoCGO = "GNE membutuhkan build dengan CGO di platform ini (runtime tanpa CGO)"
 
+// Available selalu false pada build tanpa CGO: tidak ada loader native.
+func Available() bool { return false }
+
 // Load selalu gagal pada build tanpa CGO: tidak ada dlopen.
 func (r *Registry) Load(name, path string) (*Module, error) {
 	return nil, &noCGOError{path: path}

@@ -1,6 +1,9 @@
 package gne
 
 import (
+	"fmt"
+	"os"
+	"strings"
 	"testing"
 
 	"garurda/internal/domain"
@@ -76,5 +79,18 @@ func TestFinishCall(t *testing.T) {
 	m.newTemp(domain.Int(4))
 	if _, err := m.finishCall(999999); err == nil {
 		t.Error("ret basi harus menghasilkan galat")
+	}
+}
+
+// ABI di Go harus sinkron dengan GNE_ABI di header publik — sumber
+// kebenaran yang dikompilasi bersama ekstensi pihak ketiga.
+func TestABISinkronHeader(t *testing.T) {
+	b, err := os.ReadFile("../../../include/gne.h")
+	if err != nil {
+		t.Fatalf("baca gne.h: %v", err)
+	}
+	want := fmt.Sprintf("#define GNE_ABI %d", ABI)
+	if !strings.Contains(string(b), want) {
+		t.Errorf("gne.h tidak memuat %q sedangkan ABI Go = %d", want, ABI)
 	}
 }

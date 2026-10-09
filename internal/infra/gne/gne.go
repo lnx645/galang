@@ -27,6 +27,11 @@ var (
 	nextModID uint64
 )
 
+// Available melaporkan apakah loader native aktif (build dengan CGO).
+// Dipakai installer `gar gne` untuk menolak pemasangan pada binari yang
+// tidak bisa memuat ekstensi sama sekali.
+func Available() bool { return true }
+
 func modFor(ctx *C.gne_ctx) *Module {
 	if ctx == nil {
 		return nil

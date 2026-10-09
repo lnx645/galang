@@ -1,0 +1,5 @@
+{
+  "name": "redis",
+  "version": "0.6.0",
+  "description": "Klien Redis (RESP2): string, hash, list, expiry, dan perintah bebas cmd() dengan timeout koneksi."
+}

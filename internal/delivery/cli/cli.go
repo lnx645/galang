@@ -37,6 +37,8 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return runFile(rest, stdout, stderr)
 	case "repl", "shell", "sh":
 		return runREPL(rest, stdin, stdout, stderr)
+	case "gne":
+		return runGNE(rest, stdout, stderr)
 	}
 
 	fmt.Fprintf(stderr, "gar: unknown command %q\n", cmd)
@@ -50,12 +52,14 @@ func printUsage(w io.Writer) {
 Penggunaan:
   gar run <file.ga> [argumen...]   jalankan program Garurda
   gar repl                        buka sesi interaktif (REPL)
+  gar gne <subperintah>           kelola ekstensi native (install/pack/list/remove)
   gar version                     tampilkan versi
   gar help                        tampilkan bantuan ini
 
 Contoh:
   gar run examples/hello.ga
   gar run app.ga -- --port 9000
+  gar gne install redis
 `)
 }
 
