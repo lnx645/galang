@@ -1,16 +1,20 @@
-# macOS release assets — the only platform that CANNOT be built on the
-# Linux release machine (cross-CGO to darwin is impossible), so it is
-# built on runners instead:
+# Full automated release: builds gar + all extensions from source,
+# packs extension zips, creates the GitHub release, and uploads every
+# asset. No manual steps required — a tag push triggers the complete
+# pipeline.
 #
-#   1. gar-darwin-<arch> with CGO=1 (GNE dlopen + SQLite enabled)
-#   2. extension .dylib binaries per architecture (for `make pack-ext`)
-#   3. smoke test: pack + install extensions + `use` raising a controlled
-#      error — proof that the GNE dlopen path really works on darwin.
+# Three jobs run in parallel where possible:
+#   base   — Ubuntu: gar (linux/amd64, linux/arm64, windows/amd64)
+#            + all extensions for those platforms + pack them.
+#   darwin — macOS: gar (darwin/amd64, darwin/arm64) + .dylibs + smoke test.
+#   release — waits for both, merges darwin dylibs, creates the release
+#             and uploads every asset with --clobber.
 #
-# The `upload` job waits for the release to be created (make release-zip
-# && gh release create on the release machine) then adds the darwin
-# assets to that release.
-name: Release macOS
+# Defense-in-depth against stale assets:
+#   • Every .so/.dll/.dylib is compiled from source in this workflow.
+#   • pack-ext depends on `ext` in Makefile so local builds also stay fresh.
+#   • installers.yml rebuilds gar from source per-platform before packaging.
+name: Release
 
 on:
   push:
@@ -19,32 +23,137 @@ on:
 permissions:
   contents: write
 
+env:
+  # Keep in sync with EXTS in the Makefile and installers.yml.
+  EXTS: redis smtp uuid jwt httpclient
+
 jobs:
-  macos:
+  base:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      MINGW: x86_64-w64-mingw32-gcc
+      AARCH64CC: aarch64-linux-gnu-gcc
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Build gar (linux/amd64, CGO=1)
+        run: |
+          CGO_ENABLED=1 go build -ldflags "-s -w -X galang/internal/delivery/cli.Version=${GITHUB_REF_NAME#v}" -o gar-linux-amd64 ./cmd/gar
+          ./gar-linux-amd64 version
+
+      - name: Build gar (linux/arm64, CGO=1)
+        run: |
+          if command -v $AARCH64CC >/dev/null 2>&1; then
+            CGO_ENABLED=1 CC=$AARCH64CC GOOS=linux GOARCH=arm64 \
+              go build -ldflags "-s -w -X galang/internal/delivery/cli.Version=${GITHUB_REF_NAME#v}" \
+              -o gar-linux-arm64 ./cmd/gar
+            echo "arm64 built via cross-compiler"
+          else
+            CGO_ENABLED=0 GOOS=linux GOARCH=arm64 \
+              go build -ldflags "-s -w -X galang/internal/delivery/cli.Version=${GITHUB_REF_NAME#v}" \
+              -o gar-linux-arm64 ./cmd/gar
+            echo "arm64 built without CGO (no cross-compiler available)"
+          fi
+          ./gar-linux-amd64 version
+
+      - name: Build gar (windows/amd64, CGO=0)
+        run: |
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 \
+            go build -ldflags "-s -w -X galang/internal/delivery/cli.Version=${GITHUB_REF_NAME#v}" \
+            -o gar-windows-amd64.exe ./cmd/gar
+          # CGO=0 binaries can't load extensions — expected; the exe still runs.
+          echo "windows binary built (CGO=0, extensions unavailable)"
+
+      - name: Build all extensions (linux/windows)
+        run: |
+          set -e
+          for name in $EXTS; do
+            for platform in linux/amd64 linux/arm64 windows/amd64; do
+              goos=${platform%/*}; goarch=${platform#*/}
+              cc=gcc; libs=; ext=.so
+              case "$goos-$goarch" in
+                linux-arm64) cc=$AARCH64CC ;;
+                windows/amd64) cc=$MINGW; libs="-lws2_32"; ext=.dll ;;
+              esac
+              if [ "$name" = uuid ] && [ "$goos" = windows ]; then
+                libs="$libs -lbcrypt"
+              fi
+              out=ext/$name/build/$goos-$goarch
+              mkdir -p "$out"
+              $cc -shared -fPIC -Wall -Wextra -I include \
+                -o "$out/$name$ext" "ext/$name/$name.c" $libs
+              echo "Built extension $name → $out/$name$ext"
+            done
+          done
+
+      - name: Pack extensions into zip packages
+        run: |
+          set -e
+          mkdir -p dist
+          for name in $EXTS; do
+            ./gar-linux-amd64 gne pack "ext/$name" -o "dist/$name.zip"
+            echo "Packed $name.zip"
+          done
+
+      - name: Prepare zip assets (gar binaries + gne.h)
+        run: |
+          set -e
+          cp include/gne.h dist/
+          (cd dist && zip -q gar-linux-amd64.zip gar-linux-amd64 gne.h)
+          mv dist/gar-linux-amd64 dist/
+          (cd dist && zip -q gar-linux-arm64.zip gar-linux-arm64 gne.h)
+          mv dist/gar-linux-arm64 dist/
+          (cd dist && zip -q gar-windows-amd64.zip gar-windows-amd64.exe gne.h)
+          mv dist/gar-windows-amd64.exe dist/
+          echo "=== base assets ==="
+          ls -la dist/
+
+      - name: Upload base artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: base
+          path: dist/
+          retention-days: 30
+          if-no-files-found: error
+
+  darwin:
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
         include:
-          - runner: macos-15-intel # amd64; Intel label kept until Aug 2027
+          - runner: macos-15-intel  # amd64; Intel label kept until Aug 2027
             arch: amd64
-          - runner: macos-latest # arm64 (Apple Silicon)
+          - runner: macos-latest    # arm64 (Apple Silicon)
             arch: arm64
-    runs-on: ${{ matrix.runner }}
-    env:
-      # Keep in sync with EXTS in the Makefile.
-      EXTS: redis smtp uuid jwt httpclient
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          # go.mod (Go 1.19) still pins the language level; Go 1.19 is
-          # EOL and no longer tested against the linker shipped with new
-          # Xcode releases, so darwin binaries are built with the stable
-          # toolchain the runners are tested against.
           go-version: stable
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
       - name: Build gar (CGO=1)
         run: CGO_ENABLED=1 go build -ldflags "-s -w -X galang/internal/delivery/cli.Version=${GITHUB_REF_NAME#v}" -o gar-darwin-${{ matrix.arch }} ./cmd/gar
+
       - name: Build extension .dylibs
         run: |
           set -e
@@ -55,6 +164,7 @@ jobs:
               -o "$out/$name.dylib" "ext/$name/$name.c"
             echo "Built extension $name → $out"
           done
+
       - name: Smoke test (pack + install + use)
         run: |
           set -e
@@ -116,6 +226,7 @@ jobs:
           echo "$out" | grep -q 'smoke-jwt ok'
           echo "$out" | grep -q 'smoke-httpclient httpclient_error'
           echo "smoke test passed on darwin/${{ matrix.arch }}"
+
       - name: Prepare zip assets
         run: |
           set -e
@@ -124,30 +235,29 @@ jobs:
           paths=""
           for name in $EXTS; do paths="$paths ext/$name/build"; done
           zip -qr ext-dylib-${{ matrix.arch }}.zip $paths
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: macos-${{ matrix.arch }}
+          name: darwin-${{ matrix.arch }}
           path: |
             gar-darwin-${{ matrix.arch }}.zip
             ext-dylib-${{ matrix.arch }}.zip
           retention-days: 30
           if-no-files-found: error
 
-  upload:
-    needs: macos
+  release:
+    needs: [base, darwin]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: production
-    env:
-      # Keep in sync with EXTS in the Makefile.
-      EXTS: redis smtp uuid jwt httpclient
     steps:
-      - name: Download macOS build artifacts
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           merge-multiple: true
-      - name: Merge .dylib binaries from both architectures
+
+      - name: Merge darwin dylibs into single zip
         run: |
           set -e
           unzip -q ext-dylib-amd64.zip
@@ -156,29 +266,30 @@ jobs:
           for name in $EXTS; do paths="$paths ext/$name/build"; done
           zip -qr ext-darwin-builds.zip $paths
           unzip -l ext-darwin-builds.zip
-      - name: Wait for release then upload assets
+
+      - name: Create GitHub release and upload all assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # This job has no checkout, so gh cannot infer the repository
-          # from git remotes — GH_REPO is required for gh release
-          # view/upload to work (without it the wait loop timed out
-          # after 20 minutes).
           GH_REPO: ${{ github.repository }}
         run: |
           set -e
-          # The release is created from the release machine
-          # (make release-zip && gh release create) — wait up to 20 minutes.
-          ok=0
-          for i in $(seq 1 40); do
-            if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-              ok=1
-              break
-            fi
-            sleep 30
-          done
-          if [ "$ok" != 1 ]; then
-            echo "release $GITHUB_REF_NAME still not created after 20 minutes" >&2
-            exit 1
-          fi
+          VER="${GITHUB_REF_NAME#v}"
+          echo "Creating release $GITHUB_REF_NAME with $VER"
+          gh release create "$GITHUB_REF_NAME" \
+            --title "Release $VER" \
+            --notes "Release $VER"
+          # Core binaries
           gh release upload "$GITHUB_REF_NAME" \
-            gar-darwin-amd64.zip gar-darwin-arm64.zip ext-darwin-builds.zip --clobber
+            gar-linux-amd64.zip \
+            gar-linux-arm64.zip \
+            gar-windows-amd64.zip \
+            gar-darwin-amd64.zip \
+            gar-darwin-arm64.zip \
+            ext-darwin-builds.zip \
+            --clobber
+          # Extension packages
+          for z in uuid.zip smtp.zip jwt.zip redis.zip httpclient.zip; do
+            gh release upload "$GITHUB_REF_NAME" "$z" --clobber
+          done
+          echo "=== release assets ==="
+          gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[] | "\(.name) \(.size)"'

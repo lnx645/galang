@@ -52,6 +52,9 @@ var stringMethods = map[string]func(in *Interp, args []domain.Value, pos domain.
 		return domain.Str(strings.TrimSpace(argStr(a[0]))), nil
 	},
 	"split": func(in *Interp, a []domain.Value, p domain.Position) (domain.Value, error) {
+		if len(a) < 2 {
+			return nil, in.errf(p, "split() expects a separator argument")
+		}
 		out := &domain.Arr{}
 		for _, part := range strings.Split(argStr(a[0]), argStr(a[1])) {
 			out.Append(domain.Str(part))
@@ -59,18 +62,33 @@ var stringMethods = map[string]func(in *Interp, args []domain.Value, pos domain.
 		return out, nil
 	},
 	"contains": func(in *Interp, a []domain.Value, p domain.Position) (domain.Value, error) {
+		if len(a) < 2 {
+			return nil, in.errf(p, "contains() expects a substring argument")
+		}
 		return domain.Bool(strings.Contains(argStr(a[0]), a[1].String())), nil
 	},
 	"starts_with": func(in *Interp, a []domain.Value, p domain.Position) (domain.Value, error) {
+		if len(a) < 2 {
+			return nil, in.errf(p, "starts_with() expects a prefix argument")
+		}
 		return domain.Bool(strings.HasPrefix(argStr(a[0]), argStr(a[1]))), nil
 	},
 	"ends_with": func(in *Interp, a []domain.Value, p domain.Position) (domain.Value, error) {
+		if len(a) < 2 {
+			return nil, in.errf(p, "ends_with() expects a suffix argument")
+		}
 		return domain.Bool(strings.HasSuffix(argStr(a[0]), argStr(a[1]))), nil
 	},
 	"replace": func(in *Interp, a []domain.Value, p domain.Position) (domain.Value, error) {
+		if len(a) < 3 {
+			return nil, in.errf(p, "replace() expects old and new arguments")
+		}
 		return domain.Str(strings.ReplaceAll(argStr(a[0]), argStr(a[1]), a[2].String())), nil
 	},
 	"slice": func(in *Interp, a []domain.Value, p domain.Position) (domain.Value, error) {
+		if len(a) < 2 {
+			return nil, in.errf(p, "slice() expects at least a start index")
+		}
 		r := []rune(argStr(a[0]))
 		lo, hi, err := sliceBounds(in, a[1:], len(r), p)
 		if err != nil {
@@ -79,6 +97,9 @@ var stringMethods = map[string]func(in *Interp, args []domain.Value, pos domain.
 		return domain.Str(string(r[lo:hi])), nil
 	},
 	"repeat": func(in *Interp, a []domain.Value, p domain.Position) (domain.Value, error) {
+		if len(a) < 2 {
+			return nil, in.errf(p, "repeat() expects a count argument")
+		}
 		n, _ := domain.AsInt(a[1])
 		if n < 0 {
 			n = 0
@@ -155,6 +176,9 @@ func init() {
 		},
 		"includes": func(in *Interp, a []domain.Value, p domain.Position) (domain.Value, error) {
 			arr := a[0].(*domain.Arr)
+			if len(a) < 2 {
+				return nil, in.errf(p, "includes() expects a value argument")
+			}
 			for _, it := range arr.Items {
 				if valuesEqual(it, a[1]) {
 					return domain.Bool(true), nil
@@ -164,6 +188,9 @@ func init() {
 		},
 		"slice": func(in *Interp, a []domain.Value, p domain.Position) (domain.Value, error) {
 			arr := a[0].(*domain.Arr)
+			if len(a) < 2 {
+				return nil, in.errf(p, "slice() expects at least a start index")
+			}
 			lo, hi, err := sliceBounds(in, a[1:], len(arr.Items), p)
 			if err != nil {
 				return nil, err
@@ -182,6 +209,9 @@ func init() {
 		},
 		"map": func(in *Interp, a []domain.Value, p domain.Position) (domain.Value, error) {
 			arr := a[0].(*domain.Arr)
+			if len(a) < 2 {
+				return nil, in.errf(p, "map() expects a callback function")
+			}
 			out := &domain.Arr{}
 			for i, it := range arr.Items {
 				res, err := in.callFnHelper(a[1], []domain.Value{it, domain.Int(i)}, p)
@@ -194,6 +224,9 @@ func init() {
 		},
 		"filter": func(in *Interp, a []domain.Value, p domain.Position) (domain.Value, error) {
 			arr := a[0].(*domain.Arr)
+			if len(a) < 2 {
+				return nil, in.errf(p, "filter() expects a callback function")
+			}
 			out := &domain.Arr{Elem: arr.Elem}
 			for i, it := range arr.Items {
 				keep, err := in.callFnHelper(a[1], []domain.Value{it, domain.Int(i)}, p)
