@@ -63,6 +63,14 @@ jobs:
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           if (-not (Test-Path $iscc)) { throw "ISCC not found: $iscc" }
 
+      - name: Rebuild gar.exe from source (prevents stale zip mismatch)
+        shell: pwsh
+        run: |
+          $ver = $env:TAG -replace '^v',''
+          $env:CGO_ENABLED = "1"
+          go build -ldflags "-s -w -X galang/internal/delivery/cli.Version=$ver" -o packaging/windows/gar.exe ./cmd/gar
+          & packaging/windows/gar.exe version
+
       - name: Compile installer
         shell: pwsh
         run: |
@@ -133,14 +141,29 @@ jobs:
             fi
           done
 
+      - name: Rebuild gar from source (prevents stale zip mismatch)
+        run: |
+          set -e
+          VER="${TAG#v}"
+          CGO_ENABLED=1 go build -ldflags "-s -w -X galang/internal/delivery/cli.Version=$VER" -o gar-linux-amd64 ./cmd/gar
+          # arm64 cross-build needs gcc-aarch64-linux-gnu on the runner
+          if command -v aarch64-linux-gnu-gcc >/dev/null 2>&1; then
+            CGO_ENABLED=1 CC=aarch64-linux-gnu-gcc GOOS=linux GOARCH=arm64 go build -ldflags "-s -w -X galang/internal/delivery/cli.Version=$VER" -o gar-linux-arm64 ./cmd/gar
+            echo "arm64 built via cross-compiler"
+          else
+            echo "no cross-compiler; arm64 from release asset"
+            unzip -q gar-linux-arm64.zip -d bin-arm64
+            cp bin-arm64/gar-linux-arm64 ./ || cp bin-arm64/gar ./ || true
+            test -f gar-linux-arm64 || { echo "arm64 asset unavailable"; exit 1; }
+          fi
+          ./gar-linux-amd64 version
+
       - name: Build .deb for both architectures
         run: |
           set -e
           VER="${TAG#v}"
-          unzip -q gar-linux-amd64.zip -d bin-amd64
-          unzip -q gar-linux-arm64.zip -d bin-arm64
-          ./packaging/linux/build-deb.sh "$VER" amd64 bin-amd64/gar-linux-amd64 deb
-          ./packaging/linux/build-deb.sh "$VER" arm64 bin-arm64/gar-linux-arm64 deb
+          ./packaging/linux/build-deb.sh "$VER" amd64 gar-linux-amd64 deb
+          ./packaging/linux/build-deb.sh "$VER" arm64 gar-linux-arm64 deb
           ls -l deb/
 
       - name: Test package install (amd64)
@@ -192,14 +215,20 @@ jobs:
             fi
           done
 
+      - name: Rebuild darwin binaries from source (prevents stale zip mismatch)
+        run: |
+          set -e
+          VER="${TAG#v}"
+          CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -ldflags "-s -w -X galang/internal/delivery/cli.Version=$VER" -o gar-darwin-amd64 ./cmd/gar
+          CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -ldflags "-s -w -X galang/internal/delivery/cli.Version=$VER" -o gar-darwin-arm64 ./cmd/gar
+          ./gar-darwin-amd64 version
+
       - name: Build universal2 .pkg
         run: |
           set -e
           VER="${TAG#v}"
-          unzip -q gar-darwin-amd64.zip -d bin-amd64
-          unzip -q gar-darwin-arm64.zip -d bin-arm64
           ./packaging/macos/build-pkg.sh "$VER" \
-            bin-amd64/gar-darwin-amd64 bin-arm64/gar-darwin-arm64 \
+            gar-darwin-amd64 gar-darwin-arm64 \
             "pkg/GaLang-$VER-macos.pkg"
 
       - name: Test pkg install
